@@ -101,7 +101,7 @@ class SFN:
 
         self.a = network_state[:self.n_hidden.size]
         self.ph = network_state[self.n_hidden.size:(2*self.n_hidden.size)]
-        self.h = network_state[(2+self.n_hidden.size):(3*self.n_hidden.size)]
+        self.h = network_state[(2*self.n_hidden.size):(3*self.n_hidden.size)]
         self.o = network_state[3*self.n_hidden.size]
         self.pyi = network_state[3*self.n_hidden.size + 1]
         self.pyi_prime = network_state[3*self.n_hidden.size + 2]
@@ -176,21 +176,24 @@ class SFN:
         else:
             updates.append((self.theta, self.theta - l_r*g))
 
+        #self.tmp_g = theano.function(inputs=[self.x, self.y, self.m], outputs=[go, g, self.norm, self.delta_o])
+
         train_model = theano.function(inputs=[self.x, self.y, self.m],
-            outputs=[self.c, self.py, self.pyi, self.y_pred],
+            outputs=[self.c, self.a[0], self.ph[0], self.h[0], self.o, self.pyi, self.pyi_prime, self.py, self.y_pred],
             updates=updates,
             givens={l_r: learning_rate})
-
+        print "Compiled"
         for e in xrange(epochs):
             c = 0
-            c, py, pyi, y_pred = train_model(x, y, m)
-
-            print "Epoch {0}: error: {1}".format(e, c)
+            c, a, ph, h, o, pyi, pyi_prime, py, y_pred  = train_model(x, y, m)
+            print "Epoch {0} error: {1}".format(e,c)
+#            print "Epoch {0}: error: {1}, a {2} ph {3} h {4} o {5} pyi {6} pyi_prime {7} py {8} y_pred {9} ".format(e, c, a[0,:4], ph[0,:4], h[0,:4], o[0,:4], pyi[0,:4], pyi_prime[0,:4], py[0,:4], y_pred[0,:4])
 
     def gradient_pyh(self):
         def single_go(o, normalization):
-            return o/normalization
+            return -1.*o/normalization
         norm = T.sum(self.delta_o, axis=0)
+        self.norm = norm
         g_om,_ = theano.scan(single_go,  sequences=self.delta_o_prime, non_sequences=norm)
         return -1.*g_om
 
@@ -256,65 +259,29 @@ class SFN:
         print "---b_out----"
         print self.b_out.eval()
 
-sfn = SFN(5,[4, 3],2,['sigmoid', 'sigmoid', 'sigmoid'])
-x = np.array([[1.5, 0, -1, 5, 0.4], [-1,2,3,0, -2.4], [-1,2,3,0, -2.4]])
+#sfn = SFN(5,[4, 3],2,['sigmoid', 'sigmoid', 'sigmoid'])
+#x = np.array([[1.5, 0, -1, 5, 0.4], [-1,2,3,0, -2.4], [-1,2,3,0, -2.4]])
 m = 5
-gradient_type = 'g4'
-learning_rate = -0.05
-epochs = 10
-# print "---x----"
-# print x
-# print x.shape
-# print "weights"
-# sfn.print_weights()
-# print "-----network values----"
-# s, a, ph, h, o, py, y_pred = sfn.rnn_get_state(x, m)
-y =  np.array([[0, 1],[1,1], [0,0]])
-l = sfn.tmp(x,y,m)
+gradient_type = 'g2'
+learning_rate = 0.05
+epochs = 2
+#y =  np.array([[0, 1],[1,1], [0,0]])
+#l = sfn.tmp(x,y,m)
 
-names = ["a0", "a1", "ph0", "ph1", "h0", "h1", "o", "pyi", "pyi_prime", "y pred", "py", "delta o", "delta o prime", "cm", "c"]
+#names = ["a0", "a1", "ph0", "ph1", "h0", "h1", "o", "pyi", "pyi_prime", "y pred", "py", "delta o", "delta o prime", "cm", "c"]
 
-for i, li in enumerate(l):
-    print "--{0}--".format(names[i])
-    print li
-sfn.fit(x,y,m, 'g2', learning_rate, epochs)
+#for i, li in enumerate(l):
+#    print "--{0}--".format(names[i])
+#    print li
+#sfn.fit(x,y,m, 'g2', learning_rate, epochs)
 
-#print type(sfn.tmp(x, y, m))
-#r = sfn.fit(x, y, m, 'g2', learning_rate, epochs)
-#print "!!!"
-#print sfn.get_c(x,y,m)
-# print "s"
-# print s
-# print "a"
-# print a
-# print "p(h|x)"
-# print ph
-# print "samples h"
-# print h
-# print "o"
-# print o
-# print "p(y|h)"
-# print py
-
-# print "y_pred"
-# print y_pred
-
-#sfn.fit(x,m, gradient_type, learning_rate, epochs)
-#sfn.get_gradient_5()
-#print sfn.test(x, m)
-#print "-----cost------"
-#print sfn.get_c(x, m)
-# sfn.gradient_3()
-# go, g3 = sfn.test(x, m)
-# print "---gradient g3---"
-# print g3
-"""
 import cPickle, gzip, numpy
 
 f = gzip.open('mnist.pkl.gz', 'rb')
 train_set, valid_set, test_set = cPickle.load(f)
 x_train = train_set[0]
-y_train = train_set[1]
+x_train = (x_train - np.mean(x_train, axis=0)) * 1./np.std(x_train, axis=0)
+y_train = train_set[1].reshape(-1,1)
 x_val = valid_set[0]
 y_val = valid_set[1]
 f.close()
@@ -322,11 +289,22 @@ f.close()
 y_train = y_train == 4
 y_val = y_val == 4
 sfn = SFN(x_train.shape[1],[500], 1,['sigmoid', 'sigmoid'])
-
-sfn.fit(x_train[:5], y_train[:5].reshape(-1,1), m, gradient_type, learning_rate, epochs)
+names = ["a0", "ph0", "h0", "o", "pyi", "pyi_prime", "y pred", "py", "delta o", "delta o prime", "cm", "c"]
+#l = sfn.tmp(x_train, y_train, m)
+#for i, li in enumerate(l):
+#    if i == len(l)-2:
+#        break
+#    print "--{0}--".format(names[i])
+#    print li[0,:5]
+sfn.fit(x_train, y_train, m, gradient_type, learning_rate, epochs)
+#go, g, norm, delta_o =  sfn.tmp_g(x_train, y_train, m)
+#print go[0,:5]
+#print g[0,:5]
+#print norm[:5]
+#print delta_o[:,:5]
+"""
 y_pred_train = -1*np.ones((y_train.shape[0], m))
-import ipdb
-ipdb.set_trace()
+
 for i in xrange(y_pred_train.shape[0]):
     y_pred_train[i] = sfn.predict(x_train[i].reshape(1,-1), m).flatten()
 
