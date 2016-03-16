@@ -27,6 +27,7 @@ class SFN:
         #self.theta = theano.shared(np.asarray(np.random.uniform(size=theta_shape, low=-0.01,
         #                                high=0.01), dtype=theano.config.floatX), name='theta')
         self.theta = theano.shared(0.05*np.ones(theta_shape, dtype=theano.config.floatX), name='theta')
+        self.theta_idx = {}
 
         self.wf = [None]*self.n_hidden.size
         param_idx = 0
@@ -35,24 +36,28 @@ class SFN:
                 h = self.n_hidden[i]*self.n_in
                 self.wf[i] = self.theta[param_idx:(param_idx + h)].reshape(
                                                                     (self.n_hidden[0], self.n_in))
-
             else:
                 h = self.n_hidden[i-1]*self.n_hidden[i]
                 self.wf[i] = self.theta[param_idx:(param_idx + h)].reshape(
                                                             (self.n_hidden[i], self.n_hidden[i-1]))
+            self.theta_idx['wf[{0}]'.format(i)] = (param_idx,(param_idx + h))
             param_idx += h
 
         h = self.n_hidden[-1]*self.n_out
         self.w_out = self.theta[param_idx:(param_idx + h)].reshape((self.n_out, self.n_hidden[-1]))
+        self.theta_idx['w_out'] = (param_idx, param_idx+h)
         param_idx += h
 
         self.bf = [None]*self.n_hidden.size
         for i, h in enumerate(self.n_hidden):
             self.bf[i] = self.theta[param_idx:(param_idx + h)]
+            self.theta_idx['bf[{0}]'.format(i)] = (param_idx, param_idx+h)
             param_idx += h
 
         h = self.n_out
         self.b_out = self.theta[param_idx:(param_idx + h)]
+        self.theta_idx['b_out'] = (param_idx, param_idx+h)
+
         param_idx += h
         assert param_idx == self.theta.shape.eval()
 
@@ -133,29 +138,46 @@ class SFN:
         if gradient_type in ['g2', 'g3']:
 
             def w_upd(g, h):
-                return 1./g.shape[0]*T.dot(g, h)
+                return 1./g.shape[0]*T.dot(g.T, h)
 
             w_out_upd, _ = theano.scan(w_upd, sequences=[go, self.h[-1]])
             b_out_upd = T.mean(go, axis=1)
 
-            updates.append((self.w_out, self.w_out - l_r*T.sum(w_out_upd, axis=0)))
-            updates.append((self.b_out, self.b_out - l_r*T.sum(b_out_upd, axis=0)))
+            theta_upd = T.alloc(np.zeros(self.theta.get_value().shape), self.theta.get_value().shape)
+
+            th_idx = self.theta_idx['w_out']
+            theta_upd = T.set_subtensor(theta_upd[th_idx[0]:th_idx[1]], (self.w_out - l_r*T.sum(w_out_upd, axis=0)).flatten())
+            th_idx = self.theta_idx['b_out']
+            theta_upd = T.set_subtensor(theta_upd[th_idx[0]:th_idx[1]], self.b_out - l_r*T.sum(b_out_upd, axis=0))
+
+            #updates.append((theta, self.theta[self.theta_idx['w_out'][0]:self.theta_idx['w_out'][1]], (self.w_out - l_r*T.sum(w_out_upd, axis=0)).flatten()))
+            #updates.append((self.b_out, self.b_out - l_r*T.sum(b_out_upd, axis=0)))
             param_idx = 0
             for i, hi in enumerate(self.n_hidden):
+                th_idx = self.theta_idx['wf[{0}]'.format(i)]
+
                 if i==0:
-                    wf_upd, _ = theano.scan(w_upd, sequences=[g[:,:self.n_hidden[0]], self.x])
-                    updates.append((self.wf[i], self.wf[i] -l_r*T.sum(wf_upd, axis=0)))
+                    wf_upd, _ = theano.scan(w_upd, sequences=g[:,:,:self.n_hidden[0]], non_sequences=self.x)
+                    #updates.append((self.wf[i], self.wf[i] -l_r*T.sum(wf_upd, axis=0)))
+
+                    theta_upd = T.set_subtensor(theta_upd[th_idx[0]:th_idx[1]], (self.wf[i] -l_r*T.sum(wf_upd, axis=0)).flatten())
                 else:
-                    wf_upd, _ = theano.scan(w_upd, sequences=[g[:,self.n_hidden[i-1]:self.n_hidden[i]], self.h[i-1]])
-                    updates.append((self.wf[i], self.wf[i] - l_r*T.sum(wf_upd, axis=0)))
-                bf_upd = T.mean(g[:,param_idx:param_idx+hi], axis=1)
-                updates.append((self.bf[i], self.bf[i]- l_r*T.sum(bf_upd)))
+                    tmp = theano.function(inputs=[self.x, self.y, self.m], outputs=[g.shape, g[:,:,param_idx:param_idx + hi].shape, self.h[i-1].shape])
+                    wf_upd, _ = theano.scan(w_upd, sequences=[g[:,:,param_idx:param_idx + hi], self.h[i-1]])
+                    #updates.append((self.wf[i], self.wf[i] - l_r*T.sum(wf_upd, axis=0)))
+                    theta_upd = T.set_subtensor(theta_upd[th_idx[0]:th_idx[1]], (self.wf[i] - l_r*T.sum(wf_upd, axis=0)).flatten())
+
+                bf_upd = T.mean(g[:,:, param_idx:param_idx+hi], axis=1)
+                #updates.append((self.bf[i], self.bf[i]- l_r*T.sum(bf_upd)))
+                th_idx = self.theta_idx['bf[{0}]'.format(i)]
+                theta_upd = T.set_subtensor(theta_upd[th_idx[0]:th_idx[1]], self.bf[i]- l_r*T.sum(bf_upd))
                 param_idx += hi
+            updates.append((self.theta, theta_upd))
         else:
             updates.append((self.theta, self.theta - l_r*g))
 
         train_model = theano.function(inputs=[self.x, self.y, self.m],
-            outputs=[self.c, self.py, self.pyi, self.y_pred]),
+            outputs=[self.c, self.py, self.pyi, self.y_pred],
             updates=updates,
             givens={l_r: learning_rate})
 
@@ -164,8 +186,7 @@ class SFN:
             c, py, pyi, y_pred = train_model(x, y, m)
 
             print "Epoch {0}: error: {1}".format(e, c)
-        import ipdb
-        ipdb.set_trace()
+
     def gradient_pyh(self):
         def single_go(o, normalization):
             return o/normalization
@@ -236,11 +257,11 @@ class SFN:
         print self.b_out.eval()
 
 sfn = SFN(5,[4, 3],2,['sigmoid', 'sigmoid', 'sigmoid'])
-x = np.array([[1.5, 0, -1, 5, 0.4], [-1,2,3,0, -2.4]])
+x = np.array([[1.5, 0, -1, 5, 0.4], [-1,2,3,0, -2.4], [-1,2,3,0, -2.4]])
 m = 5
 gradient_type = 'g4'
-learning_rate = 0.1
-epochs = 1
+learning_rate = -0.05
+epochs = 10
 # print "---x----"
 # print x
 # print x.shape
@@ -248,7 +269,7 @@ epochs = 1
 # sfn.print_weights()
 # print "-----network values----"
 # s, a, ph, h, o, py, y_pred = sfn.rnn_get_state(x, m)
-y =  np.array([[0, 1],[1,1]])
+y =  np.array([[0, 1],[1,1], [0,0]])
 l = sfn.tmp(x,y,m)
 
 names = ["a0", "a1", "ph0", "ph1", "h0", "h1", "o", "pyi", "pyi_prime", "y pred", "py", "delta o", "delta o prime", "cm", "c"]
