@@ -24,9 +24,9 @@ class SFN:
 
         theta_shape = self.n_hidden[0]*self.n_in + np.sum(self.n_hidden[:-1]*self.n_hidden[1:]) +\
                      self.n_hidden[-1]*self.n_out + np.sum(self.n_hidden) + self.n_out
-        #self.theta = theano.shared(np.asarray(np.random.uniform(size=theta_shape, low=-0.01,
-        #                                high=0.01), dtype=theano.config.floatX), name='theta')
-        self.theta = theano.shared(0.05*np.ones(theta_shape, dtype=theano.config.floatX), name='theta')
+        self.theta = theano.shared(np.asarray(np.random.uniform(size=theta_shape, low=-0.01,
+                                        high=0.01), dtype=theano.config.floatX), name='theta')
+        #self.theta = theano.shared(0.05*np.ones(theta_shape, dtype=theano.config.floatX), name='theta')
         self.theta_idx = {}
 
         self.wf = [None]*self.n_hidden.size
@@ -66,6 +66,7 @@ class SFN:
         def h_step():
             h = [None]*self.n_hidden.size
             a = [None]*self.n_hidden.size
+            ph_prime = [None]*self.n_hidden.size
             ph = [None]*self.n_hidden.size
             for i in xrange(self.n_hidden.size):
                 if i == 0:
@@ -74,6 +75,7 @@ class SFN:
                     a[i] = T.dot(h[i-1], self.wf[i].T) + self.bf[i]
                 
                 ph[i] = self.activation[i](a[i])
+                ph_prime[i] = self.activation_prime[i](a[i])
                 sample = self.trng.uniform(size=ph[i].shape)
                 h[i] = T.lt(sample, ph[i])
 
@@ -82,13 +84,10 @@ class SFN:
             pyi_prime = self.activation_prime[-1](o)
             sample = self.trng.uniform(size=pyi.shape)
             y_pred = T.lt(sample, pyi)
-            return a + ph + h  + [o, pyi, pyi_prime, y_pred]
+            return a + ph + h  + [o, pyi, pyi_prime, y_pred] + ph_prime
 
-        def delta_o(pyi,y):
+        def delta(pyi,y):
             return y*pyi + (1-y)*(1-pyi)
-
-        def delta_o_prime(pyi_prime,y):
-            return y*pyi_prime + (1-y)*(1-pyi_prime)
 
         def py(pyi, y):
             return T.prod(y*pyi + (1-y)*(1-pyi), axis=1)
@@ -96,7 +95,7 @@ class SFN:
         self.m = T.iscalar('M') 
 
         network_state, _ = theano.scan(
-                    h_step, outputs_info=[None]*(self.n_hidden.size*3+4), n_steps=self.m)
+                    h_step, outputs_info=[None]*(self.n_hidden.size*4+4), n_steps=self.m)
 
 
         self.a = network_state[:self.n_hidden.size]
@@ -106,10 +105,20 @@ class SFN:
         self.pyi = network_state[3*self.n_hidden.size + 1]
         self.pyi_prime = network_state[3*self.n_hidden.size + 2]
         self.y_pred = network_state[3*self.n_hidden.size + 3]
+        self.ph_prime = network_state[3*self.n_hidden.size + 4: 4*self.n_hidden.size + 4]
 
         self.py, _ = theano.scan(py, sequences=self.pyi, non_sequences=self.y)
-        self.delta_o, _ = theano.scan(delta_o, sequences=self.pyi, non_sequences=self.y)
-        self.delta_o_prime, _ = theano.scan(delta_o_prime, sequences=self.pyi_prime, non_sequences=self.y)
+        self.delta_o, _ = theano.scan(delta, sequences=self.pyi, non_sequences=self.y)
+        self.delta_o_prime, _ = theano.scan(delta, sequences=self.pyi_prime, non_sequences=self.y)
+
+        self.delta_a = []
+        self.delta_a_prime = []
+        for i in xrange(self.n_hidden.size):
+            delta_a, _ = theano.scan(delta, sequences=[self.ph[i], self.h[i]])
+            self.delta_a.append(delta_a)
+            delta_a_prime, _ = theano.scan(delta, sequences=[self.ph_prime[i], self.h[i]])
+            self.delta_a_prime.append(delta_a_prime)
+
 
         self.cm = -T.log(T.mean(self.py, axis=0))
         self.c = T.sum(self.cm)
@@ -119,7 +128,7 @@ class SFN:
         #print theano.printing.debugprint(self.cm)
         tmp_out = [i for i in self.a] + [i for i in self.ph] + [i for i in self.h] + [self.o, self.pyi, self.pyi_prime, self.y_pred, self.py, self.delta_o, self.delta_o_prime, self.cm, self.c]
         self.tmp = theano.function(inputs=[self.x, self.y, self.m], outputs=tmp_out, on_unused_input='warn')
-
+        #self.tmp2 = theano.function(inputs=[self.x, self.y, self.m], outputs=[self.wf[0], T.dot(self.x, self.wf[0].T), self.x], on_unused_input='ignore')
         
     def fit(self, x, y, m, gradient_type, learning_rate, epochs):
 
@@ -130,76 +139,75 @@ class SFN:
         elif gradient_type == 'g3':
             go, g = self.get_gradient_3()
         elif gradient_type == 'g4':
-            g = self.get_gradient_4()
+            go, g, w_norm = self.get_gradient_4()
+            f = theano.function(inputs=[self.x, self.y, self.m], outputs=[self.delta_a_prime[0].shape, self.delta_a[0].shape, w_norm.shape], on_unused_input='warn')
+            print f(x,y,m)
+            import ipdb
+            ipdb.set_trace()
         elif gradient_type == 'g5':
-            g = self.get_gradient_5()
+            go, g = self.get_gradient_5()
 
         updates = []
-        if gradient_type in ['g2', 'g3']:
+        def w_upd(g, h):
+            return 1./g.shape[0]*T.dot(g.T, h)
 
-            def w_upd(g, h):
-                return 1./g.shape[0]*T.dot(g.T, h)
+        w_out_upd, _ = theano.scan(w_upd, sequences=[go, self.h[-1]])
+        b_out_upd = T.mean(go, axis=1)
+        theta_upd = T.alloc(np.zeros(self.theta.get_value().shape), self.theta.get_value().size)
 
-            w_out_upd, _ = theano.scan(w_upd, sequences=[go, self.h[-1]])
-            b_out_upd = T.mean(go, axis=1)
+        th_idx = self.theta_idx['w_out']
+        theta_upd = T.set_subtensor(theta_upd[th_idx[0]:th_idx[1]], (self.w_out - l_r*T.sum(w_out_upd, axis=0)).flatten())
+        th_idx = self.theta_idx['b_out']
+        theta_upd = T.set_subtensor(theta_upd[th_idx[0]:th_idx[1]], self.b_out - l_r*T.sum(b_out_upd, axis=0))
 
-            theta_upd = T.alloc(np.zeros(self.theta.get_value().shape), self.theta.get_value().shape)
+        #updates.append((theta, self.theta[self.theta_idx['w_out'][0]:self.theta_idx['w_out'][1]], (self.w_out - l_r*T.sum(w_out_upd, axis=0)).flatten()))
+        #updates.append((self.b_out, self.b_out - l_r*T.sum(b_out_upd, axis=0)))
+        param_idx = 0
+        for i, hi in enumerate(self.n_hidden):
+            th_idx = self.theta_idx['wf[{0}]'.format(i)]
 
-            th_idx = self.theta_idx['w_out']
-            theta_upd = T.set_subtensor(theta_upd[th_idx[0]:th_idx[1]], (self.w_out - l_r*T.sum(w_out_upd, axis=0)).flatten())
-            th_idx = self.theta_idx['b_out']
-            theta_upd = T.set_subtensor(theta_upd[th_idx[0]:th_idx[1]], self.b_out - l_r*T.sum(b_out_upd, axis=0))
+            if i==0:
+                wf_upd, _ = theano.scan(w_upd, sequences=g[:,:,:self.n_hidden[0]], non_sequences=self.x)
+                #updates.append((self.wf[i], self.wf[i] -l_r*T.sum(wf_upd, axis=0)))
 
-            #updates.append((theta, self.theta[self.theta_idx['w_out'][0]:self.theta_idx['w_out'][1]], (self.w_out - l_r*T.sum(w_out_upd, axis=0)).flatten()))
-            #updates.append((self.b_out, self.b_out - l_r*T.sum(b_out_upd, axis=0)))
-            param_idx = 0
-            for i, hi in enumerate(self.n_hidden):
-                th_idx = self.theta_idx['wf[{0}]'.format(i)]
+                theta_upd = T.set_subtensor(theta_upd[th_idx[0]:th_idx[1]], (self.wf[i] -l_r*T.sum(wf_upd, axis=0)).flatten())
+            else:
+                #tmp = theano.function(inputs=[self.x, self.y, self.m], outputs=[g.shape, g[:,:,param_idx:param_idx + hi].shape, self.h[i-1].shape])
+                wf_upd, _ = theano.scan(w_upd, sequences=[g[:,:,param_idx:param_idx + hi], self.h[i-1]])
+                #updates.append((self.wf[i], self.wf[i] - l_r*T.sum(wf_upd, axis=0)))
+                theta_upd = T.set_subtensor(theta_upd[th_idx[0]:th_idx[1]], (self.wf[i] - l_r*T.sum(wf_upd, axis=0)).flatten())
 
-                if i==0:
-                    wf_upd, _ = theano.scan(w_upd, sequences=g[:,:,:self.n_hidden[0]], non_sequences=self.x)
-                    #updates.append((self.wf[i], self.wf[i] -l_r*T.sum(wf_upd, axis=0)))
+            bf_upd = T.mean(g[:,:, param_idx:param_idx+hi], axis=1)
+            #updates.append((self.bf[i], self.bf[i]- l_r*T.sum(bf_upd)))
+            th_idx = self.theta_idx['bf[{0}]'.format(i)]
+            theta_upd = T.set_subtensor(theta_upd[th_idx[0]:th_idx[1]], self.bf[i]- l_r*T.sum(bf_upd))
+            param_idx += hi
+        updates.append((self.theta, theta_upd))
 
-                    theta_upd = T.set_subtensor(theta_upd[th_idx[0]:th_idx[1]], (self.wf[i] -l_r*T.sum(wf_upd, axis=0)).flatten())
-                else:
-                    tmp = theano.function(inputs=[self.x, self.y, self.m], outputs=[g.shape, g[:,:,param_idx:param_idx + hi].shape, self.h[i-1].shape])
-                    wf_upd, _ = theano.scan(w_upd, sequences=[g[:,:,param_idx:param_idx + hi], self.h[i-1]])
-                    #updates.append((self.wf[i], self.wf[i] - l_r*T.sum(wf_upd, axis=0)))
-                    theta_upd = T.set_subtensor(theta_upd[th_idx[0]:th_idx[1]], (self.wf[i] - l_r*T.sum(wf_upd, axis=0)).flatten())
-
-                bf_upd = T.mean(g[:,:, param_idx:param_idx+hi], axis=1)
-                #updates.append((self.bf[i], self.bf[i]- l_r*T.sum(bf_upd)))
-                th_idx = self.theta_idx['bf[{0}]'.format(i)]
-                theta_upd = T.set_subtensor(theta_upd[th_idx[0]:th_idx[1]], self.bf[i]- l_r*T.sum(bf_upd))
-                param_idx += hi
-            updates.append((self.theta, theta_upd))
-        else:
-            updates.append((self.theta, self.theta - l_r*g))
 
         #self.tmp_g = theano.function(inputs=[self.x, self.y, self.m], outputs=[go, g, self.norm, self.delta_o])
 
         train_model = theano.function(inputs=[self.x, self.y, self.m],
-            outputs=[self.c, self.a[0], self.ph[0], self.h[0], self.o, self.pyi, self.pyi_prime, self.py, self.y_pred],
+            outputs=[self.c, self.a[0], self.ph[0], self.h[0], self.o, self.pyi, self.pyi_prime, self.py, self.y_pred, go, g, self.ph_prime[0]],
             updates=updates,
             givens={l_r: learning_rate})
         print "Compiled"
         for e in xrange(epochs):
             c = 0
-            c, a, ph, h, o, pyi, pyi_prime, py, y_pred  = train_model(x, y, m)
+            c, a, ph, h, o, pyi, pyi_prime, py, y_pred, gom, g, ph_prime  = train_model(x, y, m)
             print "Epoch {0} error: {1}".format(e,c)
 #            print "Epoch {0}: error: {1}, a {2} ph {3} h {4} o {5} pyi {6} pyi_prime {7} py {8} y_pred {9} ".format(e, c, a[0,:4], ph[0,:4], h[0,:4], o[0,:4], pyi[0,:4], pyi_prime[0,:4], py[0,:4], y_pred[0,:4])
 
     def gradient_pyh(self):
-        def single_go(o, normalization):
-            return -1.*o/normalization
+        def single_go(o_prime, o, normalization):
+            return -1.*o_prime/normalization, o*1./normalization 
         norm = T.sum(self.delta_o, axis=0)
-        self.norm = norm
-        g_om,_ = theano.scan(single_go,  sequences=self.delta_o_prime, non_sequences=norm)
-        return -1.*g_om
+        [g_om, w_norm], _ = theano.scan(single_go,  sequences=[self.delta_o_prime, self.delta_o], non_sequences=norm, outputs_info=[None, None])
+        return -1.*g_om, w_norm
 
     def get_gradient_2(self):
 
-        gom = self.gradient_pyh()
+        gom, _ = self.gradient_pyh()
 
         def get_g2(go):
             n_hidden_total = np.sum(self.n_hidden)
@@ -208,7 +216,6 @@ class SFN:
             for i, hi in enumerate(self.n_hidden[-1::-1]):
                 if i == 0:
                     g = T.set_subtensor(g[:, n_hidden_total-hi:], T.dot(go, self.w_out))
-                    a = T.dot(go, self.w_out)
                 else:
                     g = T.set_subtensor(g[:, n_hidden_total-param_idx-hi:n_hidden_total-param_idx], T.dot(g[:, n_hidden_total-param_idx:n_hidden_total-param_idx+self.n_hidden[-i]], self.wf[self.n_hidden.size-i]))
                 param_idx += hi
@@ -218,30 +225,75 @@ class SFN:
         return gom, g2
 
     def get_gradient_3(self):
-        """Only for 1 hidden layer"""
-        go, g2 = self.get_gradient_2()
-        g3 = T.alloc(np.asarray(np.zeros(np.sum(self.n_hidden)), dtype=theano.config.floatX), (np.sum(self.n_hidden,)))
-        param_idx = 0
-        for i, hi in enumerate(self.n_hidden):
-            g3 = T.set_subtensor(g3[param_idx:param_idx+hi], self.activation_prime[i](self.a[i]*g2[param_idx:param_idx+hi]))
-            param_idx += hi
-        return go, g3
 
+        gom, _ = self.gradient_pyh()
+
+        def get_g2(go, it):
+            n_hidden_total = np.sum(self.n_hidden)
+            g = T.zeros((self.x.shape[0], n_hidden_total))
+            param_idx = 0
+
+            for i, hi in enumerate(self.n_hidden[-1::-1]):
+                if i == 0:
+                    g = T.set_subtensor(g[:, n_hidden_total-hi:], self.ph_prime[i][it]*T.dot(go, self.w_out))
+                else:
+                    g = T.set_subtensor(g[:, n_hidden_total-param_idx-hi:n_hidden_total-param_idx], self.ph_prime[i][it]*T.dot(g[:, n_hidden_total-param_idx:n_hidden_total-param_idx+self.n_hidden[-i]], self.wf[self.n_hidden.size-i]))
+                param_idx += hi
+            return g
+
+        g3, _ = theano.scan(get_g2, sequences=[gom, theano.tensor.arange(self.m)])
+        return gom, g3
 
     def get_gradient_4(self):
-        w_mean = self.py*1./T.sum(self.py)
-        phm = (T.dot(self.h[0], self.ph[0].T) + T.dot(1-self.h[0], 1-self.ph[0].T)).flatten()
-        self.f = T.dot(w_mean, T.log(self.py) + T.log(phm))
-        return T.grad(self.f, self.theta)
+        """
+        w_mean = self.py*1./T.sum(self.py, axis=0)
+        def get_phm(phi, h):
+            return T.prod(h*phi + (1-h)*(1-phi), axis=1)
+
+        logf = T.zeros(self.py.shape)
+        for i in xrange(len(self.n_hidden)):
+            phlm, _ = theano.scan(get_phm, sequences=[self.ph[i], self.h[i]])
+            logf += T.log(phlm)
+        
+        logf += T.log(self.py)
+        f = T.sum(w_mean*logf)
+        return T.grad(f, self.theta)
+        """
+        g_om, w_norm = self.gradient_pyh()
+        def single_go(a_prime, a, w_norm):
+            return w_norm*a_prime*1./a
+
+        n_hidden_total = np.sum(self.n_hidden)
+        g4 = T.zeros((self.m, self.x.shape[0], n_hidden_total))
+        param_idx = 0
+
+        for i, hi in enumerate(self.n_hidden):
+            g_aim,_ = theano.scan(single_go,  sequences=[self.delta_a_prime[i], self.delta_a[i], w_norm])
+            g4 = T.set_subtensor(g4[:,:,param_idx:param_idx+hi], g_aim)
+            param_idx += hi
+        
+        return g_om, g4, w_norm
+
+
 
     def get_gradient_5(self):
+        """
         w_mean = self.py*1./T.sum(self.py)
         phm = (T.dot(self.h[0], self.ph[0].T) + T.dot(1-self.h[0], 1-self.ph[0].T)).flatten()
         logphm = T.log(phm)
         f = T.dot(w_mean, T.log(self.py) + logphm) - 1./m*T.sum(logphm)
         self.test = theano.function(inputs=[self.x, self.m], outputs=T.grad(f, self.theta))
-
         return T.grad(f, self.theta)
+        """
+        g_om, w_norm = self.gradient_pyh()
+        def single_go(a_prime, a, w_norm):
+            return w_norm*a_prime*1./a
+        g5 = []
+        for i in xrange(self.n_hidden.size):
+            g_aim,_ = theano.scan(single_go,  sequences=[self.delta_a_prime[i], self.delta_a[i]], non_sequences=(w_norm-1./self.m))
+            g5.append(g_aim)
+        return g_om, g5
+
 
 
     def print_weights(self):
@@ -259,13 +311,14 @@ class SFN:
         print "---b_out----"
         print self.b_out.eval()
 
-#sfn = SFN(5,[4, 3],2,['sigmoid', 'sigmoid', 'sigmoid'])
-#x = np.array([[1.5, 0, -1, 5, 0.4], [-1,2,3,0, -2.4], [-1,2,3,0, -2.4]])
+np.random.seed(0)
+sfn = SFN(5,[4, 3],2,['sigmoid', 'sigmoid', 'sigmoid'])
+x = np.array([[1.5, 0, -1, 5, 0.4], [-1,2,3,0, -2.4], [-1,2,3,0, -2.4]])
 m = 5
-gradient_type = 'g2'
-learning_rate = 0.05
-epochs = 2
-#y =  np.array([[0, 1],[1,1], [0,0]])
+gradient_type = 'g1'
+learning_rate = 0.00005
+epochs = 60
+y =  np.array([[0, 1],[1,1], [0,0]])
 #l = sfn.tmp(x,y,m)
 
 #names = ["a0", "a1", "ph0", "ph1", "h0", "h1", "o", "pyi", "pyi_prime", "y pred", "py", "delta o", "delta o prime", "cm", "c"]
@@ -273,30 +326,33 @@ epochs = 2
 #for i, li in enumerate(l):
 #    print "--{0}--".format(names[i])
 #    print li
-#sfn.fit(x,y,m, 'g2', learning_rate, epochs)
-
+sfn.fit(x,y,m, 'g4', learning_rate, epochs)
+print "HERE"
 import cPickle, gzip, numpy
 
 f = gzip.open('mnist.pkl.gz', 'rb')
 train_set, valid_set, test_set = cPickle.load(f)
 x_train = train_set[0]
-x_train = (x_train - np.mean(x_train, axis=0)) * 1./np.std(x_train, axis=0)
-y_train = train_set[1].reshape(-1,1)
-x_val = valid_set[0]
+y_train = train_set[1]
 y_val = valid_set[1]
 f.close()
 
+x_train = x_train[:10,:]
+y_train = y_train[:10].reshape(-1,1)
+
 y_train = y_train == 4
 y_val = y_val == 4
-sfn = SFN(x_train.shape[1],[500], 1,['sigmoid', 'sigmoid'])
-names = ["a0", "ph0", "h0", "o", "pyi", "pyi_prime", "y pred", "py", "delta o", "delta o prime", "cm", "c"]
+#sfn = SFN(x_train.shape[1],[500], 1,['sigmoid', 'sigmoid'])
+#names = ["a0", "ph0", "h0", "o", "pyi", "pyi_prime", "y pred", "py", "delta o", "delta o prime", "cm", "c"]
 #l = sfn.tmp(x_train, y_train, m)
 #for i, li in enumerate(l):
 #    if i == len(l)-2:
 #        break
 #    print "--{0}--".format(names[i])
 #    print li[0,:5]
-sfn.fit(x_train, y_train, m, gradient_type, learning_rate, epochs)
+#print sfn.tmp2(x_train,y_train,m)
+#sfn.fit(x_train, y_train, m, gradient_type, learning_rate, epochs)
+
 #go, g, norm, delta_o =  sfn.tmp_g(x_train, y_train, m)
 #print go[0,:5]
 #print g[0,:5]
