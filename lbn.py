@@ -24,12 +24,17 @@ class OutputLayer(object):
         self.n_out = n_out
         self.W = V
         self.params = [self.W]
-        self.a = T.dot(self.input, self.W.T)
-        self.output = activation(self.a)
+        self.activation = activation
+        def h_step(x):
+            a = T.dot(x, self.W.T)
+            output = self.activation(a)
+            return a, output
+        self.output = self.input
+        [self.a, self.output], _ = theano.scan(h_step, sequences=[self.input])
 
 
 class DetHiddenLayer(object):
-    def __init__(self, rng, input_var, n_in, n_out, activation, W=None, b=None):
+    def __init__(self, rng, input_var, n_in, n_out, activation, m=None, W=None, b=None):
         """
         Typical deterministic hidden layer: Weight matrix W is of shape (n_in,n_out)
         and the bias vector b is of shape (n_out,).
@@ -71,10 +76,19 @@ class DetHiddenLayer(object):
         self.W = W
         self.b = b
         self.params = [self.W, self.b]
+        self.activation = activation
 
-        self.no_bias = T.dot(input_var, self.W.T)
-        self.a = self.no_bias + self.b
-        self.output = activation(self.a)
+        def h_step(x):
+            no_bias = T.dot(x, self.W.T)
+            a = no_bias + self.b
+            output = self.activation(a)
+            return no_bias, a, output
+
+        if m is None:
+            [self.no_bias, self.a, self.output], _ = theano.scan(h_step, sequences=self.input)
+        else:
+            [self.no_bias, self.a, self.output], _ = theano.scan(h_step, non_sequences=self.input,
+                                                                outputs_info=[None]*3, n_steps=m)
         # parameters of the model
         self.params = [self.W, self.b]
 
@@ -136,13 +150,13 @@ class StochHiddenLayer(object):
 class LBNHiddenLayer():
 
     def __init__(self, rng, trng, input_var, n_in, n_out, det_activation, det_activation_name,
-                                stoch_n_hidden, stoch_activations, stoch_activation_names):
+                                stoch_n_hidden, stoch_activations, stoch_activation_names, m=None):
         self.input = input_var
         self.n_in = n_in
         self.n_out = n_out
         self.det_activation = det_activation_name
         self.stoch_activation = stoch_activation_names
-        self.det_layer = DetHiddenLayer(rng, input_var, n_in, n_out, det_activation)
+        self.det_layer = DetHiddenLayer(rng, input_var, n_in, n_out, det_activation, m=m)
 
         #If -1, same hidden units
         stoch_n_hidden = np.array([i if i > -1 else n_out for i in stoch_n_hidden])
@@ -160,6 +174,7 @@ class LBN:
         self.y = T.matrix('y')
         self.trng = T.shared_randomstreams.RandomStreams(1234)
         self.rng = np.random.RandomState(0)
+        self.m = T.iscalar('M') 
 
         self.parse_properties(n_in, n_hidden, n_out, det_activations, stoch_activations,
                                                                                     stoch_n_hidden)
@@ -174,7 +189,7 @@ class LBN:
                 self.hidden_layers[i] = LBNHiddenLayer(self.rng, self.trng, self.x, self.n_in,
                                         h, self.det_activation[i], self.det_activation_names[i],
                                         self.stoch_n_hidden, self.stoch_activation,
-                                        self.stoch_activation_names)
+                                        self.stoch_activation_names, m=self.m)
             else:
                 self.hidden_layers[i] = LBNHiddenLayer(self.rng, self.trng,
                                         self.hidden_layers[i-1].output,
@@ -188,9 +203,10 @@ class LBN:
         self.output_layer = OutputLayer(self.rng, self.hidden_layers[-1].output,
                                                     n_hidden[-1], n_out, self.det_activation[-1])
 
+        self.params += self.output_layer.params
         self.output = self.output_layer.output
 
-        self.predict = theano.function(inputs=[self.x], outputs=self.output)
+        self.predict = theano.function(inputs=[self.x, self.m], outputs=self.output)
 
     def parse_properties(self, n_in, n_hidden, n_out, det_activations, stoch_activations,
                                                                                 stoch_n_hidden):
@@ -211,5 +227,6 @@ if __name__ == '__main__':
     det_activations = ['linear', 'linear', 'linear']
     stoch_activations = ['sigmoid', 'sigmoid']
     stoch_n_hidden = [-1]
+    m = 2
     n = LBN(n_in, n_hidden, n_out, det_activations, stoch_activations, stoch_n_hidden)
-    print n.predict(np.random.randn(3,10)).shape
+    print n.predict(np.random.randn(3,10), m).shape
