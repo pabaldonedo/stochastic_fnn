@@ -35,7 +35,7 @@ class OutputLayer(object):
 
 class DetHiddenLayer(object):
     def __init__(self, rng, input_var, n_in, n_out, activation, activation_prime,
-                                                                            m=None, W=None, b=None):
+                                                            m=None, W=None, b=None, no_bias=False):
         """
         Typical deterministic hidden layer: Weight matrix W is of shape (n_in,n_out)
         and the bias vector b is of shape (n_out,).
@@ -56,6 +56,8 @@ class DetHiddenLayer(object):
                            layer
         """
         self.input = input_var
+        self.no_bias = no_bias
+
         if W is None:
             W_values = np.asarray(
                 rng.uniform(
@@ -70,19 +72,25 @@ class DetHiddenLayer(object):
 
             W = theano.shared(value=W_values, name='W', borrow=True)
 
-        if b is None:
+        if b is None and no_bias is False:
             b_values = np.zeros((n_out,), dtype=theano.config.floatX)
             b = theano.shared(value=b_values, name='b', borrow=True)
 
         self.W = W
-        self.b = b
-        self.params = [self.W, self.b]
+        if no_bias is False:
+            self.b = b
+            self.params = [self.W, self.b]
+        else:
+            self.params = [self.W]
         self.activation = activation
         self.activation_prime = activation_prime
 
         def h_step(x):
             no_bias = T.dot(x, self.W.T)
-            a = no_bias + self.b
+            if self.no_bias:
+                a = no_bias
+            else:
+                a = no_bias + self.b
             output = self.activation(a)
             delta = self.activation_prime(a)
             return no_bias, a, output, delta
@@ -94,9 +102,6 @@ class DetHiddenLayer(object):
             [self.no_bias, self.a, self.output, self.delta], _ = theano.scan(
                                                                 h_step, non_sequences=self.input,
                                                                 outputs_info=[None]*4, n_steps=m)
-        # parameters of the model
-        self.params = [self.W, self.b]
-
 
 class StochHiddenLayer(object):
 
@@ -167,7 +172,7 @@ class LBNHiddenLayer():
         self.det_activation_prime = det_activation_prime
         self.stoch_activation = stoch_activation_names
         self.det_layer = DetHiddenLayer(rng, input_var, n_in, n_out, det_activation,
-                                                                        det_activation_prime, m=m)
+                                                            det_activation_prime, m=m, no_bias=True)
            
         #If -1, same hidden units
         stoch_n_hidden = np.array([i if i > -1 else n_out for i in stoch_n_hidden])
@@ -236,50 +241,47 @@ class LBN:
         self.stoch_activation, self.stoch_activation_prime = parse_activations(stoch_activations)    
 
     def fit(self, x, y, m, learning_rate, epochs):
-        """ ONLY ONE LAYER ONE SAMPLE"""
-        def stochastic_gradient(layer, go):
+        """ONE SAMPLE"""
+        def stochastic_gradient(layer, gha):
             gparams = []
             params = []
             for i, h in enumerate(layer.hidden_layers[-1::-1]):
-                if i== 0:
-                    gparams.append(go*T.dot(h.delta, h.input.T))
-                    gparams.append(go*h.delta)
-                    params += h.params
-                    gha = T.dot(h.W.T, h.delta)
-                else:
-                    ga = gha*h.delta
-                    ga_go = go*ga
-                    gparams.append(T.dot(ga_go, h.input.T))
-                    gparams.append(ga_go)
-                    params += h.params
-                    gha = T.dot(h.W.T, ga)
+                gb = gha*h.delta
+                gw = T.dot(gb, h.input.T)
+                params.append(h.W)
+                gparams.append(gw)
+                params.append(h.b)
+                gparams.append(gb)
+                gha = h.delta*T.dot(h.W.T, gha)
+
             return params, gparams, gha
 
-        self.o = self.output_layer-self.y
-        go = None
+        gd = 0.5 #NEED TO BE CHANGED FOR MORE SAMPLES #TODO
+        ga = gd*2*(self.output-self.y) #gf but to make code simpler is named ga
+        h = self.hidden_layers[-1].stoch_layer.output
+        a = self.hidden_layers[-1].det_layer.output
+        gv = T.dot(gf, (h*a).T)
         gparams = []
         params = []
-        gw = go*T.dot(self.output-self.y, self.hidden_layers[-1].output)
-        params.append(self.output_layer.params[0])
-        gparams.apprend(gw)
-        for i, h in enumerate(self.hidden_layers[-1::-1]):
+        params.append(self.output_layer.W)
+        gparams.append(gv)
+        for i, h_layer in enumerate(self.hidden_layers[-1::-1]):
 
-            partial_value = go*(T.dot(self.output_layer.W.T, self.o))
-            gh = h.output*partial_value
-            p, gp, gha = stochastic_gradient(h.stoch_layer)
+            a = h_layer.det_layer.output
+            h = h_layer.stoch_layer.output
+            gh = a*T.dot(self.output_layer.W.T, ga)
+            p, gp, gha = stochastic_gradient(h_layer.stoch_layer, gh)
             params += p
             gparams += gp
-            ga = h.stoch_layer.output*partial_value + gh*gha
-            params.append(h.W)
-            if i == len(self.hidden_layers) - 1:
-                gw = T.dot(ga, h.det_layer.input.T)
-                params.append(h.det_layer.W)
-                gparams.apprend(gw)
-
+            ga = h*T.dot(self.output_layer.W.T, gf) + gha
+            if i == self.n_hidden - 1:
+                gw = T.dot(ga, self.input.T)
             else:
-                gw = T.dot(ga, (h.stoch_layer.output*h.det_layer.output).T)
-                params.append(h.det_layer.W)
-                gparams.apprend(gw)
+                h_previous = self.hidden_layers[self.n_hidden-i-1]
+                gw = T.dot(ga, (h_previous.stoch_layer.output*h_previous.det_layer.output).T)
+            params.append(h_layer.det_layer.W)
+            gparams.append(gw)
+
 
 
 if __name__ == '__main__':
