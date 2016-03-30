@@ -236,7 +236,7 @@ class LBN:
 
         self.params += self.output_layer.params
         self.output = self.output_layer.output
-
+        self.log_likelihood = T.sum(T.log(T.exp(-0.5*T.sum((self.output-self.y)**2, axis=1)**2)))-self.y.shape[0]*T.log(self.m*T.sqrt((2*np.pi)*self.y.shape[1]))
         self.predict = theano.function(inputs=[self.x, self.m], outputs=self.output, on_unused_input='warn')
 
     def parse_properties(self, n_in, n_hidden, n_out, det_activations, stoch_activations,
@@ -256,21 +256,20 @@ class LBN:
             gparams = []
             params = []
             for i, h in enumerate(layer.hidden_layers[-1::-1]):
-                gb = gha*h.delta
-                gw = T.dot(gb, h.input.T)
+                intermediate_result = gha*h.delta
+                gw = T.dot(intermediate_result.T, h.input) #T.dot(gb, h.input.T)
+                gb = T.sum(intermediate_result, axis=0)#gha*h.delta
                 params.append(h.W)
                 gparams.append(gw)
                 params.append(h.b)
                 gparams.append(gb)
-                gha = h.delta*T.dot(h.W.T, gha)
+                gha = h.delta*T.dot(gha, h.W)#h.delta*T.dot(h.W.T, gha)
 
             return params, gparams, gha
 
         gd = 0.5 #NEED TO BE CHANGED FOR MORE SAMPLES #TODO
-        gf = gd*2*(self.output-self.y) #gf but to make code simpler is named ga
-        #h = self.hidden_layers[-1].stoch_layer.output
-        #a = self.hidden_layers[-1].det_layer.output
-        gv = T.dot(gf, self.output_layer.input.T)#T.dot(ga, (h*a).T)
+        gf = gd*2*(self.output-self.y)
+        gv = T.dot(gf.T, self.output_layer.input)#T.dot(gf, self.output_layer.input.T)
         gparams = []
         params = []
         params.append(self.output_layer.W)
@@ -280,28 +279,32 @@ class LBN:
             a = h_layer.det_layer.output
             h = h_layer.stoch_layer.output
             if i == 0:
-                gh = a*T.dot(self.output_layer.W.T, gf)
+                gh = a*T.dot(gf, self.output_layer.W)#a*T.dot(self.output_layer.W.T, gf)
 
             else:
                 previous_layer = self.hidden_layers[len(self.n_hidden)-i]
-                gh = a*T.dot(previous_layer.det_layer.W.T, ga)
+                gh = a*T.dot(ga, previous_layer.det_layer.W)#a*T.dot(previous_layer.det_layer.W.T, ga)
             p, gp, gha = stochastic_gradient(h_layer.stoch_layer, gh)
+
             if i==0:
-                ga = h*T.dot(self.output_layer.W.T, gf) + gha
+                ga = h*T.dot(gf, self.output_layer.W) + gha#h*T.dot(self.output_layer.W.T, gf) + gha
             else:
-                ga = h*T.dot(previous_layer.det_layer.W.T, ga) + gha
+                ga = h*T.dot(ga, previous_layer.det_layer.W) + gha#h*T.dot(previous_layer.det_layer.W.T, ga) + gha
 
             params += p
             gparams += gp
-            gw = T.dot(ga, h_layer.input.T)
+            gw = T.dot(ga.T, h_layer.input)#T.dot(ga, h_layer.input.T)
             params.append(h_layer.det_layer.W)
             gparams.append(gw)
 
         upd = [(param, param - learning_rate * gparam)
                 for param, gparam in zip(params, gparams)]
 
-        self.train_model = theano.function(inputs=[self.x, self.y,self.m], updates=upd, on_unused_input='warn')
-        self.train_model(x,y,m)
+        self.train_model = theano.function(inputs=[self.x, self.y,self.m], outputs=self.log_likelihood, updates=upd, on_unused_input='warn')
+            
+        for e in xrange(epochs):
+            print self.train_model(x,y,m)
+
 
 if __name__ == '__main__':
     n_in = 10
@@ -312,7 +315,7 @@ if __name__ == '__main__':
     stoch_n_hidden = [-1]
     m = 2
     n = LBN(n_in, n_hidden, n_out, det_activations, stoch_activations, stoch_n_hidden)
-    print n.predict(np.random.randn(3,10), m).shape
-    x = np.random.randn(10,1)
-    y = np.random.randn(2,1)
-    n.fit(x,y,m,0.5,3)
+    x = np.random.randn(3,n_in)
+    y = np.random.randn(3,n_out)
+
+    n.fit(x,y,m,0.00001,10)
