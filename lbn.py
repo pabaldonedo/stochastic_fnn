@@ -25,13 +25,13 @@ class OutputLayer(object):
         self.W = V
         self.params = [self.W]
         self.activation = activation
-        def h_step(x):
-            a = T.dot(x, self.W.T)
-            output = self.activation(a)
-            return a, output
-        self.output = self.input
-        [self.a, self.output], _ = theano.scan(h_step, sequences=[self.input])
-
+        #def h_step(x):
+        #    a = T.dot(x, self.W.T)
+        #    output = self.activation(a)
+        #    return a, output
+        #[self.a, self.output], _ = theano.scan(h_step, sequences=[self.input])
+        self.a = T.dot(self.input, self.W.T)
+        self.output = self.activation(self.a)
 
 class DetHiddenLayer(object):
     def __init__(self, rng, input_var, n_in, n_out, activation, activation_prime,
