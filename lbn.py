@@ -267,10 +267,10 @@ class LBN:
             return params, gparams, gha
 
         gd = 0.5 #NEED TO BE CHANGED FOR MORE SAMPLES #TODO
-        ga = gd*2*(self.output-self.y) #gf but to make code simpler is named ga
+        gf = gd*2*(self.output-self.y) #gf but to make code simpler is named ga
         #h = self.hidden_layers[-1].stoch_layer.output
         #a = self.hidden_layers[-1].det_layer.output
-        gv = T.dot(ga, self.output_layer.input.T)#T.dot(ga, (h*a).T)
+        gv = T.dot(gf, self.output_layer.input.T)#T.dot(ga, (h*a).T)
         gparams = []
         params = []
         params.append(self.output_layer.W)
@@ -279,11 +279,20 @@ class LBN:
 
             a = h_layer.det_layer.output
             h = h_layer.stoch_layer.output
-            gh = a*T.dot(self.output_layer.W.T, ga)
+            if i == 0:
+                gh = a*T.dot(self.output_layer.W.T, gf)
+
+            else:
+                previous_layer = self.hidden_layers[len(self.n_hidden)-i]
+                gh = a*T.dot(previous_layer.det_layer.W.T, ga)
             p, gp, gha = stochastic_gradient(h_layer.stoch_layer, gh)
+            if i==0:
+                ga = h*T.dot(self.output_layer.W.T, gf) + gha
+            else:
+                ga = h*T.dot(previous_layer.det_layer.W.T, ga) + gha
+
             params += p
             gparams += gp
-            ga = h*T.dot(self.output_layer.W.T, ga) + gha
             gw = T.dot(ga, h_layer.input.T)
             params.append(h_layer.det_layer.W)
             gparams.append(gw)
