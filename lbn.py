@@ -56,7 +56,7 @@ class DetHiddenLayer(object):
                            layer
         """
         self.input = input_var
-        self.no_bias = no_bias
+        #self.no_bias = no_bias
 
         if W is None:
             W_values = np.asarray(
@@ -85,6 +85,16 @@ class DetHiddenLayer(object):
         self.activation = activation
         self.activation_prime = activation_prime
 
+        ###########
+        self.no_bias = T.dot(self.input, self.W.T)
+        if no_bias:
+            self.a = self.no_bias
+        else:
+            self.a = self.no_bias + self.b
+        self.output = self.activation(self.a)
+        self.delta = self.activation_prime(self.a)
+        ###########
+        """For more samples
         def h_step(x):
             no_bias = T.dot(x, self.W.T)
             if self.no_bias:
@@ -102,7 +112,7 @@ class DetHiddenLayer(object):
             [self.no_bias, self.a, self.output, self.delta], _ = theano.scan(
                                                                 h_step, non_sequences=self.input,
                                                                 outputs_info=[None]*4, n_steps=m)
-
+        """
 class StochHiddenLayer(object):
 
     def __init__(self, rng, trng, input_var, n_in, n_hidden, n_out, activations, activation_prime):
@@ -227,7 +237,7 @@ class LBN:
         self.params += self.output_layer.params
         self.output = self.output_layer.output
 
-        self.predict = theano.function(inputs=[self.x, self.m], outputs=self.output)
+        self.predict = theano.function(inputs=[self.x, self.m], outputs=self.output, on_unused_input='warn')
 
     def parse_properties(self, n_in, n_hidden, n_out, det_activations, stoch_activations,
                                                                                 stoch_n_hidden):
@@ -258,9 +268,9 @@ class LBN:
 
         gd = 0.5 #NEED TO BE CHANGED FOR MORE SAMPLES #TODO
         ga = gd*2*(self.output-self.y) #gf but to make code simpler is named ga
-        h = self.hidden_layers[-1].stoch_layer.output
-        a = self.hidden_layers[-1].det_layer.output
-        gv = T.dot(gf, (h*a).T)
+        #h = self.hidden_layers[-1].stoch_layer.output
+        #a = self.hidden_layers[-1].det_layer.output
+        gv = T.dot(ga, self.output_layer.input.T)#T.dot(ga, (h*a).T)
         gparams = []
         params = []
         params.append(self.output_layer.W)
@@ -273,16 +283,16 @@ class LBN:
             p, gp, gha = stochastic_gradient(h_layer.stoch_layer, gh)
             params += p
             gparams += gp
-            ga = h*T.dot(self.output_layer.W.T, gf) + gha
-            if i == self.n_hidden - 1:
-                gw = T.dot(ga, self.input.T)
-            else:
-                h_previous = self.hidden_layers[self.n_hidden-i-1]
-                gw = T.dot(ga, (h_previous.stoch_layer.output*h_previous.det_layer.output).T)
+            ga = h*T.dot(self.output_layer.W.T, ga) + gha
+            gw = T.dot(ga, h_layer.input.T)
             params.append(h_layer.det_layer.W)
             gparams.append(gw)
 
+        upd = [(param, param - learning_rate * gparam)
+                for param, gparam in zip(params, gparams)]
 
+        self.train_model = theano.function(inputs=[self.x, self.y,self.m], updates=upd, on_unused_input='warn')
+        self.train_model(x,y,m)
 
 if __name__ == '__main__':
     n_in = 10
@@ -294,3 +304,6 @@ if __name__ == '__main__':
     m = 2
     n = LBN(n_in, n_hidden, n_out, det_activations, stoch_activations, stoch_n_hidden)
     print n.predict(np.random.randn(3,10), m).shape
+    x = np.random.randn(10,1)
+    y = np.random.randn(2,1)
+    n.fit(x,y,m,0.5,3)
