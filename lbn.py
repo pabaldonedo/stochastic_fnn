@@ -25,13 +25,15 @@ class OutputLayer(object):
         self.W = V
         self.params = [self.W]
         self.activation = activation
-        #def h_step(x):
-        #    a = T.dot(x, self.W.T)
-        #    output = self.activation(a)
-        #    return a, output
-        #[self.a, self.output], _ = theano.scan(h_step, sequences=[self.input])
-        self.a = T.dot(self.input, self.W.T)
-        self.output = self.activation(self.a)
+        def h_step(x):
+            a = T.dot(x, self.W.T)
+            output = self.activation(a)
+            return a, output
+        [self.a, self.output], _ = theano.scan(h_step, sequences=[self.input])
+        
+        #### ONE SAMPLE
+        #self.a = T.dot(self.input, self.W.T)
+        #self.output = self.activation(self.a)
 
 class DetHiddenLayer(object):
     def __init__(self, rng, input_var, n_in, n_out, activation, activation_prime,
@@ -56,7 +58,7 @@ class DetHiddenLayer(object):
                            layer
         """
         self.input = input_var
-        #self.no_bias = no_bias
+        self.no_bias = no_bias
 
         if W is None:
             W_values = np.asarray(
@@ -85,16 +87,15 @@ class DetHiddenLayer(object):
         self.activation = activation
         self.activation_prime = activation_prime
 
+        ########### ONE SAMPLE
+        #self.no_bias = T.dot(self.input, self.W.T)
+        #if no_bias:
+        #    self.a = self.no_bias
+        #else:
+        #    self.a = self.no_bias + self.b
+        #self.output = self.activation(self.a)
+        #self.delta = self.activation_prime(self.a)
         ###########
-        self.no_bias = T.dot(self.input, self.W.T)
-        if no_bias:
-            self.a = self.no_bias
-        else:
-            self.a = self.no_bias + self.b
-        self.output = self.activation(self.a)
-        self.delta = self.activation_prime(self.a)
-        ###########
-        """For more samples
         def h_step(x):
             no_bias = T.dot(x, self.W.T)
             if self.no_bias:
@@ -112,7 +113,6 @@ class DetHiddenLayer(object):
             [self.no_bias, self.a, self.output, self.delta], _ = theano.scan(
                                                                 h_step, non_sequences=self.input,
                                                                 outputs_info=[None]*4, n_steps=m)
-        """
 class StochHiddenLayer(object):
 
     def __init__(self, rng, trng, input_var, n_in, n_hidden, n_out, activations, activation_prime):
@@ -251,52 +251,82 @@ class LBN:
         self.stoch_activation, self.stoch_activation_prime = parse_activations(stoch_activations)    
 
     def fit(self, x, y, m, learning_rate, epochs):
-        """ONE SAMPLE"""
-        def stochastic_gradient(layer, gha):
+        
+        def gradient_step(it, gf):
+            def stochastic_gradient(layer, gha, it):
+                gparams = []
+                for i, h in enumerate(layer.hidden_layers[-1::-1]):
+                    intermediate_result = gha*h.delta[it]
+                    gw = T.dot(intermediate_result.T, h.input[it]) #T.dot(gb, h.input.T)
+                    gb = T.sum(intermediate_result, axis=0)#gha*h.delta
+                    gparams.append(gw)
+                    gparams.append(gb)
+                    gha = h.delta[it]*T.dot(gha, h.W)#h.delta*T.dot(h.W.T, gha)
+
+                return gparams, gha
+
+            #error = (self.output[it]-self.y[it])
+            #gd = T.exp(-T.sum(error**2, axis=1, keepdims=True))
+            #gf = gd*2*error
+            gv = T.dot(gf.T, self.output_layer.input[it])#T.dot(gf, self.output_layer.input.T)
             gparams = []
-            params = []
-            for i, h in enumerate(layer.hidden_layers[-1::-1]):
-                intermediate_result = gha*h.delta
-                gw = T.dot(intermediate_result.T, h.input) #T.dot(gb, h.input.T)
-                gb = T.sum(intermediate_result, axis=0)#gha*h.delta
-                params.append(h.W)
+            gparams.append(gv)
+            for i, h_layer in enumerate(self.hidden_layers[-1::-1]):
+
+                a = h_layer.det_layer.output[it]
+                h = h_layer.stoch_layer.output[it]
+                if i == 0:
+                    gh = a*T.dot(gf, self.output_layer.W)#a*T.dot(self.output_layer.W.T, gf)
+
+                else:
+                    previous_layer = self.hidden_layers[len(self.n_hidden)-i]
+                    gh = a*T.dot(ga, previous_layer.det_layer.W)#a*T.dot(previous_layer.det_layer.W.T, ga)
+                gp, gha = stochastic_gradient(h_layer.stoch_layer, gh, it)
+
+                if i==0:
+                    ga = h*T.dot(gf, self.output_layer.W) + gha#h*T.dot(self.output_layer.W.T, gf) + gha
+                else:
+                    ga = h*T.dot(ga, previous_layer.det_layer.W) + gha#h*T.dot(previous_layer.det_layer.W.T, ga) + gha
+
+                gparams += gp
+                if i == len(self.hidden_layers)-1:
+                    gw = T.dot(ga.T, h_layer.input)#T.dot(ga, h_layer.input.T)
+                else:
+                    gw = T.dot(ga.T, h_layer.input[it])
                 gparams.append(gw)
-                params.append(h.b)
-                gparams.append(gb)
-                gha = h.delta*T.dot(gha, h.W)#h.delta*T.dot(h.W.T, gha)
 
-            return params, gparams, gha
+            return gparams
 
-        gd = 0.5 #NEED TO BE CHANGED FOR MORE SAMPLES #TODO
-        gf = gd*2*(self.output-self.y)
-        gv = T.dot(gf.T, self.output_layer.input)#T.dot(gf, self.output_layer.input.T)
-        gparams = []
-        params = []
-        params.append(self.output_layer.W)
-        gparams.append(gv)
-        for i, h_layer in enumerate(self.hidden_layers[-1::-1]):
+        def compute_gf(it):
+            error = (self.output[it]-self.y[it])
+            gd = T.exp(-T.sum(error**2, axis=1, keepdims=True))
+            gf = gd*2*error
+            return gd, gf
 
-            a = h_layer.det_layer.output
-            h = h_layer.stoch_layer.output
-            if i == 0:
-                gh = a*T.dot(gf, self.output_layer.W)#a*T.dot(self.output_layer.W.T, gf)
+        def get_params():
+            def get_stochastic_params(layer):
+                params = []
+                for i, h in enumerate(layer.hidden_layers[-1::-1]):
+                    params.append(h.W)
+                    params.append(h.b)
+                return params
 
-            else:
-                previous_layer = self.hidden_layers[len(self.n_hidden)-i]
-                gh = a*T.dot(ga, previous_layer.det_layer.W)#a*T.dot(previous_layer.det_layer.W.T, ga)
-            p, gp, gha = stochastic_gradient(h_layer.stoch_layer, gh)
+            params = []
+            params.append(self.output_layer.W)
+            for i, h_layer in enumerate(self.hidden_layers[-1::-1]):
+                params += get_stochastic_params(h_layer.stoch_layer)
+                params.append(h_layer.det_layer.W)
 
-            if i==0:
-                ga = h*T.dot(gf, self.output_layer.W) + gha#h*T.dot(self.output_layer.W.T, gf) + gha
-            else:
-                ga = h*T.dot(ga, previous_layer.det_layer.W) + gha#h*T.dot(previous_layer.det_layer.W.T, ga) + gha
+            return params
 
-            params += p
-            gparams += gp
-            gw = T.dot(ga.T, h_layer.input)#T.dot(ga, h_layer.input.T)
-            params.append(h_layer.det_layer.W)
-            gparams.append(gw)
+        [gd, gf_unorm], _ = theano.scan(compute_gf, sequences=T.arange(self.m))
+        gf_norm = gf_unorm*1./T.sum(gd, axis=0, keepdims=True)
+        
+        gparams, _ = theano.scan(gradient_step, sequences=[T.arange(self.m), gf_norm])
 
+        gparams = [ 0.5/(self.x.shape[0]) *T.sum(gp, axis=0) for gp in gparams]
+
+        params = get_params()
         upd = [(param, param - learning_rate * gparam)
                 for param, gparam in zip(params, gparams)]
 
@@ -307,15 +337,31 @@ class LBN:
 
 
 if __name__ == '__main__':
-    n_in = 10
-    n_hidden = [4, 5]
-    n_out = 2
+
+    import cPickle, gzip, numpy
+
+    f = gzip.open('mnist.pkl.gz', 'rb')
+    train_set, valid_set, test_set = cPickle.load(f)
+    x_train = train_set[0]
+    y_train = train_set[1]
+    y_val = valid_set[1]
+    f.close()
+
+    x_train = x_train[:1,:]
+    y_train = y_train[:1].reshape(-1,1)
+
+    n_in = x_train.shape[1]
+    n_hidden = [100, 50]
+    n_out = 1
     det_activations = ['linear', 'linear', 'linear']
     stoch_activations = ['sigmoid', 'sigmoid']
     stoch_n_hidden = [-1]
-    m = 2
+    m = 1
     n = LBN(n_in, n_hidden, n_out, det_activations, stoch_activations, stoch_n_hidden)
-    x = np.random.randn(3,n_in)
-    y = np.random.randn(3,n_out)
+   # x = np.random.randn(3,n_in)
+    #y = np.random.randn(3,n_out)
+#    print n.predict(x,m).shape
 
-    n.fit(x,y,m,0.00001,10)
+
+
+    n.fit(x_train,y_train,m,0.0000001,10)
