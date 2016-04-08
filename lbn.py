@@ -1,11 +1,36 @@
 import theano
 import theano.tensor as T
 import numpy as np
+import matplotlib.pyplot as plt
+import types
+from types import IntType
+from types import ListType
 from util import parse_activations
+
 
 
 class OutputLayer(object):
     def __init__(self, rng, input_var, n_in, n_out, activation, V=None):
+        """
+        LBN output layer.
+        :type rng: numpy.random.RandomState.
+        :param rng: a random number generator used to initialize weights.
+
+        :type input_var: theano.tensor.dmatrix.
+        :param input_var: a symbolic tensor of shape (m, n_samples, n_in).
+
+        :type n_in: int.
+        :param n_in: input dimensionality.
+
+        :type n_out: int.
+        :param n_out: number of hidden units.
+
+        :type activation: theano.Op or function.
+        :param activation: Non linearity to be applied in the hidden layer.
+
+        :type V: numpy.array.
+        :param V: initialization values of the weights.
+        """
         self.input = input_var
         if V is None:
             W_values = np.asarray(
@@ -39,23 +64,35 @@ class DetHiddenLayer(object):
     def __init__(self, rng, input_var, n_in, n_out, activation, activation_prime,
                                                             m=None, W=None, b=None, no_bias=False):
         """
-        Typical deterministic hidden layer: Weight matrix W is of shape (n_in,n_out)
+        Deterministic hidden layer: Weight matrix W is of shape (n_out,n_in)
         and the bias vector b is of shape (n_out,).
-        :type rng: numpy.random.RandomState
-        :param rng: a random number generator used to initialize weights
+        :type rng: numpy.random.RandomState.
+        :param rng: a random number generator used to initialize weights.
 
-        :type input_var: theano.tensor.dmatrix
-        :param input_var: a symbolic tensor of shape (n_examples, n_in)
+        :type input_var: theano.tensor.dmatrix.
+        :param input_var: a symbolic tensor of shape (n_samples, n_in) or (m, n_samples, n_in).
 
-        :type n_in: int
-        :param n_in: dimensionality of input
+        :type n_in: int.
+        :param n_in: input dimensionality.
 
-        :type n_out: int
-        :param n_out: number of hidden units
+        :type n_out: int.
+        :param n_out: number of hidden units.
 
-        :type activation: theano.Op or function
-        :param activation: Non linearity to be applied in the hidden
-                           layer
+        :type activation: theano.Op or function.
+        :param activation: Non linearity to be applied in the hidden layer.
+
+        :type m: int.
+        :param m: number of samples to be drawn in the layer and the input is consider constant.
+                If b is None input is treat as a scan input sequence.
+
+        :type W: numpy.array.
+        :param W: initialization values of the weights.
+
+        :type b: numpy array.
+        :param b: initialization values of the bias.
+
+        :type no_bias: bool.
+        :param no_bias: sets if the layer has bias variable or not.
         """
         self.input = input_var
         self.no_bias = no_bias
@@ -114,28 +151,31 @@ class DetHiddenLayer(object):
                                                                 h_step, non_sequences=self.input,
                                                                 outputs_info=[None]*4, n_steps=m)
 class StochHiddenLayer(object):
-
+    """
+    Stochastic hidden MLP that are included in each LBN hidden layer.
+    """
     def __init__(self, rng, trng, input_var, n_in, n_hidden, n_out, activations, activation_prime):
         """
-        stochastic hidden layer:
-        :type rng: numpy.random.RandomState
-        :param rng: a random number generator used to initialize weights
+        :type rng: numpy.random.RandomState.
+        :param rng: a random number generator used to initialize weights.
         
-        :type trng: theano.tensor.shared_randomstreams.RandomStreams
-        :param trng: a random number generator used to sample
+        :type trng: theano.tensor.shared_randomstreams.RandomStreams.
+        :param trng: a random number generator used to sample.
 
-        :type input_var: theano.tensor.dmatrix
-        :param input_var: a symbolic tensor of shape (n_examples, n_in)
+        :type input_var: theano.tensor.dmatrix.
+        :param input_var: a symbolic tensor of shape (n_examples, n_in).
 
-        :type n_in: int
-        :param n_in: dimensionality of input
+        :type n_in: int.
+        :param n_in: input dimensionality.
 
-        :type n_out: int
-        :param n_out: number of hidden units
+        :type n_hidden: list of ints.
+        :param n_hidden: list that defines the hidden units of the MLP.
 
-        :type activation: theano.Op or function
-        :param activation: Non linearity to be applied in the hidden
-                           layer
+        :type n_out: int.
+        :param n_out: number of hidden units.
+
+        :type activation: theano.Op or function.
+        :param activation: Non linearity to be applied in the hidden layer.
         """
 
         self.input = input_var
@@ -146,6 +186,7 @@ class StochHiddenLayer(object):
 
         self.params = [None]*(self.n_hidden.size+1)*2
 
+        #Builds hidden layers of the MLP.
         for i, h in enumerate(self.n_hidden):
             if i == 0:
                 self.hidden_layers[i] = DetHiddenLayer(rng, self.input, self.n_in, h,
@@ -157,25 +198,68 @@ class StochHiddenLayer(object):
             self.params[2*i] = self.hidden_layers[i].W
             self.params[2*i+1] = self.hidden_layers[i].b
 
+        #Output layer of MLP.
         self.hidden_layers[-1] = DetHiddenLayer(rng, self.hidden_layers[-2].output,
                                                     self.n_hidden[-1], self.n_out,
                                                     activations[-1], activation_prime[-1])
         self.params[-2] = self.hidden_layers[-1].W
         self.params[-1] = self.hidden_layers[-1].b
 
+        #Sample from a Bernoulli distribution in each unit with a probability equal to the MLP
+        #ouput.
         self.ph = self.hidden_layers[-1].output
         sample = trng.uniform(size=self.ph.shape)
+
+        #Gradient that will be used is the one defined as "G3" in "Techniques for Learning Binary
+        #stochastic feedforward Neural Networks" by Tapani Raiko, Mathias Berglund, Guillaum Alain
+        #and Laurent Dinh. For this we need to propagate the gradient in the stochastic units
+        #through ph. For this reason we use disconnected_grad() in epsilon.
         epsilon = theano.gradient.disconnected_grad(T.lt(sample, self.ph) - self.ph)
-        self.output = self.ph + epsilon#T.lt(sample, self.ph)
-        #theano.gradient.disconnected_grad(epsilon)
+        self.output = self.ph + epsilon
 
 
 class LBNHiddenLayer():
-
+    """
+    Layer of the LBN. It is made of a deterministic layer and a stochastic layer.
+    """
     def __init__(self, rng, trng, input_var, n_in, n_out, det_activation, det_activation_prime,
-                                det_activation_name,
                                 stoch_n_hidden, stoch_activations, stoch_activation_prime,
-                                stoch_activation_names, m=None):
+                                det_activation_name=None, stoch_activation_names=None, m=None):
+        """
+        :type rng: numpy.random.RandomState
+        :param rng: a random number generator used to initialize weights.
+
+        :type trng: theano.Tensor.shared_randomstreams.RandomStreams.
+        :param trng: a random number generator used for drawing samples.
+
+        :type input_var: theano.Tensor or theano.sahred_variable.
+        :param input_var: input variable of the layer.
+
+        :type n_in: int.
+        :param n_in: number of input units of the layer.
+
+        :type n_out: int.
+        :param n_out: number of output units of the layer.
+
+        :type det_activation: theano.Op or function.
+        :param det_activation: Non linearity to be applied in the deterministic layer.
+
+        :type stoch_n_hidden: list of ints.
+        :param stoch_n_hidden: list that defines the hidden units of the stochastic MLP.
+
+        :type stoch_activations: list of theano.Op or functions.
+        :param stoch_activations: list of activation function for the stochastic MLP.
+
+        :type: det_activation_name: string.
+        :param stoch_activations_names: name of the deterministic activation.
+
+        :type: stoch_activation_names: list of strings.
+        :param stoch_activations_names: list of the names of the stochastic activations in the MLP.
+
+        :type: m: int.
+        :param m: number of samples to be drawn in the layer.
+        """
+
         self.input = input_var
         self.n_in = n_in
         self.n_out = n_out
@@ -196,39 +280,98 @@ class LBNHiddenLayer():
 
 
 class LBN:
-    def __init__(self, n_in, n_hidden, n_out, det_activations, stoch_activations, stoch_n_hidden):
+    """
+    Linearizing Belief Net (LBN) as explained in "Predicting Distributions with
+    Linearizing Belief Networks" paper by Yann N. Dauphin and David Grangie from Facebook AI
+    Research.
+    """
+    def __init__(self, n_in, n_hidden, n_out, det_activations, stoch_activations,
+                                                                            stoch_n_hidden=[-1]):
+        """
+        :type n_in: int.
+        :param n_in: input dimensionality of the network.
 
+        :type n_hidden: list of ints.
+        :param n_hidden: list that defines the dimensionality of the hidden layers.
+
+        :type n_out: int.
+        :param n_out: output dimensionality of the network.
+
+        :type det_activations: list of strings.
+        :param det_activations: list defining the activation function of the deterministic layers.
+                                In the LBN paper all these activations are set to linear.
+
+        :type stoch_activations: list of strings.
+        :param stoch_activations: list defining the activations for the stochastic MLP. This
+                                activation is the same in all layers of the LBN.
+
+        :type stoch_n_hidden: list of ints.
+        :param stoch_n_hidden: list that defines the hidden units of the stochastic MLP. Length of
+                                stoch_n_hidden = length of stoch_activations - 1. If set to [-1] 
+                                number of hidden units in the MLP are the same to the input
+                                dimensionality.
+        """
         self.x = T.matrix('x')
         self.y = T.matrix('y')
         self.trng = T.shared_randomstreams.RandomStreams(1234)
         self.rng = np.random.RandomState(0)
         self.m = T.iscalar('M') 
-
+        assert type(n_in) is IntType, "n_in must be an integer: {0!r}".format(n_in)
+        assert type(n_hidden) is ListType, "n_hidden must be a list: {0!r}".format(n_hidden)
+        assert type(n_out) is IntType, "n_out must be an integer: {0!r}".format(n_out)
+        assert type(det_activations) is ListType, "det_activations must be a list: {0!r}".format(
+                                                                                    det_activations)
+        assert len(n_hidden) == len(det_activations) - 1, "len(n_hidden) must be =="\
+        " len(det_activations) - 1. n_hidden: {0!r} and det_activations: {1!r}".format(n_hidden, 
+                                                                                  det_activations)
+        assert type(stoch_activations) is ListType, "stoch_activations must be a list: {0!r}".\
+                                                                         format(stoch_activations)
+        assert type(stoch_n_hidden) is ListType, "stoch_n_hidden must be a list: {0!r}".format(
+                                                                                    stoch_n_hidden)
+        assert stoch_n_hidden == [-1] or len(stoch_n_hidden) == len(stoch_activation) - 1, \
+                "len(stoch_n_hidden) must be len(stoch_activations) -1 or stoch_n_hidden = [-1]."\
+                " stoch_n_hidden = {0!r} and stoch_activations = {1!r}".format(stoch_n_hidden,
+                                                                                stoch_activations)
+        
         self.parse_properties(n_in, n_hidden, n_out, det_activations, stoch_activations,
                                                                                     stoch_n_hidden)
         self.define_network()
 
-    def define_network(self):
+    def parse_properties(self, n_in, n_hidden, n_out, det_activations, stoch_activations,
+                                                                                stoch_n_hidden):
+        self.n_hidden = np.array(n_hidden)
+        self.n_out = n_out
+        self.n_in = n_in
+        self.stoch_n_hidden = [np.array(i) for i in stoch_n_hidden]
+        self.det_activation_names = det_activations
+        self.det_activation, self.det_activation_prime = parse_activations(det_activations)
+        self.stoch_activation_names = stoch_activations 
+        self.stoch_activation, self.stoch_activation_prime = parse_activations(stoch_activations)    
 
+    def define_network(self):
+        """
+        Builds Theano graph of the network.
+        """
         self.hidden_layers = [None]*self.n_hidden.size
         self.params = []
         for i, h in enumerate(self.n_hidden):
             if i == 0:
                 self.hidden_layers[i] = LBNHiddenLayer(self.rng, self.trng, self.x, self.n_in,
                                         h, self.det_activation[i], self.det_activation_prime[i],
-                                        self.det_activation_names[i],
                                         self.stoch_n_hidden, self.stoch_activation,
                                         self.stoch_activation_prime,
-                                        self.stoch_activation_names, m=self.m)
+                                        det_activation_name=self.det_activation_names[i],
+                                        stoch_activation_names=self.stoch_activation_names,
+                                        m=self.m)
             else:
                 self.hidden_layers[i] = LBNHiddenLayer(self.rng, self.trng,
                                         self.hidden_layers[i-1].output,
                                         self.n_hidden[i-1], h, self.det_activation[i],
                                         self.det_activation_prime[i],
-                                        self.det_activation_names[i],
                                         self.stoch_n_hidden, self.stoch_activation,
                                         self.stoch_activation_prime,
-                                        self.stoch_activation_names)
+                                        det_activation_name=self.det_activation_names[i],
+                                        stoch_activation_names=self.stoch_activation_names)
 
             self.params += self.hidden_layers[i].params
 
@@ -241,14 +384,10 @@ class LBN:
                                                                 'x',0,1))**2, axis=2)), axis=0)))-\
                                     self.y.shape[0]*T.log(self.m*T.sqrt((2*np.pi)**self.y.shape[1]))
 
-        self.tmp = T.sum(T.sum((self.output - self.y.dimshuffle('x',0,1))**2, axis=2), axis=1)
-
-        self.tmp0 = self.tmp[0]
-        self.tmp1 = self.tmp[1]
-        self.tmp_all = T.sum(self.tmp)
-
         self.predict = theano.function(inputs=[self.x, self.m], outputs=self.output)
 
+
+        ###Debugging of the feedforward pass.#####
         debug_list = []
         debug_list.append(self.output)
         for h in self.hidden_layers:
@@ -263,18 +402,23 @@ class LBN:
                                                 outputs=debug_list + [self.x])
 
 
-    def parse_properties(self, n_in, n_hidden, n_out, det_activations, stoch_activations,
-                                                                                stoch_n_hidden):
-        self.n_hidden = np.array(n_hidden)
-        self.n_out = n_out
-        self.n_in = n_in
-        self.stoch_n_hidden = [np.array(i) for i in stoch_n_hidden]
-        self.det_activation_names = det_activations
-        self.det_activation, self.det_activation_prime = parse_activations(det_activations)
-        self.stoch_activation_names = stoch_activations 
-        self.stoch_activation, self.stoch_activation_prime = parse_activations(stoch_activations)    
-
     def fit(self, x, y, m, learning_rate, epochs):
+        """
+        :type x: numpy.array.
+        :param x: input data of shape (n_samples, dimensionality).
+
+        :type y: numpy.array.
+        :param y: output data of shape (n_samples, 1).
+
+        :type m: int.
+        :param m: number of samples drawn from the network.
+
+        :type learning_rate: float.
+        :param learning_rate: step size for the stochastic gradient descent learning algoriithm.
+
+        :type epochs: int.
+        :param epochs: number of training epochs.
+        """
         
         def gradient_step(it, gf, output_layer_input):
         
@@ -291,9 +435,6 @@ class LBN:
 
                 return gparams, gha
 
-            #error = (self.output[it]-self.y[it])
-            #gd = T.exp(-T.sum(error**2, axis=1, keepdims=True))
-            #gf = gd*2*error
             gv = T.dot(gf.T, output_layer_input)# self.output_layer.input[it])#T.dot(gf, self.output_layer.input.T)
             gparams = []
             gparams.append(gv)
@@ -345,7 +486,6 @@ class LBN:
         gf = error * gd
 
         gparams, _ = theano.scan(gradient_step, sequences=[T.arange(self.m), gf, self.output_layer.input])
-        tmp = gparams
         gparams = [ 1./(self.x.shape[0]) *T.sum(gp, axis=0) for gp in gparams]
 
         params = get_params()
@@ -357,17 +497,12 @@ class LBN:
         #                                updates=upd)
         
         gparams_theano = [T.grad(-1./x.shape[0]*self.log_likelihood, p) for p in params]
-        gparams_theano0 = [T.grad(-1./x.shape[0]*self.tmp0, p) for p in params]
-        gparams_theano1 = [T.grad(-1./x.shape[0]*self.tmp1, p) for p in params]
-        gparams_theano_all = [T.grad(-1./x.shape[0]*self.tmp_all, p) for p in params]
 
         upd = [(param, param - learning_rate * gparam)
                 for param, gparam in zip(params, gparams_theano)]
 
         self.train_model = theano.function(inputs=[self.x, self.y,self.m],
-                                        outputs=[gparams_theano0[0], gparams_theano1[0],
-                                                gparams_theano_all[0], gparams_theano[0],
-                                                tmp[0], self.hidden_layers[-1].output, gparams[0]],#[gparams_theano0[0], gparams_theano1[0], tmp[0]*1./self.x.shape[0], gparams_theano[0], gparams[0]],#[T.sum((gparams[j]-gparams_theano[j])**2)*1./T.sum(gparams[j]**2) for j in xrange(11)] + [gparams[0]*1./gparams_theano[0]],#self.log_likelihood,
+                                        outputs=self.log_likelihood,#[gparams_theano0[0], gparams_theano1[0], tmp[0]*1./self.x.shape[0], gparams_theano[0], gparams[0]],#[T.sum((gparams[j]-gparams_theano[j])**2)*1./T.sum(gparams[j]**2) for j in xrange(11)] + [gparams[0]*1./gparams_theano[0]],#self.log_likelihood,
                                         updates=upd)
 
                                                 #T.grad(-self.log_likelihood,
@@ -380,65 +515,12 @@ class LBN:
                                                 #self.x, gparams[0], gf,
                                                 #T.grad(-self.tmp_likelihood, self.output_layer.output)],
 
-        #log_likelihood = np.ones(epochs)
+        log_likelihood = np.ones(epochs)
         for e in xrange(epochs):
-         #   log_likelihood[e] = self.train_model(x,y,m)
-            #print log_likelihood[e]
-            ge = self.train_model(x,y,m)
-            print "theano partials"
-            print ge[0]
-            print ge[1]
-            print "theano total"
-            print ge[2]
-            print ge[3]
-            print "partials"
-
-            print ge[4]
-            print "hidden"
-            print ge[5]
-            print "own total"
-            print ge[6]
-
-            import ipdb
-            ipdb.set_trace()
-        #import matplotlib.pyplot as plt
-        #plt.plot(np.arange(epochs),log_likelihood)
-        #plt.show()
-
-        #for e in xrange(epochs):
-        #    ge = self.train_model(x,y,m)
-        #    print ge
-        #    print "------"
-            #print ge[2]
-            #print ge
-            #print "Gradient"
-            #print ge[0]
-            #print "OWN"
-#            print ge[1]
-            #print 2*np.dot(ge[8].T, ge[1]*ge[2]) #/ np.sqrt(np.sum(2*np.dot(ge[3].T, ge[1]*ge[2])**2))
-            #print "OWN THEANO"
-            #print ge[7]
-            #print "Gradient:"
-            #print repr(ge[0])
-            #print "H"
-            #print repr(ge[1])
-            #print "A"
-            #print repr(ge[2])
-            #print "ERROR"
-            #print repr(ge[3])
-            #print "LIKE"
-            #print repr(ge[4])
-            #print "GF"
-            #print repr(ge[8])
-            #print "GF THEANO"
-            #print repr(ge[9])
-            #print "w"
-            #print repr(ge[5])
-            #print "x"
-            #print repr(ge[6])
-            #print "Wx"
-            #print repr(np.dot(ge[6], ge[5].T))
-            #print "------"
+            log_likelihood[e] = self.train_model(x,y,m)
+            print log_likelihood[e]
+        plt.plot(np.arange(epochs),log_likelihood)
+        plt.show()
 
 
 if __name__ == '__main__':
@@ -459,7 +541,7 @@ if __name__ == '__main__':
     n_in = x_train.shape[1]
     n_hidden = [5, 4]
     n_out = 1
-    det_activations = ['linear', 'linear']
+    det_activations = ['linear', 'linear', 'linear']
     stoch_activations = ['sigmoid', 'sigmoid']
     stoch_n_hidden = [-1]
     m = 2
@@ -472,8 +554,7 @@ if __name__ == '__main__':
     import matplotlib.pyplot as plt
     plt.plot(y_points[0,:,0], distribution)
     plt.show()
-    import ipdb
-    ipdb.set_trace()
+
 #    ge = n.debug_feedforward(x_train,m)
 #    for g in ge:
 #        print repr(g)
