@@ -421,7 +421,10 @@ class LBN:
         """
         
         def gradient_step(it, gf, output_layer_input):
-        
+            """
+            Computes the gradient for a sample. It only works for one sample as theano resamples
+            every time the graph values after each it.
+            """
             def stochastic_gradient(layer, gha, it):
                 gparams = []
                 for i, h in enumerate(layer.hidden_layers[-1::-1]):
