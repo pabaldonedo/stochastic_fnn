@@ -30,7 +30,7 @@ def get_activation_function_derivative(activation):
     elif activation == activations[2]:
         return lambda x: x > 0
     elif activation == activations[3]:
-        return lambda x: 1
+        return lambda x: T.ones(1)
     else:
         raise NotImplementedError, \
         "Activation function not implemented. Choose one out of: {0}".format(activations)

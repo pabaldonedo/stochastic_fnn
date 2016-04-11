@@ -415,13 +415,13 @@ if __name__ == '__main__':
     y_val = valid_set[1]
     f.close()
 
-
-    x_train = x_train[:1,:].reshape(1,-1)
-    y_train = y_train[:1].reshape(1,-1)
+    x_train = x_train[:100]
+    y_train = x_train[:,15*28:].copy()
+    x_train = x_train[:,:15*28]
 
     n_in = x_train.shape[1]
-    n_hidden = [5, 4]
-    n_out = 1
+    n_hidden = [400, 200]
+    n_out = y_train.shape[1]
     det_activations = ['linear', 'linear', 'linear']
     stoch_activations = ['sigmoid', 'sigmoid']
     stoch_n_hidden = [-1]
