@@ -1,7 +1,6 @@
 import theano
 import theano.tensor as T
 import numpy as np
-import matplotlib.pyplot as plt
 import types
 from types import IntType
 from types import ListType
@@ -10,7 +9,7 @@ import json
 from util import parse_activations
 
 
-class OutputLayer(object):
+class LBNOutputLayer(object):
     def __init__(self, rng, input_var, n_in, n_out, activation, activation_name, V_values=None):
         """
         LBN output layer.
@@ -430,7 +429,8 @@ class LBN:
 
             self.params.append(self.hidden_layers[i].params)
 
-        self.output_layer = OutputLayer(self.rng, self.hidden_layers[-1].output, self.n_hidden[-1], 
+        self.output_layer = LBNOutputLayer(self.rng, self.hidden_layers[-1].output,
+                                                            self.n_hidden[-1], 
                                                             self.n_out, self.det_activation[-1],
                                                             self.det_activation_names[-1],
                                                             V_values=None 
