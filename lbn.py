@@ -2,6 +2,10 @@ import theano
 import theano.tensor as T
 import numpy as np
 import types
+import matplotlib.pyplot as plt
+import logging
+import petname
+import os.path
 from types import IntType
 from types import ListType
 from types import FloatType
@@ -10,7 +14,8 @@ from util import parse_activations
 
 
 class LBNOutputLayer(object):
-    def __init__(self, rng, input_var, n_in, n_out, activation, activation_name, V_values=None):
+    def __init__(self, rng, input_var, n_in, n_out, activation, activation_name, V_values=None,
+                                                                            timeseries_layer=False):
         """
         LBN output layer.
         :type rng: numpy.random.RandomState.
@@ -31,9 +36,10 @@ class LBNOutputLayer(object):
         :type activation_name: string.
         :param activation_name: name of activation function.
 
-        :type V: numpy.array.
-        :param V: initialization values of the weights.
+        :type V_values: numpy.array.
+        :param V_values: initialization values of the weights.
         """
+        
         self.input = input_var
         if V_values is None:
             V_values = np.asarray(
@@ -54,25 +60,45 @@ class LBNOutputLayer(object):
         self.params = [self.W]
         self.activation = activation
         self.activation_name = activation_name
+        self.timeseries = timeseries_layer
 
+        if timeseries_layer:
+            self.timeseries_layer()
+        else:
+            self.feedforward_layer()
+
+    def timeseries_layer(self):
+        def t_step(x):
+            def h_step(x):
+                a = T.dot(x, self.W.T)
+                output = self.activation(a)
+                return a, output
+            [a, output], _ = theano.scan(h_step, sequences=x)
+            return a, output
+
+        [self.a, self.output], _ = theano.scan(t_step, sequences=self.input)
+        
+    def feedforward_layer(self):
         def h_step(x):
             a = T.dot(x, self.W.T)
             output = self.activation(a)
             return a, output
-        [self.a, self.output], _ = theano.scan(h_step, sequences=[self.input])
+        [self.a, self.output], _ = theano.scan(h_step, sequences=self.input)
         
 
 class DetHiddenLayer(object):
-    def __init__(self, rng, input_var, n_in, n_out, activation, activation_name,
-                                            m=None, W_values=None, b_values=None, no_bias=False):
+    def __init__(self, rng, input_var, n_in, n_out, activation, activation_name, m=None,
+                            W_values=None, b_values=None, no_bias=False, timeseries_layer=False):
         """
         Deterministic hidden layer: Weight matrix W is of shape (n_out,n_in)
         and the bias vector b is of shape (n_out,).
         :type rng: numpy.random.RandomState.
         :param rng: a random number generator used to initialize weights.
 
-        :type input_var: theano.tensor.dmatrix.
+        :type input_var: theano.tensor.dmatrix, theano.tensor.tensor3 or theano.tensor.tensor4.
         :param input_var: a symbolic tensor of shape (n_samples, n_in) or (m, n_samples, n_in).
+                            If timeseries_layer=False then (t_points, n_samples, n_in) or
+                            (t_points, m, n_samples, n_in).
 
         :type n_in: int.
         :param n_in: input dimensionality.
@@ -131,7 +157,50 @@ class DetHiddenLayer(object):
         else:
             self.params = [self.W]
         self.activation = activation
+        self.timeseries = timeseries_layer
+        if timeseries_layer:
+            self.timeseries_layer()
+        else:
+            self.feedforward_layer()
 
+    def timeseries_layer(self):
+
+        def h_step_tmp(x):
+            no_bias_output = T.dot(x, self.W.T)
+            if self.no_bias:
+                a = no_bias_output
+            else:
+                a = no_bias_output + self.b
+            output = self.activation(a)
+            return no_bias_output, a, output
+
+        if self.m is None:
+            [no_bias_output, a, output], _ = theano.scan(h_step_tmp, sequences=self.input[0])
+        else:
+            [no_bias_output, a, output], _ = theano.scan(h_step_tmp, non_sequences=self.input[0],
+                                                                outputs_info=[None]*3,
+                                                                n_steps=self.m)
+        def t_step(x):
+            def h_step(x):
+                no_bias_output = T.dot(x, self.W.T)
+                if self.no_bias:
+                    a = no_bias_output
+                else:
+                    a = no_bias_output + self.b
+                output = self.activation(a)
+                return no_bias_output, a, output
+
+            if self.m is None:
+                [no_bias_output, a, output], _ = theano.scan(h_step, sequences=x)
+            else:
+                [no_bias_output, a, output], _ = theano.scan(h_step, non_sequences=x,
+                                                                outputs_info=[None]*3,
+                                                                n_steps=self.m)
+            return no_bias_output, a, output
+
+        [self.no_bias_output, self.a, self.output], _ = theano.scan(t_step, sequences=self.input)
+
+    def feedforward_layer(self):
         def h_step(x):
             no_bias_output = T.dot(x, self.W.T)
             if self.no_bias:
@@ -141,13 +210,14 @@ class DetHiddenLayer(object):
             output = self.activation(a)
             return no_bias_output, a, output
 
-        if m is None:
+        if self.m is None:
             [self.no_bias_output, self.a, self.output], _ = theano.scan(
                                                                 h_step, sequences=self.input)
         else:
             [self.no_bias_output, self.a, self.output], _ = theano.scan(
                                                                 h_step, non_sequences=self.input,
-                                                                outputs_info=[None]*3, n_steps=m)
+                                                                outputs_info=[None]*3,
+                                                                n_steps=self.m)
 
 
 class StochHiddenLayer(object):
@@ -155,7 +225,8 @@ class StochHiddenLayer(object):
     Stochastic hidden MLP that are included in each LBN hidden layer.
     """
     def __init__(self, rng, trng, input_var, n_in, n_hidden, n_out, activations, activation_names,
-                                                                                    mlp_info=None):
+                                                                            mlp_info=None,
+                                                                            timeseries_layer=False):
         """
         :type rng: numpy.random.RandomState.
         :param rng: a random number generator used to initialize weights.
@@ -193,7 +264,7 @@ class StochHiddenLayer(object):
         self.activation_names = activation_names
         self.hidden_layers = [None]*(self.n_hidden.size+1)
         self.params = [None]*(self.n_hidden.size+1)*2
-
+        self.timeseries_layer = timeseries_layer
 
         #Builds hidden layers of the MLP.
         for i, h in enumerate(self.n_hidden):
@@ -203,7 +274,8 @@ class StochHiddenLayer(object):
                                                             W_values=None if mlp_info is None else
                                                             np.array(mlp_info[i]['detLayer']['W']),
                                                             b_values=None if mlp_info is None else
-                                                            np.array(mlp_info[i]['detLayer']['b']))
+                                                            np.array(mlp_info[i]['detLayer']['b']),
+                                                            timeseries_layer=self.timeseries_layer)
             else:
                 self.hidden_layers[i] = DetHiddenLayer(rng, self.hidden_layers[i-1].output,
                                                             self.n_hidden[i-1], h,
@@ -211,7 +283,8 @@ class StochHiddenLayer(object):
                                                             W_values=None if mlp_info is None else
                                                             np.array(mlp_info[i]['detLayer']['W']),
                                                             b_values=None if mlp_info is None else
-                                                            np.array(mlp_info[i]['detLayer']['b']))
+                                                            np.array(mlp_info[i]['detLayer']['b']),
+                                                            timeseries_layer=self.timeseries_layer)
             self.params[2*i] = self.hidden_layers[i].W
             self.params[2*i+1] = self.hidden_layers[i].b
 
@@ -222,7 +295,8 @@ class StochHiddenLayer(object):
                                                     W_values=None if mlp_info is None else
                                                             np.array(mlp_info[-1]['detLayer']['W']),
                                                     b_values=None if mlp_info is None else
-                                                            np.array(mlp_info[-1]['detLayer']['b']))
+                                                            np.array(mlp_info[-1]['detLayer']['b']),
+                                                    timeseries_layer=self.timeseries_layer)
         self.params[-2] = self.hidden_layers[-1].W
         self.params[-1] = self.hidden_layers[-1].b
 
@@ -246,7 +320,8 @@ class LBNHiddenLayer():
     def __init__(self, rng, trng, input_var, n_in, n_out, det_activation,
                                 stoch_n_hidden, stoch_activations,
                                 det_activation_name=None, stoch_activation_names=None, m=None,
-                                det_W=None, det_b=None, stoch_mlp_info=None):
+                                det_W=None, det_b=None, stoch_mlp_info=None,
+                                timeseries_layer=False):
         """
         :type rng: numpy.random.RandomState
         :param rng: a random number generator used to initialize weights.
@@ -298,16 +373,19 @@ class LBNHiddenLayer():
         self.det_activation = det_activation_name
         self.stoch_activation = stoch_activation_names
         self.m = m
+        self.timeseries_layer = timeseries_layer
         self.det_layer = DetHiddenLayer(rng, input_var, n_in, n_out, det_activation,
                                         det_activation_name, m=m, no_bias=True, 
-                                        W_values=det_W, b_values=det_b)
+                                        W_values=det_W, b_values=det_b,
+                                        timeseries_layer=self.timeseries_layer)
            
         #If -1, same hidden units
         stoch_n_hidden = np.array([i if i > -1 else n_out for i in stoch_n_hidden])
         self.stoch_layer = StochHiddenLayer(rng, trng, self.det_layer.no_bias_output,
                                                     n_out, stoch_n_hidden, n_out,
                                                     stoch_activations, stoch_activation_names,
-                                                    mlp_info=stoch_mlp_info)
+                                                    mlp_info=stoch_mlp_info,
+                                                    timeseries_layer=self.timeseries_layer)
 
         self.output = self.stoch_layer.output*self.det_layer.output
         self.params = self.det_layer.params + self.stoch_layer.params
@@ -320,7 +398,10 @@ class LBN:
     Research.
     """
     def __init__(self, n_in, n_hidden, n_out, det_activations, stoch_activations,
-                                                        stoch_n_hidden=[-1], keep_undefined=False):
+                                                                        stoch_n_hidden=[-1],
+                                                                        layers_info=None,
+                                                                        timeseries_network=False,
+                                                                        epoch0=1):
         """
         :type n_in: int.
         :param n_in: input dimensionality of the network.
@@ -345,15 +426,28 @@ class LBN:
                                 number of hidden units in the MLP are the same to the input
                                 dimensionality.
 
-        :type keep_undefined: bool.
-        :param keep_undefined: used when loading network from file. Does not create the graph,
-                            just the general network definition variables.
+        :type layers_info: dict or None.
+        :param layers_info: used when loading network from file.
         """
-        self.x = T.matrix('x', dtype=theano.config.floatX)
-        self.y = T.matrix('y', dtype=theano.config.floatX)
+        if timeseries_network:
+            self.x = T.tensor3('x', dtype=theano.config.floatX)
+            self.y = T.tensor3('y', dtype=theano.config.floatX)
+        else:
+            self.x = T.matrix('x', dtype=theano.config.floatX)
+            self.y = T.matrix('y', dtype=theano.config.floatX)
+        self.timeseries_network = timeseries_network
         self.trng = T.shared_randomstreams.RandomStreams(1234)
         self.rng = np.random.RandomState(0)
         self.m = T.lscalar('M') 
+        self.epoch0 = epoch0
+        self.session_name = petname.Name()
+        while os.path.isfile('network_output/logs/{0}.log'.format(self.session_name)):
+            self.session_name = petname.Name()
+        logging.basicConfig(level=logging.INFO, filename="network_output/logs/{0}.log".format(self.session_name),
+                            format="%(asctime)s %(message)s",
+                            datefmt="%m/%d/%Y %I:%M:%S")
+        self.log = logging.getLogger(self.session_name)
+
         assert type(n_in) is IntType, "n_in must be an integer: {0!r}".format(n_in)
         assert type(n_hidden) is ListType, "n_hidden must be a list: {0!r}".format(n_hidden)
         assert type(n_out) is IntType, "n_out must be an integer: {0!r}".format(n_out)
@@ -373,11 +467,15 @@ class LBN:
         
         self.parse_properties(n_in, n_hidden, n_out, det_activations, stoch_activations,
                                                                                     stoch_n_hidden)
-        if not keep_undefined:
-            self.define_network()
+        self.log.info('Network created with n_in: {0}, n_hidden: {1}, n_out: {2}, '
+                        'det_activations: {3}, stoch_activations: {4}, stoch_n_hidden: {5}'.format(
+                        self.n_in, self.n_hidden, self.n_out, self.det_activation_names,
+                        self.stoch_activation_names, self.stoch_n_hidden))
+
+        self.define_network(layers_info=layers_info)
 
     def parse_properties(self, n_in, n_hidden, n_out, det_activations, stoch_activations,
-                                                                                stoch_n_hidden):
+                                                                        stoch_n_hidden):
         self.n_hidden = np.array(n_hidden)
         self.n_out = n_out
         self.n_in = n_in
@@ -410,7 +508,8 @@ class LBN:
                                         np.array(layers_info['hidden_layers'][i]\
                                                                     ['LBNlayer']['detLayer']['b']),
                                         stoch_mlp_info=None if layers_info is None else
-                                        layers_info['hidden_layers'][i]['LBNlayer']['stochLayer'])
+                                        layers_info['hidden_layers'][i]['LBNlayer']['stochLayer'],
+                                        timeseries_layer=self.timeseries_network)
             else:
                 self.hidden_layers[i] = LBNHiddenLayer(self.rng, self.trng,
                                         self.hidden_layers[i-1].output,
@@ -425,29 +524,70 @@ class LBN:
                                         np.array(layers_info['hidden_layers'][i]['LBNlayer']\
                                                                                 ['detLayer']['b']),
                                         stoch_mlp_info=None if layers_info is None else
-                                        layers_info['hidden_layers'][i]['LBNlayer']['stochLayer'])
+                                        layers_info['hidden_layers'][i]['LBNlayer']['stochLayer'],
+                                        timeseries_layer=self.timeseries_network)
 
             self.params.append(self.hidden_layers[i].params)
+        if not self.timeseries_network:
+            self.output_layer = LBNOutputLayer(self.rng, self.hidden_layers[-1].output,
+                                                        self.n_hidden[-1], 
+                                                        self.n_out, self.det_activation[-1],
+                                                        self.det_activation_names[-1],
+                                                        V_values=None 
+                                                        if layers_info is None else np.array(
+                                                        layers_info['output_layer']['LBNlayer']\
+                                                        ['W']),
+                                                        timeseries_layer=self.timeseries_network)
 
-        self.output_layer = LBNOutputLayer(self.rng, self.hidden_layers[-1].output,
-                                                            self.n_hidden[-1], 
-                                                            self.n_out, self.det_activation[-1],
-                                                            self.det_activation_names[-1],
-                                                            V_values=None 
-                                                            if layers_info is None else np.array(
-                                                            layers_info['output_layer']['W']))
+        else:
+            self.output_layer = LBNHiddenLayer(self.rng, self.trng,
+                                        self.hidden_layers[-1].output,
+                                        self.n_hidden[-1], self.n_out, self.det_activation[-1],
+                                        self.stoch_n_hidden, self.stoch_activation,
+                                        det_activation_name=self.det_activation_names[-1],
+                                        stoch_activation_names=self.stoch_activation_names, 
+                                        det_W=None if layers_info is None else
+                                        np.array(layers_info['output_layer']['LBNlayer']\
+                                                                                ['detLayer']['W']),
+                                        det_b=None if layers_info is None else
+                                        np.array(layers_info['output_layer']['LBNlayer']\
+                                                                                ['detLayer']['b']),
+                                        stoch_mlp_info=None if layers_info is None else
+                                        layers_info['output_layer']['LBNlayer']['stochLayer'],
+                                        timeseries_layer=self.timeseries_network)
 
         self.params.append(self.output_layer.params)
         self.output = self.output_layer.output
-        exp_value = -0.5*T.sum((self.output - self.y.dimshuffle('x',0,1))**2, axis=2)
-        max_exp_value = theano.ifelse.ifelse(T.lt(T.max(exp_value), -1*T.min(exp_value)),
+        self.predict = theano.function(inputs=[self.x, self.m], outputs=self.output)
+
+        if not self.timeseries_network:
+            exp_value = -0.5*T.sum((self.output - self.y.dimshuffle('x',0,1))**2, axis=2)
+            max_exp_value = theano.ifelse.ifelse(T.lt(T.max(exp_value), -1*T.min(exp_value)),
                                                                 T.max(exp_value), T.min(exp_value))
- 
-        self.log_likelihood = T.sum(T.log(T.sum(T.exp(exp_value - max_exp_value), axis=0)) +
+     
+            self.log_likelihood = T.sum(T.log(T.sum(T.exp(exp_value - max_exp_value), axis=0)) +
                                                                                     max_exp_value)-\
                                 self.y.shape[0]*(T.log(self.m)+self.y.shape[1]/2.*T.log(2*np.pi))
+            
 
-        self.predict = theano.function(inputs=[self.x, self.m], outputs=self.output)
+
+
+        else:
+            exp_value = -0.5*T.sum((self.output - self.y.dimshuffle(0, 'x',1, 2))**2, axis=3)
+            max_exp_value = theano.ifelse.ifelse(T.lt(T.max(exp_value), -1*T.min(exp_value)),
+                                                                T.max(exp_value), T.min(exp_value))
+            self.debugger = (self.output - self.y.dimshuffle(0, 'x',1, 2))**2
+            self.log_likelihood = T.sum(T.log(T.sum(T.exp(exp_value - max_exp_value), axis=1)) +
+                                                                                 max_exp_value)
+        
+        self.regulizer_L2 = T.zeros(1)
+        self.regulizer_L1 = T.zeros(1)
+        for l in self.params:
+            for p in l:
+                self.regulizer_L2 += (p**2).sum()
+                self.regulizer_L1 += p.sum()
+        self.tmp = theano.function(inputs=[], outputs=[self.regulizer_L1, self.regulizer_L2])
+        self.log.info('Network defined.')
 
     def fiting_variables(self, batch_size, train_set_x, train_set_y, test_set_x=None):
         """Sets useful variables for locating batches"""    
@@ -481,7 +621,7 @@ class LBN:
             self.n_test_batches = int(np.ceil(1.0 * self.n_test / batch_size))
 
 
-    def fit(self, x, y, m, learning_rate, epochs, batch_size):
+    def fit(self, x, y, m, learning_rate, epochs, batch_size, fname=None, save_every=1):
         """
         :type x: numpy.array.
         :param x: input data of shape (n_samples, dimensionality).
@@ -501,7 +641,9 @@ class LBN:
         :type batch_size: int
         :param batch_size: minibatch size for the SGD update.
         """
-
+        self.log.info("Fit starts: m: {0}, learning_rate: {1}, epochs: {2}, batch_size: {3}, "\
+                        "fname: {4}, save_every: {5}".format(
+                        m, learning_rate, epochs, batch_size, fname, save_every))
         train_set_x = theano.shared(np.asarray(x,
                                             dtype=theano.config.floatX))
 
@@ -525,29 +667,37 @@ class LBN:
 
         self.get_log_likelihood = theano.function(inputs=[self.x, self.y, self.m],
                                                 outputs=self.log_likelihood)
+        
+        path_name, file_name = os.path.split(fname)
         log_likelihood = []
-        for e in xrange(1,epochs+1):
+        for e in xrange(self.epoch0,epochs+self.epoch0):
             for minibatch_idx in xrange(self.n_train_batches):
                 minibatch_likelihood = self.train_model(minibatch_idx, self.n_train)
             log_likelihood.append(self.get_log_likelihood(x,y,m))
-            print "Epoch {0} log likelihood: {1}".format(e, log_likelihood[-1])
-        self.save_network("last_network.json")
+
+            epoch_message = "Epoch {0} log likelihood: {1}".format(e, log_likelihood[-1])
+            self.log.info(epoch_message)
+            if e % save_every == 0:
+                self.save_network("{0}/networks/{1}_epoch_{2}.json".format(path_name, file_name, e))
+                self.log.info("Network saved.")
+                
+                with open('{0}/likelihoods/{1}.csv'.format(path_name, file_name), 'a') as f:
+                    for i, l in enumerate(
+                                        log_likelihood[e-self.epoch0-save_every+1:e-self.epoch0+1]):
+                        f.write('{0},{1}\n'.format(e-save_every+i+1, l))
 
         plt.plot(np.arange(epochs),np.array(log_likelihood))
-        plt.show()
+        plt.savefig('{0}_likelihood_evolution.png')
 
-    def save_network(self, fname):
-        """
-        Saves network to json file.
-
-        :type fname: string.
-        :param fname: file name (with local or global path) where to store the network.
-        """
+    def generate_saving_string(self):
+        
         output_string = "{\"network_properties\":"
-
-        output_string += json.dumps({"n_in":self.n_in, "n_hidden":self.n_hidden.tolist(), "n_out":self.n_out,
+        output_string += json.dumps({"n_in":self.n_in, "n_hidden":self.n_hidden.tolist(),
+                "n_out":self.n_out,
                 "det_activations":self.det_activation_names,
-                "stoch_activations":self.stoch_activation_names, "stoch_n_hidden":[sh.tolist() for sh in self.stoch_n_hidden]})
+                "stoch_activations":self.stoch_activation_names,
+                "stoch_n_hidden":[sh.tolist() for sh in self.stoch_n_hidden],
+                "timeseries_network":self.timeseries_network})
         output_string += ",\"layers\":{\"hidden_layers\":["
         for k, l in enumerate(self.hidden_layers):
             det = l.det_layer
@@ -557,7 +707,8 @@ class LBN:
             output_string += "{\"LBNlayer\":{\"detLayer\":"
             output_string += json.dumps({"n_in":det.n_in,"n_out":det.n_out,
                     "activation":det.activation_name, "W":det.W.get_value().tolist(),
-                    "b":det.b.get_value().tolist()if det.no_bias is False else None, "no_bias":det.no_bias})
+                    "b":det.b.get_value().tolist() if det.no_bias is False else None,
+                    "no_bias":det.no_bias, "timeseries":det.timeseries})
             output_string += ", \"stochLayer\":"
             output_string += "["
             for i, hs in enumerate(stoch.hidden_layers):
@@ -567,21 +718,55 @@ class LBN:
                 output_string += json.dumps({"n_in":hs.n_in, "n_out": hs.n_out,
                                     "activation":hs.activation_name, "W":hs.W.get_value().tolist(),
                                     "b": hs.b.get_value().tolist() if hs.no_bias is False else None,
-                                    "no_bias": hs.no_bias})
+                                    "no_bias": hs.no_bias,
+                                    "timeseries":hs.timeseries})
                 output_string += "}"
             output_string += "]}}"
         output_string += "]"
-        output_string += ",\"output_layer\":"
-        output_string += json.dumps({"n_in": self.output_layer.n_in,
-                                    "n_out":self.output_layer.n_out,
-                                    "activation":self.output_layer.activation_name,
-                                    "W":self.output_layer.W.get_value().tolist()})
-        output_string += "}}"
+        output_string += ",\"output_layer\":{\"LBNlayer\":"
+        if self.timeseries_network:
+            det = self.output_layer.det_layer
+            stoch = self.output_layer.stoch_layer
+            output_string += "{\"detLayer\":"
+            output_string += json.dumps({"n_in":det.n_in,"n_out":det.n_out,
+                    "activation":det.activation_name, "W":det.W.get_value().tolist(),
+                    "b":det.b.get_value().tolist()if det.no_bias is False else None,
+                                                                            "no_bias":det.no_bias})
+            output_string += ", \"stochLayer\":"
+            output_string += "["
+            for i, hs in enumerate(stoch.hidden_layers):
+                if i > 0:
+                    output_string += ","
+                output_string += "{\"detLayer\":"
+                output_string += json.dumps({"n_in":hs.n_in, "n_out": hs.n_out,
+                                    "activation":hs.activation_name, "W":hs.W.get_value().tolist(),
+                                    "b": hs.b.get_value().tolist() if hs.no_bias is False else None,
+                                    "no_bias": hs.no_bias,
+                                    "timeseries":hs.timeseries})
+                output_string += "}"
+            output_string += "]}}"
+        else:
+            output_string += json.dumps({"n_in": self.output_layer.n_in,
+                                        "n_out":self.output_layer.n_out,
+                                        "activation":self.output_layer.activation_name,
+                                        "W":self.output_layer.W.get_value().tolist(),
+                                        "timeseries":self.output_layer.timeseries})
+        output_string += "}}}"
+        return output_string
+
+    def save_network(self, fname):
+        """
+        Saves network to json file.
+
+        :type fname: string.
+        :param fname: file name (with local or global path) where to store the network.
+        """
+        output_string = self.generate_saving_string()
         with open('{0}'.format(fname), 'w') as f:
             f.write(output_string)
 
     @classmethod
-    def init_from_file(cls, fname):
+    def init_from_file(cls, fname, epoch0=1):
         """
         Loads a saved network from file fname.
         :type fname: string.
@@ -594,8 +779,11 @@ class LBN:
         loaded_lbn = cls(network_properties['n_in'], network_properties['n_hidden'],
                         network_properties['n_out'], network_properties['det_activations'],
                         network_properties['stoch_activations'],
-                        network_properties['stoch_n_hidden'], keep_undefined=True)
+                        network_properties['stoch_n_hidden'],
+                        layers_info=network_description['layers'],
+                        epoch0=epoch0)
 
-        loaded_lbn.define_network(network_description['layers'])
+        loaded_lbn.log.info('Network loaded from file: {0}.'.format(fname))
+
         return loaded_lbn
 
