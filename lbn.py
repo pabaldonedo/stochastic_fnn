@@ -401,7 +401,10 @@ class LBN:
                                                                         stoch_n_hidden=[-1],
                                                                         layers_info=None,
                                                                         timeseries_network=False,
-                                                                        epoch0=1):
+                                                                        epoch0=1,
+                                                                        log=None,
+                                                                        session_name=None,
+                                                                        output_path=None):
         """
         :type n_in: int.
         :param n_in: input dimensionality of the network.
@@ -436,18 +439,29 @@ class LBN:
             self.x = T.matrix('x', dtype=theano.config.floatX)
             self.y = T.matrix('y', dtype=theano.config.floatX)
         self.timeseries_network = timeseries_network
-        self.trng = T.shared_randomstreams.RandomStreams(1234)
-        self.rng = np.random.RandomState(0)
+        self.trng = T.shared_randomstreams.RandomStreams()
+        self.rng = np.random.RandomState()
         self.m = T.lscalar('M') 
         self.epoch0 = epoch0
-        self.session_name = petname.Name()
-        while os.path.isfile('network_output/logs/{0}.log'.format(self.session_name)):
+        if output_path is None:
+            self.output_path = "network_output"
+        else:
+            self.output_path = output_path
+        if log is None:
             self.session_name = petname.Name()
-        logging.basicConfig(level=logging.INFO, filename="network_output/logs/{0}.log".format(self.session_name),
-                            format="%(asctime)s %(message)s",
-                            datefmt="%m/%d/%Y %I:%M:%S")
-        self.log = logging.getLogger(self.session_name)
+            if not os.path.exists("{0}/logs".format(self.output_path)):
+                os.makedirs("{0}/logs".format(self.output_path))
 
+            while os.path.isfile('{0}/logs/{1}.log'.format(self.output_path, self.session_name)):
+                self.session_name = petname.Name()
+            logging.basicConfig(level=logging.INFO, filename="network_output/logs/{0}.log".format(
+                                                                                self.session_name),
+                                format="%(asctime)s %(message)s",
+                                datefmt="%m/%d/%Y %H:%M:%S")
+            self.log = logging.getLogger(self.session_name)
+        else:
+            self.log = log
+            self.session_name = session_name
         assert type(n_in) is IntType, "n_in must be an integer: {0!r}".format(n_in)
         assert type(n_hidden) is ListType, "n_hidden must be a list: {0!r}".format(n_hidden)
         assert type(n_out) is IntType, "n_out must be an integer: {0!r}".format(n_out)
@@ -668,8 +682,15 @@ class LBN:
         self.get_log_likelihood = theano.function(inputs=[self.x, self.y, self.m],
                                                 outputs=self.log_likelihood)
         
-        path_name, file_name = os.path.split(fname)
         log_likelihood = []
+        if fname is not None:
+            path_name, file_name = os.path.split(fname)
+
+            if not os.path.exists("{0}/networks".format(path_name)):
+                        os.makedirs("{0}/networks".format(path_name))
+
+            if not os.path.exists("{0}/likelihoods".format(path_name)):
+                os.makedirs("{0}/likelihoods".format(path_name))
         for e in xrange(self.epoch0,epochs+self.epoch0):
             for minibatch_idx in xrange(self.n_train_batches):
                 minibatch_likelihood = self.train_model(minibatch_idx, self.n_train)
@@ -677,14 +698,16 @@ class LBN:
 
             epoch_message = "Epoch {0} log likelihood: {1}".format(e, log_likelihood[-1])
             self.log.info(epoch_message)
-            if e % save_every == 0:
-                self.save_network("{0}/networks/{1}_epoch_{2}.json".format(path_name, file_name, e))
-                self.log.info("Network saved.")
-                
-                with open('{0}/likelihoods/{1}.csv'.format(path_name, file_name), 'a') as f:
-                    for i, l in enumerate(
-                                        log_likelihood[e-self.epoch0-save_every+1:e-self.epoch0+1]):
-                        f.write('{0},{1}\n'.format(e-save_every+i+1, l))
+            if fname is not None:
+                if e % save_every == 0 or e==epochs+self.epoch0-1:
+                    
+                    self.save_network("{0}/networks/{1}_epoch_{2}.json".format(path_name, file_name, e))
+                    self.log.info("Network saved.")
+                    
+                    with open('{0}/likelihoods/{1}.csv'.format(path_name, file_name), 'a') as f:
+                        for i, l in enumerate(
+                                            log_likelihood[e-self.epoch0-save_every+1:e-self.epoch0+1]):
+                            f.write('{0},{1}\n'.format(e-save_every+i+1, l))
 
         plt.plot(np.arange(epochs),np.array(log_likelihood))
         plt.savefig('{0}_likelihood_evolution.png')
@@ -766,7 +789,7 @@ class LBN:
             f.write(output_string)
 
     @classmethod
-    def init_from_file(cls, fname, epoch0=1):
+    def init_from_file(cls, fname, epoch0=1, log=None, session_name=None):
         """
         Loads a saved network from file fname.
         :type fname: string.
@@ -781,7 +804,7 @@ class LBN:
                         network_properties['stoch_activations'],
                         network_properties['stoch_n_hidden'],
                         layers_info=network_description['layers'],
-                        epoch0=epoch0)
+                        epoch0=epoch0, log=log, session_name=session_name)
 
         loaded_lbn.log.info('Network loaded from file: {0}.'.format(fname))
 
