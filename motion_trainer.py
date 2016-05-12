@@ -5,22 +5,9 @@ from lbn import LBN
 import logging
 import petname
 import os
+from util import load_states
+from util import load_controls
 
-def load_states(n):
-
-    x = np.genfromtxt("data/states_1_len_61.txt", delimiter=',')
-    for i in xrange(2, n+1):
-        tmp = np.genfromtxt("data/states_{0}_len_61.txt".format(i), delimiter=',')
-        x = np.vstack((x, tmp))
-    return x
-
-def load_controls(n):
-
-    x = np.genfromtxt("data/controls_1_len_61.txt", delimiter=',')
-    for i in xrange(2, n+1):
-        tmp = np.genfromtxt("data/controls_{0}_len_61.txt".format(i), delimiter=',')
-        x = np.vstack((x, tmp))
-    return x
 
 def log_init(path):
     session_name = petname.Name()

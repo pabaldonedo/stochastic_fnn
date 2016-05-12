@@ -2,6 +2,11 @@ import theano
 import theano.tensor as T
 import io
 import json
+import numpy as np
+import os
+import petname
+import logging
+
 
 def get_activation_function(activation):
 
@@ -47,3 +52,36 @@ def parse_activations(activation_list):
         activation_prime[i] = get_activation_function_derivative(act)
 
     return activation, activation_prime
+
+def load_states(n):
+
+    x = np.genfromtxt("data/states_1_len_61.txt", delimiter=',')
+    for i in xrange(2, n+1):
+        tmp = np.genfromtxt("data/states_{0}_len_61.txt".format(i), delimiter=',')
+        x = np.vstack((x, tmp))
+    return x
+
+def load_controls(n):
+
+    x = np.genfromtxt("data/controls_1_len_61.txt", delimiter=',')
+    for i in xrange(2, n+1):
+        tmp = np.genfromtxt("data/controls_{0}_len_61.txt".format(i), delimiter=',')
+        x = np.vstack((x, tmp))
+    return x
+
+def log_init(path, session_name=None):
+    if session_name is None:
+        session_name = petname.Name()
+        if not os.path.exists(path):
+            os.makedirs(path)
+        if not os.path.exists("{0}/logs".format(path)):
+            os.makedirs("{0}/logs".format(path))
+
+        while os.path.isfile('{0}/logs/{1}.log'.format(path,session_name)):
+            session_name = petname.Name()
+
+    logging.basicConfig(level=logging.INFO, filename="{0}/logs/{1}.log".format(path, session_name),
+                        format="%(asctime)s %(message)s",
+                        datefmt="%m/%d/%Y %H:%M:%S")
+    log = logging.getLogger(session_name)
+    return log, session_name
