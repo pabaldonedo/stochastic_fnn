@@ -2,7 +2,6 @@ import theano
 import theano.tensor as T
 import numpy as np
 import types
-import matplotlib.pyplot as plt
 import logging
 import petname
 import os.path

@@ -294,11 +294,12 @@ def main():
     mlp_n_hidden = [10]
     b_size= 100
     n_epochs = 100
-    lr = .001
+    lr = 1
     save_every = 5
     m = 10
+    opt_type = 'SGD'
 
-    method={'type':'Adam', 'lr_decay_schedule':'constant', 'lr_decay_parameters':[lr],
+    method={'type':opt_type, 'lr_decay_schedule':'constant', 'lr_decay_parameters':[lr],
             'momentum_type': 'nesterov', 'momentum': 0.1, 'b1': 0.9, 'b2':0.999, 'e':1e-6,
             'learning_rate':lr}
 
