@@ -118,25 +118,11 @@ class Classifier():
 
         return output_string
 
-    
-    def fit(self, x, y, m, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1):
-        def call_back(epoch, train_error=None, opt_parameters=None, test_error=None):
-            #for t in  train_error:
-            #    self.log.info("epoch: {0}, t: {1}".format(epoch, t))
-            self.log.info("epoch: {0} train_error: {1} with options: {2}".format(
-                                                    epoch, train_error, opt_parameters))
-            #if epoch % save_every == 0 and fname is not None:
-            #    self.save_network("{0}_epoch_{1}".format(fname, epoch))
-            #    self.log.info("Network saved")
-        def tmp(t):
-            self.log.info("-------")
-            self.log.warn("cost: {0}".format(t[0]))
-            l = self.get_log_likelihood(x,y,m)
-            self.log.info("log_likelihood {0} and mean: {1}".format(l, l*1./x.shape[0]))
+    def get_call_back(self, save_every, fname, epoch0):
+        c = callBack(self, save_every, fname, epoch0)
+        return c.cback
 
-            if len(t) > 1:
-                self.log.info("Updates and upd: {0}".format(t[1:]))
-            self.log.info("-------")
+    def fit(self, x, y, m, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1):
 
         l = self.get_log_likelihood(x,y,m)
         self.log.info("log_likelihood {0} and mean: {1}".format(l, l*1./x.shape[0]))
@@ -173,40 +159,10 @@ class Classifier():
         self.log.info("Fit starts with epochs: {0}, batch size: {1}, method: {2}".format(
                                                                         n_epochs, b_size, method))
 
-        #opt.fit(self.x, self.lbn.y, train_set_x, train_set_y, b_size, cost, flat_params, n_epochs,
-        #                        compute_error, call_back, extra_train_givens={self.lbn.m:m})
+        opt.fit(self.x, self.lbn.y, train_set_x, train_set_y, b_size, cost, flat_params, n_epochs,
+                            compute_error, self.get_call_back(save_every, fname, epoch0),
+                            extra_train_givens={self.lbn.m:m})
 
-
-
-
-
-        train_set_x = theano.shared(np.asarray(x,
-                                            dtype=theano.config.floatX))
-
-        train_set_y = theano.shared(np.asarray(y,
-                                            dtype=theano.config.floatX))
-
-
-        self.fiting_variables(b_size, train_set_x, train_set_y)
-
-        gparams = [T.grad(-1./x.shape[0]*self.lbn.log_likelihood, p) for p in flat_params]
-
-        upd = [(param, param - 0.1 * gparam)
-                for param, gparam in zip(flat_params, gparams)]
-        self.train_model = theano.function(inputs=[self.index, self.n_ex],
-                                    outputs=self.lbn.log_likelihood,
-                                    updates=upd,
-                                    givens={self.x: train_set_x[self.batch_start:self.batch_stop],
-                                            self.lbn.y: train_set_y[self.batch_start:self.batch_stop],
-                                            self.lbn.m: m})
-
-        for epoch in xrange(epoch0, n_epochs+epoch0):
-            for minibatch_idx in xrange(self.n_train_batches):
-                minibatch_likelihood = self.train_model(minibatch_idx, self.n_train)
-            l = self.get_log_likelihood(x,y,m)
-            self.log.info("Epoch {0}, log_like {1}, mean log_like {2}".format(epoch, l, l*1./x.shape[0]))
-            if epoch % save_every == 0 and fname is not None:
-                self.save_network('{0}_epoch_{1}.json'.format(fname, epoch))
 
     def fiting_variables(self, batch_size, train_set_x, train_set_y, test_set_x=None):
         """Sets useful variables for locating batches"""    
@@ -258,8 +214,56 @@ class Classifier():
 
         return loaded_classifier
 
+class callBack:
+    def __init__(self, classifier, save_every, fname, epoch0):
+
+
+        self.epoch0 = epoch0
+        self.log_likelihoods = []
+        self.epochs = []
+        self.classifier = classifier
+
+        opath = os.path.dirname(fname)
+        file_name = os.path.basename(fname)
+        like_file = '{0}/likelihoods/{1}.csv'.format(opath, file_name)
+
+        self.likelihood_file(like_file)
+        self.save_every = save_every
+
+        network_name = '{0}/networks/{1}'.format(opath, file_name)
+        if not os.path.exists('{0}/networks'.format(opath)):
+            os.makedirs('{0}/networks'.format(opath))
+        self.fname = network_name
+
+    def likelihood_file(self, fname):
+        path_fname = os.path.dirname(fname)
+        if not os.path.exists(path_fname):
+            os.makedirs(path_fname)
+
+        def save_likelihood(epochs, log_likelihoods):
+            with open(fname, 'a') as f:
+                for e, l in zip(epochs, log_likelihoods):
+                    f.write('{0},{1}\n'.format(e, l))
+            self.classifier.log.info("Log likelihoods saved.")
+
+        self.save_likelihood = save_likelihood
+
+    def cback(self, epoch, n_samples, train_error=None, opt_parameters=None, test_error=None):
+        log_likelihood = -n_samples*train_error
+        self.classifier.log.info("epoch: {0} train_error: {1}, log_likelihood: {2} with options:"\
+                                " {3}.".format(epoch+self.epoch0, train_error, log_likelihood,
+                                                                                    opt_parameters))
+
+        self.epochs.append(epoch+self.epoch0)
+        self.log_likelihoods.append(log_likelihood)
+        if epoch % self.save_every == 0 and self.fname is not None:
+            self.classifier.save_network("{0}_epoch_{1}".format(self.fname, epoch+self.epoch0))
+            self.save_likelihood(self.epochs, self.log_likelihoods)
+            self.log_likelihoods = []
+            self.epochs = []
+
 def main():
-    n = 4
+    n = 5
     x = load_states(n)
     mux = np.mean(x,axis=0)
     stdx = np.std(x,axis=0)
@@ -283,19 +287,20 @@ def main():
 
 
     mlp_activation_names = ['sigmoid']
-    lbn_n_hidden = [5, 4]
+    lbn_n_hidden = [100, 50]
     det_activations = ['linear', 'linear', 'linear']
     stoch_activations = ['sigmoid', 'sigmoid']
     mlp_n_in = 13
     mlp_n_hidden = [10]
     b_size= 100
     n_epochs = 100
-    lr = 10
-    save_every = 1
+    lr = .001
+    save_every = 5
     m = 10
 
-    method={'type':'SGD', 'lr_decay_schedule':'constant', 'lr_decay_parameters':[lr],
-            'momentum_type': 'none', 'momentum': 0}
+    method={'type':'Adam', 'lr_decay_schedule':'constant', 'lr_decay_parameters':[lr],
+            'momentum_type': 'nesterov', 'momentum': 0.1, 'b1': 0.9, 'b2':0.999, 'e':1e-6,
+            'learning_rate':lr}
 
     network_name = "classifier_n_{0}_mlp_hidden_[{1}]_mlp_activation_[{2}]_lbn_n_hidden_[{3}]"\
                     "_det_activations_[{4}]_stoch_activations_[{5}]_m_{6}_bsize_{7}_method_{8}".\
@@ -313,13 +318,13 @@ def main():
         os.makedirs(opath)
     fname = '{0}/{1}'.format(opath, network_name)
 
-    log, session_name = log_init(opath, session_name='china')
-    epoch0 = 38
-    c = Classifier.init_from_file('{0}_epoch_{1}.json'.format(fname, epoch0-1))
-
-    #c = Classifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-    #                                                        det_activations,
-    #                                                        stoch_activations, log=log)
+    log, session_name = log_init(opath)
+    epoch0 = 1
+    #c = Classifier.init_from_file('{0}_epoch_{1}.json'.format(fname, epoch0-1))
+#
+    c = Classifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
+                                                            det_activations,
+                                                            stoch_activations, log=log)
 
 
 
