@@ -56,7 +56,7 @@ def parse_activations(activation_list):
 def load_states(n):
 
     x = np.genfromtxt("data/states_1_len_61.txt", delimiter=',')
-    for i in xrange(1, n+1):
+    for i in xrange(2, n+1):
         tmp = np.genfromtxt("data/states_{0}_len_61.txt".format(i), delimiter=',')
         x = np.vstack((x, tmp))
     return x
@@ -64,7 +64,7 @@ def load_states(n):
 def load_controls(n):
 
     x = np.genfromtxt("data/controls_1_len_61.txt", delimiter=',')
-    for i in xrange(1, n+1):
+    for i in xrange(2, n+1):
         tmp = np.genfromtxt("data/controls_{0}_len_61.txt".format(i), delimiter=',')
         x = np.vstack((x, tmp))
     return x

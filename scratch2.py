@@ -122,16 +122,24 @@ class Classifier():
         c = callBack(self, save_every, fname, epoch0)
         return c.cback
 
-    def fit(self, x, y, m, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1):
+    def fit(self, x, y, m, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1,
+                                                                        x_test=None, y_test=None):
 
         l = self.get_log_likelihood(x,y,m)
         self.log.info("log_likelihood {0} and mean: {1}".format(l, l*1./x.shape[0]))
+        self.log.info("Number of samples: {0}:".format(x.shape[0]))
         train_set_x = theano.shared(np.asarray(x,
                                         dtype=theano.config.floatX))
 
         train_set_y = theano.shared(np.asarray(y,
                                         dtype=theano.config.floatX))
 
+        if x_test is not None and y_test is not None:
+            test_set_x = theano.shared(np.asarray(x_test,
+                                            dtype=theano.config.floatX))
+
+            test_set_y = theano.shared(np.asarray(y_test,
+                                            dtype=theano.config.floatX))
 
         flat_params = [p for layer in self.lbn.params for p in layer]
         cost = -1./self.x.shape[0]*self.lbn.log_likelihood
@@ -160,8 +168,9 @@ class Classifier():
                                                                         n_epochs, b_size, method))
 
         opt.fit(self.x, self.lbn.y, train_set_x, train_set_y, b_size, cost, flat_params, n_epochs,
-                            compute_error, self.get_call_back(save_every, fname, epoch0),
-                            extra_train_givens={self.lbn.m:m})
+                                    compute_error, self.get_call_back(save_every, fname, epoch0),
+                                    extra_train_givens={self.lbn.m:m},
+                                    test_set_x=test_set_x, test_set_y=test_set_y)
 
 
     def fiting_variables(self, batch_size, train_set_x, train_set_y, test_set_x=None):
@@ -250,20 +259,29 @@ class callBack:
 
     def cback(self, epoch, n_samples, train_error=None, opt_parameters=None, test_error=None):
         log_likelihood = -n_samples*train_error
-        self.classifier.log.info("epoch: {0} train_error: {1}, log_likelihood: {2} with options:"\
-                                " {3}.".format(epoch+self.epoch0, train_error, log_likelihood,
-                                                                                    opt_parameters))
+        if test_error is None:
+            self.classifier.log.info("epoch: {0} train_error: {1}, log_likelihood: {2} with" \
+                                "options: {3}.".format(epoch+self.epoch0, train_error,
+                                                                    log_likelihood, opt_parameters))
+        else:
+            self.classifier.log.info("epoch: {0} train_error: {1}, test_error: {2} "\
+                                "log_likelihood: {3} with options: {4}.".format(
+                                                                    epoch+self.epoch0, train_error,
+                                                                    test_error,
+                                                                    log_likelihood, opt_parameters))
+
 
         self.epochs.append(epoch+self.epoch0)
         self.log_likelihoods.append(log_likelihood)
         if epoch % self.save_every == 0 and self.fname is not None:
-            self.classifier.save_network("{0}_epoch_{1}".format(self.fname, epoch+self.epoch0))
+            self.classifier.save_network("{0}_epoch_{1}.json".format(self.fname, epoch+self.epoch0))
             self.save_likelihood(self.epochs, self.log_likelihoods)
             self.log_likelihoods = []
             self.epochs = []
 
 def main():
-    n = 5
+    n = 7
+    train_size = 0.8
     x = load_states(n)
     mux = np.mean(x,axis=0)
     stdx = np.std(x,axis=0)
@@ -274,17 +292,20 @@ def main():
 
     x = x[:,cols]
     x = x[idx]
-    y = load_controls(n)
+    train_bucket = int(np.ceil(x.shape[0]*train_size))
+    x_train = x[:train_bucket]
+    x_test = x[train_bucket:]
 
+    y = load_controls(n)
     muy = np.mean(y,axis=0)
     stdy = np.std(y,axis=0)
     stdy[stdy==0] = 1.
     y = (y-muy)*1./stdy
     y = y[idx]
+    y_train = y[:train_bucket]
+    y_test = y[train_bucket:]
     n_in = x.shape[1]
     n_out = y.shape[1]
-
-
 
     mlp_activation_names = ['sigmoid']
     lbn_n_hidden = [100, 50]
@@ -294,13 +315,13 @@ def main():
     mlp_n_hidden = [10]
     b_size= 100
     n_epochs = 100
-    lr = 1
-    save_every = 5
+    lr = .1
+    save_every = 1
     m = 10
     opt_type = 'SGD'
 
     method={'type':opt_type, 'lr_decay_schedule':'constant', 'lr_decay_parameters':[lr],
-            'momentum_type': 'nesterov', 'momentum': 0.1, 'b1': 0.9, 'b2':0.999, 'e':1e-6,
+            'momentum_type': 'nesterov', 'momentum': 0.01, 'b1': 0.9, 'b2':0.999, 'e':1e-6,
             'learning_rate':lr}
 
     network_name = "classifier_n_{0}_mlp_hidden_[{1}]_mlp_activation_[{2}]_lbn_n_hidden_[{3}]"\
@@ -317,19 +338,20 @@ def main():
     opath = "network_output/{0}".format(network_name)
     if not os.path.exists(opath):
         os.makedirs(opath)
-    fname = '{0}/{1}'.format(opath, network_name)
+    fname = '{0}/networks/{1}'.format(opath, network_name)
 
-    log, session_name = log_init(opath)
-    epoch0 = 1
-    #c = Classifier.init_from_file('{0}_epoch_{1}.json'.format(fname, epoch0-1))
-#
-    c = Classifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                                                            det_activations,
-                                                            stoch_activations, log=log)
+    log, session_name = log_init(opath, session_name='donette.log')
+    epoch0 = 101
+    c = Classifier.init_from_file('{0}_epoch_{1}'.format(fname, epoch0-1), log=log)
+
+    #c = Classifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
+    #                                                        det_activations,
+    #                                                        stoch_activations, log=log)
 
 
 
-    f = c.fit(x,y,m,n_epochs, b_size, method, fname=fname, epoch0=epoch0)
+    f = c.fit(x,y,m,n_epochs, b_size, method, fname=fname, epoch0=epoch0,
+                                                                    x_test=x_test, y_test=y_test)
 
 
 if __name__ == '__main__':

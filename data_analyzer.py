@@ -109,16 +109,21 @@ def boxplot(x, step=None, names=None, bone_names=None, path="./"):
 
 
 def main():
-    x = load_states(4)
-    y = load_controls(4)
-    names = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'r0', 'r1', 'r2', 'r3', 'wx', 'wy', 'wz']*15 +\
+
+    n = 7
+    x = load_states(n)
+    y = load_controls(n)
+    bone_features = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'r0', 'r1', 'r2', 'r3', 'wx', 'wy', 'wz']
+    names = bone_features*15 +\
             ['left foot', 'right foot']
     bone_names = ['Hips', 'Spine1', 'Neck', 'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg',
                 'RightLeg', 'RightFoot', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightArm',
                 'RightForeArm', 'RightHand', 'Contact To Ground']
 
-    boxplot(x, step=13, names=names, bone_names=bone_names, path='tmp/states')
+    boxplot(x, step=len(bone_features), names=names, bone_names=bone_names, path='tmp/states')
     boxplot(y, path='tmp/controls')
+    
+
 
 if __name__ == '__main__':
     main()
