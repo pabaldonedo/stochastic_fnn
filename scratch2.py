@@ -18,12 +18,10 @@ from util import load_states
 from util import load_controls
 from util import log_init
 
-
 class Classifier():
 
-    def __init__(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                                        det_activations, stoch_activations, log=None, weights=None):
-
+    def parse_inputs(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
+                                        det_activations, stoch_activations, log):
         self.log = log
         if self.log is None:
             logging.basicConfig(level=logging.INFO)
@@ -48,6 +46,9 @@ class Classifier():
 
 
         self.n_in = n_in
+        self.n_out = n_out
+
+    def set_up_mlp(self, mlp_n_hidden, mlp_activation_names, mlp_n_in, weights):
         self.mlp_n_hidden = mlp_n_hidden
         self.bone_representations = [None]*15
         self.mlp_activation_names = mlp_activation_names
@@ -65,12 +66,21 @@ class Classifier():
                                                                 weights['bone_mlps'][i]['MLPLayer'])
             self.bone_representations[i] = bone_mlp
 
+
+    def __init__(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
+                                        det_activations, stoch_activations, log=None, weights=None):
+
+        
+        self.parse_inputs(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
+                                        det_activations, stoch_activations, log)
+
+        self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in, weights)
+
         self.lbn_input = T.concatenate([bone.output for bone in self.bone_representations] +
                                                                             [self.x[:,-2:]], axis=1)
         self.lbn_n_hidden = lbn_n_hidden
         self.det_activations = det_activations
         self.stoch_activations = stoch_activations
-        self.n_out = n_out
 
         self.lbn = LBN(len(self.bone_representations)*self.mlp_n_hidden[-1]+2, self.lbn_n_hidden,
                                                         self.n_out,
@@ -172,7 +182,35 @@ class Classifier():
                                     extra_train_givens={self.lbn.m:m},
                                     test_set_x=test_set_x, test_set_y=test_set_y)
 
+        """
+        self.fiting_variables(b_size, train_set_x, train_set_y)
 
+
+        gparams = [T.grad(cost, p) for p in flat_params]
+        v = [theano.shared(value=np.zeros(th.shape.eval(), dtype=theano.config.floatX)) for th in flat_params]
+        v_upds = [method['momentum']*vi - method['learning_rate']*gp for vi,gp in zip(v, gparams)]
+        upd = [(vi, v_updi) for vi, v_updi in zip(v, v_upds)]
+        upd += [(p, p-method['learning_rate']*gp+method['momentum']*v_upd) for p, gp, v_upd in zip(flat_params, gparams, v_upds)]
+
+        train_model = theano.function(inputs=[self.index, self.n_ex],
+                                    outputs=self.lbn.log_likelihood,
+                                    updates=upd,
+                                    givens={self.x:train_set_x[self.batch_start:self.batch_stop],
+                                            self.lbn.y:train_set_y[self.batch_start:self.batch_stop],
+                                            self.lbn.m: m})
+
+        epoch = 0
+        while epoch < n_epochs:
+            for minibatch_idx in xrange(self.n_train_batches):
+                minibatch_avg_cost = train_model(minibatch_idx, self.n_train)
+
+            train_error = compute_error(x,y)
+            log_likelihood = self.get_log_likelihood(x,y,m)
+            self.log.info("epoch: {0} train_error: {1}, log_likelihood: {2} with".format(
+                                                                    epoch+epoch0, train_error,
+                                                                    log_likelihood))
+
+        """
     def fiting_variables(self, batch_size, train_set_x, train_set_y, test_set_x=None):
         """Sets useful variables for locating batches"""    
         self.index = T.lscalar('index')    # index to a [mini]batch
@@ -223,6 +261,54 @@ class Classifier():
 
         return loaded_classifier
 
+
+
+class RecurrentClassifier(Classifier):
+
+    def __init__(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
+                                    lbn_n_out, det_activations, stoch_activations,
+                                    rnn_hiddden, rnn_activations,
+                                    log=None, weights=None):
+
+        self.parse_inputs(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
+                                        det_activations, stoch_activations, log)
+        self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in, weights)
+
+        self.lbn_input = T.concatenate([bone.output for bone in self.bone_representations] +
+                                                                            [self.x[:,-2:]], axis=1)
+        
+        self.lbn_n_hidden = lbn_n_hidden
+        self.det_activations = det_activations
+        self.stoch_activations = stoch_activations
+        self.rnn_hidden = rnn_hidden
+
+        lbn_properties = {'n_in':len(self.bone_representations)*self.mlp_n_hidden[-1]+2,
+                        'n_hidden':self.lbn_n_hidden, 'n_out':lbn_n_out,
+                        'det_activations':self.det_activations,
+                        'stoch_activations':self.stoch_activations,
+                        'stoch_n_hidden': self.stoch_n_hidden,
+                        'input_var':self.lbn.input,
+                        'layers': None if weights is None else weights['lbnrnn']['lbn']['layers']}
+
+        rnn_properties = {'n_in': lbn_properties['n_out'],
+                        'n_out': self.n_out,
+                        'n_hidden': self.rnn_hidden,
+                        'activations': self.rnn_activations,
+                        'layers': None if weights is None else weights['lbnrnn']['rnn']['layers']}
+
+        self.lbnrnn = LBNRNN_module(lbn_properties, rnn_properties)
+
+        self.get_log_likelihood = theano.function(inputs=[self.x, self.lbnrnn.y, self.lbnrnn.m],
+                                                outputs=self.lbnrnn.log_likelihood)
+
+        self.predict = theano.function(inputs=[self.x, self.lbnrnn.m], outputs=self.lbnrnn.output)
+        self.log.info("Network created with n_in: {0}, mlp_n_hidden: {1}, "
+                        "mlp_activation_names: {2}, lbn_n_hidden: {3}, det_activations: {4}, "
+                        "stoch_activations: {5}, n_out: {6}".format(
+                        self.n_in, self.mlp_n_hidden, self.mlp_activation_names, self.lbn_n_hidden,
+                        self.det_activations, self.stoch_activations, self.n_out))
+
+
 class callBack:
     def __init__(self, classifier, save_every, fname, epoch0):
 
@@ -249,10 +335,15 @@ class callBack:
         if not os.path.exists(path_fname):
             os.makedirs(path_fname)
 
-        def save_likelihood(epochs, log_likelihoods):
+        def save_likelihood(epochs, log_likelihoods, test_like=None):
             with open(fname, 'a') as f:
                 for e, l in zip(epochs, log_likelihoods):
                     f.write('{0},{1}\n'.format(e, l))
+            if test_like is not None:
+                test_fname = os.path.splitext(os.path.basename(fname))
+                with open('{0}_test.csv'.format(test_fname), 'a') as f:
+                    for e, l in zip(epochs, test_like):
+                        f.write('{0},{1}\n'.format(e, l))                
             self.classifier.log.info("Log likelihoods saved.")
 
         self.save_likelihood = save_likelihood
@@ -308,14 +399,14 @@ def main():
     n_out = y.shape[1]
 
     mlp_activation_names = ['sigmoid']
-    lbn_n_hidden = [100, 50]
-    det_activations = ['linear', 'linear', 'linear']
+    lbn_n_hidden = [150, 100, 50]
+    det_activations = ['linear', 'linear','linear', 'linear']
     stoch_activations = ['sigmoid', 'sigmoid']
     mlp_n_in = 13
     mlp_n_hidden = [10]
     b_size= 100
     n_epochs = 100
-    lr = .1
+    lr = .05
     save_every = 1
     m = 10
     opt_type = 'SGD'
@@ -338,15 +429,15 @@ def main():
     opath = "network_output/{0}".format(network_name)
     if not os.path.exists(opath):
         os.makedirs(opath)
-    fname = '{0}/networks/{1}'.format(opath, network_name)
-
-    log, session_name = log_init(opath, session_name='donette.log')
-    epoch0 = 101
-    c = Classifier.init_from_file('{0}_epoch_{1}'.format(fname, epoch0-1), log=log)
-
-    #c = Classifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-    #                                                        det_activations,
-    #                                                        stoch_activations, log=log)
+    fname = '{0}/{1}.json'.format(opath, network_name)
+    network_fname = '{0}/networks/{1}'.format(opath, network_name)
+    log, session_name = log_init(opath)#, session_name='donette')
+    epoch0 = 1
+    #c = Classifier.init_from_file('{0}_epoch_{1}'.format(network_fname, epoch0-1), log=log)
+#
+    c = Classifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
+                                                           det_activations,
+                                                            stoch_activations, log=log)
 
 
 

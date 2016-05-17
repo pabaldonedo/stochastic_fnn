@@ -14,14 +14,15 @@ from lbn import LBN
 
 class LBNRNN_module(object):
 
-    def __init__(self, lbn_properties, rnn_definition, lbn_info=None, rnn_info=None):
+    def __init__(self, lbn_properties, rnn_definition):
       
         self.lbn = LBN(lbn_properties['n_in'], lbn_properties['n_hidden'], lbn_properties['n_out'],
-                                                                lbn_properties['det_activations'],
-                                                                lbn_properties['stoch_activations'],
-                                                                lbn_properties['stoch_n_hidden'],
-                                                                timeseries_network=True,
-                                                                layers_info=lbn_info)
+                                                    lbn_properties['det_activations'],
+                                                    lbn_properties['stoch_activations'],
+                                                    lbn_properties['stoch_n_hidden'],
+                                                    timeseries_network=True,
+                                                    layers_info=lbn_properties['layers']
+                                                    if 'layers' in lbn_properties.keys() else None)
 
         self.x = self.lbn.x
         self.y = T.tensor3('y', dtype=theano.config.floatX)
@@ -29,10 +30,12 @@ class LBNRNN_module(object):
         self.n_out = rnn_definition['n_out']
 
         self.rnn = VanillaRNN(self.lbn.n_out, rnn_definition['n_hidden'], self.n_out,
-                                                                    rnn_definition['activations'],
-                                                                    rng=self.lbn.rng,
-                                                                    input_var=self.lbn.output,
-                                                                    layers_info=rnn_info)
+                                                    rnn_definition['activations'],
+                                                    rng=self.lbn.rng,
+                                                    input_var=self.lbn.output,
+                                                    layers_info=rnn_definition['layers']
+                                                    if 'layers' in rnn_definition.keys() else None)
+
         self.params = [self.lbn.params] + [self.rnn.params]
         self.output = self.rnn.output
         self.predict = theano.function(inputs=[self.x, self.lbn.m], outputs=self.lbn.output)
@@ -215,9 +218,7 @@ class LBNRNN_module(object):
         rnn_definition = network_description['rnn']
 
         loaded_lbn = cls(lbn_definition['network_properties'],
-                        rnn_definition['network_properties'],
-                        lbn_info=lbn_definition['layers'],
-                        rnn_info=rnn_definition['layers'])
+                        rnn_definition['network_properties'])
 
         return loaded_lbn
 
