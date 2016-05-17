@@ -57,7 +57,7 @@ class HiddenLayer(object):
             a = T.dot(x, self.W.T) + self.b
             output = self.activation(a)
             return a, output
-        [self.a, self.output] = theano.scan(step, sequences=self.input)
+        [self.a, self.output], _ = theano.scan(step, sequences=self.input)
 
 
 class MLPLayer(object):

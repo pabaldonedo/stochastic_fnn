@@ -173,12 +173,13 @@ def bone_scatter(x,bone_features, bone_names, path):
     
     for b, bname in enumerate(bone_names):
         k = 0
-        fig, ax = plt.subplots(10,10, figsize=(50,50))
+        fig, ax = plt.subplots(8,10, figsize=(50,60))
         ax = ax.flatten()      
         for fi, f in enumerate(bone_features):
             for j, f2 in enumerate(bone_features[fi+1:]):
                 fj = fi+1+j
-                ax[k].scatter(x[:,b*len(bone_names)+fi], x[:,b*len(bone_names)+fj], color='b')
+                print "bname: {0} b: {1}, col {2} vs {3}, fi: {4}, f:{5}, f2:{6}, fj: {7}".format(bname, b, b*len(bone_features)+fi, b*len(bone_features)+fj, fi, f, f2, fj)
+                ax[k].scatter(x[:,b*len(bone_features)+fi], x[:,b*len(bone_features)+fj], color='b')
                 ax[k].set_xlabel(str(f), fontsize=15)
                 ax[k].set_ylabel(str(f2), fontsize=15)
                 k += 1
@@ -203,8 +204,9 @@ def control_evolution_scatter(x, seq_len, path):
 def main():
 
     n = 7
-
     x = load_states(n)
+    idx = np.random.permutation(x.shape[0])
+    x = x[idx[:80000],:]
     #y = load_controls(n)
     print "DATA LOADED"
     if not os.path.exists('bone_plots'):
@@ -224,7 +226,7 @@ def main():
     #control_evolution_scatter(y, 61, 'bone_plots/sequence_evolution')
     if not os.path.exists('bone_plots/bone_scatter'):
         os.makedirs('bone_plots/bone_scatter')
-    bone_scatter(x, bone_features, bone_names, 'bone_plots/bone_scatter')
+    bone_scatter(x, bone_features, bone_names[:-1], 'bone_plots/bone_scatter')
 
 if __name__ == '__main__':
     main()

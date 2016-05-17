@@ -14,7 +14,7 @@ from lbn import LBN
 
 class LBNRNN_module(object):
 
-    def __init__(self, lbn_properties, rnn_definition):
+    def __init__(self, lbn_properties, rnn_definition, input_var=None):
       
         self.lbn = LBN(lbn_properties['n_in'], lbn_properties['n_hidden'], lbn_properties['n_out'],
                                                     lbn_properties['det_activations'],
@@ -22,9 +22,15 @@ class LBNRNN_module(object):
                                                     lbn_properties['stoch_n_hidden'],
                                                     timeseries_network=True,
                                                     layers_info=lbn_properties['layers']
-                                                    if 'layers' in lbn_properties.keys() else None)
+                                                    if 'layers' in lbn_properties.keys() else None,
+                                                    input_var=input_var)
 
-        self.x = self.lbn.x
+        if input_var is None:
+            self.x = self.lbn.x
+        
+        else:
+            self.x = input_var
+
         self.y = T.tensor3('y', dtype=theano.config.floatX)
         self.n_in = lbn_properties['n_in']
         self.n_out = rnn_definition['n_out']
@@ -41,6 +47,9 @@ class LBNRNN_module(object):
         self.predict = theano.function(inputs=[self.x, self.lbn.m], outputs=self.lbn.output)
         
         exp_value = -0.5*T.sum((self.output - self.y.dimshuffle(0, 'x',1, 2))**2, axis=3)
+
+        self.tmp = exp_value
+    
         #max_exp_value = theano.ifelse.ifelse(T.lt(T.max(exp_value), -1*T.min(exp_value)),
         #                                                        T.max(exp_value), T.min(exp_value))
         mean_exp_value = T.mean(exp_value)
@@ -52,7 +61,6 @@ class LBNRNN_module(object):
                                             #self.y.shape[2]/2.*T.log(2*np.pi))
         self.get_log_likelihood = theano.function(inputs=[self.x, self.y, self.lbn.m],
                                                 outputs=self.log_likelihood)
-        self.debugger = (self.output - self.y.dimshuffle(0, 'x',1, 2))**2
 
     def fiting_variables(self, batch_size, train_set_x, train_set_y, test_set_x=None):
         """Sets useful variables for locating batches"""    

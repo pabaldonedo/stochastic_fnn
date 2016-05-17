@@ -55,17 +55,17 @@ def parse_activations(activation_list):
 
 def load_states(n):
 
-    x = np.genfromtxt("data/states_1_len_61.txt", delimiter=',')
+    x = np.genfromtxt("data/states_1_len_61.txt", delimiter=',', dtype=theano.config.floatX)
     for i in xrange(2, n+1):
-        tmp = np.genfromtxt("data/states_{0}_len_61.txt".format(i), delimiter=',')
+        tmp = np.genfromtxt("data/states_{0}_len_61.txt".format(i), delimiter=',', dtype=theano.config.floatX)
         x = np.vstack((x, tmp))
     return x
 
 def load_controls(n):
 
-    x = np.genfromtxt("data/controls_1_len_61.txt", delimiter=',')
+    x = np.genfromtxt("data/controls_1_len_61.txt", delimiter=',', dtype=theano.config.floatX)
     for i in xrange(2, n+1):
-        tmp = np.genfromtxt("data/controls_{0}_len_61.txt".format(i), delimiter=',')
+        tmp = np.genfromtxt("data/controls_{0}_len_61.txt".format(i), delimiter=',', dtype=theano.config.floatX)
         x = np.vstack((x, tmp))
     return x
 

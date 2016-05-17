@@ -14,6 +14,7 @@ from optimizer import AdaGrad
 from optimizer import Adam
 from mlp import MLPLayer
 from lbn import LBN
+from LBNRNN import LBNRNN_module
 from util import load_states
 from util import load_controls
 from util import log_init
@@ -23,7 +24,7 @@ from util import flatten
 class Classifier(object):
 
     def parse_inputs(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                                        det_activations, stoch_activations, log):
+                                        det_activations, stoch_activations, stoch_n_hidden, log):
         self.log = log
         if self.log is None:
             logging.basicConfig(level=logging.INFO)
@@ -45,11 +46,14 @@ class Classifier(object):
                                                                         format(det_activations)
         assert type(stoch_activations) is ListType, "stoch_activations must be a list: {0!r}".\
                                                                         format(stoch_activations)
+        assert type(stoch_n_hidden) is ListType, "stoch_n_hidden must be a list: {0!r}".\
+                                                                        format(stoch_n_hidden)
 
         self.lbn_n_hidden = lbn_n_hidden
         self.det_activations = det_activations
         self.stoch_activations = stoch_activations
         self.n_in = n_in
+        self.stoch_n_hidden = stoch_n_hidden
         self.n_out = n_out
 
     def set_up_mlp(self, mlp_n_hidden, mlp_activation_names, mlp_n_in, weights, timeseries_layer=False):
@@ -77,11 +81,11 @@ class Classifier(object):
 
 
     def __init__(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                                        det_activations, stoch_activations, log=None, weights=None):
+                 det_activations, stoch_activations, stoch_n_hidden=[-1], log=None, weights=None):
 
         self.x = T.matrix('x', dtype=theano.config.floatX)
         self.parse_inputs(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                                        det_activations, stoch_activations, log)
+                                        det_activations, stoch_activations, stoch_n_hidden, log)
 
         self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in, weights)
 
@@ -96,6 +100,8 @@ class Classifier(object):
                                                         layers_info=None if weights is None else
                                                                         weights['lbn']['layers'])
 
+        self.y = self.lbn.y
+        self.m = self.lbn.m
         self.get_log_likelihood = theano.function(inputs=[self.x, self.lbn.y, self.lbn.m],
                                                 outputs=self.lbn.log_likelihood)
 
@@ -167,9 +173,9 @@ class Classifier(object):
         
         flat_params = flatten(self.params)
         cost = self.get_cost()
-        compute_error = theano.function(inputs=[self.x, self.lbn.y], outputs=cost,
-                                        givens={self.lbn.m: m})
-
+        compute_error = theano.function(inputs=[self.x, self.y], outputs=cost,
+                                        givens={self.m: m})
+       
         allowed_methods = ['SGD', "RMSProp", "AdaDelta", "AdaGrad", "Adam"]
 
         if method['type'] == allowed_methods[0]:
@@ -191,9 +197,9 @@ class Classifier(object):
         self.log.info("Fit starts with epochs: {0}, batch size: {1}, method: {2}".format(
                                                                         n_epochs, b_size, method))
 
-        opt.fit(self.x, self.lbn.y, train_set_x, train_set_y, b_size, cost, flat_params, n_epochs,
+        opt.fit(self.x, self.y, train_set_x, train_set_y, b_size, cost, flat_params, n_epochs,
                                     compute_error, self.get_call_back(save_every, fname, epoch0),
-                                    extra_train_givens={self.lbn.m:m},
+                                    extra_train_givens={self.m:m},
                                     test_set_x=test_set_x, test_set_y=test_set_y)
 
         """
@@ -278,13 +284,14 @@ class Classifier(object):
 
 
 class RecurrentClassifier(Classifier):
-
+            
     def parse_inputs(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                     lbn_n_out, det_activations, stoch_activations,
+                     lbn_n_out, det_activations, stoch_activations, stoch_n_hidden,
                      rnn_hidden, rnn_activations, log):
         super(RecurrentClassifier, self).parse_inputs(n_in, n_out, mlp_n_in, mlp_n_hidden,
                                                       mlp_activation_names, lbn_n_hidden,
-                                                      det_activations, stoch_activations, log)
+                                                      det_activations, stoch_activations,
+                                                      stoch_n_hidden, log)
         
         assert type(lbn_n_out) is IntType, "lbn_n_out must be an integer: {0!r}".format(lbn_n_out)
         assert type(rnn_hidden) is ListType, "rnn_hidden must be a list: {0!r}".format(rnn_hidden)
@@ -297,12 +304,14 @@ class RecurrentClassifier(Classifier):
 
     def __init__(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                                     lbn_n_out, det_activations, stoch_activations,
-                                    rnn_hiddden, rnn_activations,
+                                    rnn_hidden, rnn_activations, stoch_n_hidden=[-1],
                                     log=None, weights=None):
 
         self.x = T.tensor3('x', dtype=theano.config.floatX)
-        self.parse_inputs(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                                        det_activations, stoch_activations, log)
+        self.parse_inputs(n_in, n_out, mlp_n_in,
+                          mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
+                          lbn_n_out, det_activations, stoch_activations, stoch_n_hidden,
+                          rnn_hidden, rnn_activations, log)
         self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in, weights, timeseries_layer=True)
 
         self.lbn_input = T.concatenate([bone.output for bone in self.bone_representations] +
@@ -314,7 +323,7 @@ class RecurrentClassifier(Classifier):
                         'det_activations':self.det_activations,
                         'stoch_activations':self.stoch_activations,
                         'stoch_n_hidden': self.stoch_n_hidden,
-                        'input_var':self.lbn.input,
+                        'input_var':self.lbn_input,
                         'layers': None if weights is None else weights['lbnrnn']['lbn']['layers']}
 
         rnn_properties = {'n_in': lbn_properties['n_out'],
@@ -323,25 +332,27 @@ class RecurrentClassifier(Classifier):
                         'activations': self.rnn_activations,
                         'layers': None if weights is None else weights['lbnrnn']['rnn']['layers']}
 
-        self.lbnrnn = LBNRNN_module(lbn_properties, rnn_properties)
+        self.lbnrnn = LBNRNN_module(lbn_properties, rnn_properties, input_var=self.lbn_input)
+
+        self.y = self.lbnrnn.y
+        self.m = self.lbnrnn.lbn.m
         mlp_params = [mlp_i.params for mlp_i in self.bone_representations]
         self.params = [mlp_params, self.lbnrnn.params]
-        self.get_log_likelihood = theano.function(inputs=[self.x, self.lbnrnn.y, self.lbnrnn.m],
+        self.get_log_likelihood = theano.function(inputs=[self.x, self.lbnrnn.y, self.lbnrnn.lbn.m],
                                                 outputs=self.lbnrnn.log_likelihood)
 
-        self.predict = theano.function(inputs=[self.x, self.lbnrnn.m], outputs=self.lbnrnn.output)
+        self.output = self.lbnrnn.output
+        self.predict = theano.function(inputs=[self.x, self.lbnrnn.lbn.m], outputs=self.output)
         self.log.info("Network created with n_in: {0}, mlp_n_hidden: {1}, "
                         "mlp_activation_names: {2}, lbn_n_hidden: {3}, det_activations: {4}, "
                         "stoch_activations: {5}, n_out: {6}".format(
                         self.n_in, self.mlp_n_hidden, self.mlp_activation_names, self.lbn_n_hidden,
                         self.det_activations, self.stoch_activations, self.n_out))
 
-    def get_flat_params(self):
-        flat_params = []
-        return None
-
     def get_cost(self):
-        return None
+        cost = -1./(self.x.shape[0]*self.x.shape[1])*self.lbnrnn.log_likelihood
+
+        return cost
 
 
     def generate_saving_string(self):
@@ -431,40 +442,61 @@ class callBack:
             self.log_likelihoods = []
             self.epochs = []
 
-
-
+    
 def main():
-    n = 7
+    n = 1
+    recurrent = True
+    seq_len = 61
     train_size = 0.8
     x = load_states(n)
     mux = np.mean(x,axis=0)
     stdx = np.std(x,axis=0)
     stdx[stdx==0] = 1.
     x = (x-mux)*1./stdx
-    idx = np.random.permutation(x.shape[0])
-    cols = [1]+list(range(3,x.shape[1]))
+    if recurrent:
+        x = x.reshape(seq_len, -1, x.shape[1])
 
-    x = x[:,cols]
-    x = x[idx]
-    train_bucket = int(np.ceil(x.shape[0]*train_size))
-    x_train = x[:train_bucket]
-    x_test = x[train_bucket:]
+        idx = np.random.permutation(x.shape[1])
+        cols = [1]+list(range(3,x.shape[2]))
+        x = x[:,:,cols]
+        x = x[:,idx,:]
+        train_bucket = int(np.ceil(x.shape[1]*train_size))
+        x_train = x[:,:train_bucket]
+        x_test = x[:,train_bucket:]
+
+    else:
+        idx = np.random.permutation(x.shape[0])
+        cols = [1]+list(range(3,x.shape[1]))
+        x = x[:,cols]
+        x = x[idx]
+        train_bucket = int(np.ceil(x.shape[0]*train_size))
+        x_train = x[:train_bucket]
+        x_test = x[train_bucket:]
 
     y = load_controls(n)
     muy = np.mean(y,axis=0)
     stdy = np.std(y,axis=0)
     stdy[stdy==0] = 1.
     y = (y-muy)*1./stdy
-    y = y[idx,:-2]
-    y_train = y[:train_bucket]
-    y_test = y[train_bucket:]
-    n_in = x.shape[1]
-    n_out = y.shape[1]
+    if recurrent:
+        y = y.reshape(seq_len, -1, y.shape[1])
+        y = y[:,idx,:-2]
+        y_train = y[:train_bucket]
+        y_test = y[train_bucket:]
+        n_in = x.shape[2]
+        n_out = y.shape[2]
+    else:
+        y = y[idx,:-4]
+        y_train = y[:train_bucket]
+        y_test = y[train_bucket:]
+        n_in = x.shape[1]
+        n_out = y.shape[1]
 
     mlp_activation_names = ['sigmoid']
-    lbn_n_hidden = [150, 100, 50]
-    det_activations = ['linear', 'linear','linear', 'linear']
+    lbn_n_hidden = [150, 100]
+    det_activations = ['linear', 'linear','linear']
     stoch_activations = ['sigmoid', 'sigmoid']
+    
     mlp_n_in = 13
     mlp_n_hidden = [10]
     b_size= 100
@@ -477,10 +509,15 @@ def main():
     method={'type':opt_type, 'lr_decay_schedule':'constant', 'lr_decay_parameters':[lr],
             'momentum_type': 'nesterov', 'momentum': 0.01, 'b1': 0.9, 'b2':0.999, 'e':1e-6,
             'learning_rate':lr}
-
-    network_name = "classifier_n_{0}_mlp_hidden_[{1}]_mlp_activation_[{2}]_lbn_n_hidden_[{3}]"\
-                    "_det_activations_[{4}]_stoch_activations_[{5}]_m_{6}_bsize_{7}_method_{8}".\
+    epoch0 = 1
+    rnn_hidden = [50]
+    rnn_activations = ['sigmoid', 'linear']
+    lbn_n_out = 50
+    network_name = "{0}_n_{1}_mlp_hidden_[{2}]_mlp_activation_[{3}]_lbn_n_hidden_[{4}]"\
+                    "_det_activations_[{5}]_stoch_activations_[{6}]_m_{7}_bsize_{8}_method_{9}".\
                                                     format(
+                                                    'recurrentclassifier' if recurrent else 
+                                                                                    'classifier',
                                                     n,
                                                     ','.join(str(e) for e in mlp_n_hidden),
                                                     ','.join(str(e) for e in mlp_activation_names),
@@ -495,17 +532,23 @@ def main():
     fname = '{0}/{1}.json'.format(opath, network_name)
     network_fname = '{0}/networks/{1}'.format(opath, network_name)
     log, session_name = log_init(opath)#, session_name='donette')
-    epoch0 = 1
+    if recurrent:
+        c = RecurrentClassifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names,
+                                lbn_n_hidden,
+                                lbn_n_out, det_activations, stoch_activations,
+                                rnn_hidden, rnn_activations)
+
+    else: 
     #c = Classifier.init_from_file('{0}_epoch_{1}'.format(network_fname, epoch0-1), log=log)
-#
-    c = Classifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                                                           det_activations,
+
+        c = Classifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
+                                                            det_activations,
                                                             stoch_activations, log=log)
 
 
 
-    f = c.fit(x,y,m,n_epochs, b_size, method, fname=fname, epoch0=epoch0,
-                                                                    x_test=x_test, y_test=y_test)
+#    f = c.fit(x,y,m,n_epochs, b_size, method, fname=fname, epoch0=epoch0,
+#                                                                    x_test=x_test, y_test=y_test)
 
 
 if __name__ == '__main__':
