@@ -49,12 +49,12 @@ class HiddenLayer(object):
             self.feedforward_layer()
 
     def feedforward_layer(self):
-        self.a = T.dot(self.input, self.W.T) + b
+        self.a = T.dot(self.input, self.W.T) + self.b
         self.output = self.activation(self.a)
 
     def timeseries_layer(self):
         def step(x):
-            a = T.dot(x, self.W.T)
+            a = T.dot(x, self.W.T) + self.b
             output = self.activation(a)
             return a, output
         [self.a, self.output] = theano.scan(step, sequences=self.input)
