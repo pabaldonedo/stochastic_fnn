@@ -49,7 +49,7 @@ class HiddenLayer(object):
             self.feedforward_layer()
 
     def feedforward_layer(self):
-        self.a = T.dot(self.input, self.W.T)
+        self.a = T.dot(self.input, self.W.T) + b
         self.output = self.activation(self.a)
 
     def timeseries_layer(self):
