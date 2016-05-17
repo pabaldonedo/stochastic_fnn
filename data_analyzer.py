@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cmx
 import matplotlib.colors as colors
 from matplotlib.patches import Polygon
+import os
 
 def load_states(n):
 
@@ -206,6 +207,8 @@ def main():
     x = load_states(n)
     #y = load_controls(n)
     print "DATA LOADED"
+    if not os.path.exists('bone_plots'):
+        os.makedirs('bone_plots')
     #x = np.random.randn(61*20,197)
     bone_features = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'r0', 'r1', 'r2', 'r3', 'wx', 'wy', 'wz']
     names = bone_features*15 +\
@@ -219,6 +222,8 @@ def main():
     # bone_evolution_mean(x, 61,  bone_features, bone_names[:-1], 'bone_plots/sequence_mean')
     #bone_evolution_scatter(x, 61, bone_features, bone_names[:-1], 'bone_plots/sequence_evolution')
     #control_evolution_scatter(y, 61, 'bone_plots/sequence_evolution')
+    if not os.path.exists('bone_plots/bone_scatter'):
+        os.makedirs('bone_plots/bone_scatter')
     bone_scatter(x, bone_features, bone_names, 'bone_plots/bone_scatter')
 
 if __name__ == '__main__':

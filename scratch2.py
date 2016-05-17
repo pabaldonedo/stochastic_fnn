@@ -17,8 +17,10 @@ from lbn import LBN
 from util import load_states
 from util import load_controls
 from util import log_init
+from util import flatten
 
-class Classifier():
+
+class Classifier(object):
 
     def parse_inputs(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                                         det_activations, stoch_activations, log):
@@ -27,7 +29,7 @@ class Classifier():
             logging.basicConfig(level=logging.INFO)
             self.log = logging.getLogger()
 
-        self.x = T.matrix('x', dtype=theano.config.floatX)
+
         assert type(n_in) is IntType, "n_in must be an integer: {0!r}".format(n_in)
         assert type(mlp_n_in) is IntType, "nlp_n_in must be an integer: {0!r}".format(mlp_n_in)
 
@@ -44,11 +46,13 @@ class Classifier():
         assert type(stoch_activations) is ListType, "stoch_activations must be a list: {0!r}".\
                                                                         format(stoch_activations)
 
-
+        self.lbn_n_hidden = lbn_n_hidden
+        self.det_activations = det_activations
+        self.stoch_activations = stoch_activations
         self.n_in = n_in
         self.n_out = n_out
 
-    def set_up_mlp(self, mlp_n_hidden, mlp_activation_names, mlp_n_in, weights):
+    def set_up_mlp(self, mlp_n_hidden, mlp_activation_names, mlp_n_in, weights, timeseries_layer=False):
         self.mlp_n_hidden = mlp_n_hidden
         self.bone_representations = [None]*15
         self.mlp_activation_names = mlp_activation_names
@@ -56,21 +60,26 @@ class Classifier():
         for i in xrange(len(self.bone_representations)):
             if i == 0:
                 bone_mlp = MLPLayer(mlp_n_in-2, self.mlp_n_hidden, self.mlp_activation_names,
-                                            input_var = self.x[:,:mlp_n_in-2],
+                                            input_var = self.x[:,:,:mlp_n_in-2] if timeseries_layer
+                                                                        else self.x[:,:mlp_n_in-2],
                                             layers_info = None if weights is
-                                            None else weights['bone_mlps'][i]['MLPLayer'])
+                                            None else weights['bone_mlps'][i]['MLPLayer'],
+                                            timeseries_network=timeseries_layer)
             else:
                 bone_mlp = MLPLayer(mlp_n_in, self.mlp_n_hidden, self.mlp_activation_names,
-                                            input_var = self.x[:,i*mlp_n_in-2:(i+1)*mlp_n_in-2],
+                                            input_var = self.x[:,:,i*mlp_n_in-2:(i+1)*mlp_n_in-2]
+                                            if timeseries_layer else
+                                                            self.x[:,i*mlp_n_in-2:(i+1)*mlp_n_in-2],
                                             layers_info = None if weights is None else
-                                                                weights['bone_mlps'][i]['MLPLayer'])
+                                                                weights['bone_mlps'][i]['MLPLayer'],
+                                            timeseries_network=timeseries_layer)
             self.bone_representations[i] = bone_mlp
 
 
     def __init__(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                                         det_activations, stoch_activations, log=None, weights=None):
 
-        
+        self.x = T.matrix('x', dtype=theano.config.floatX)
         self.parse_inputs(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                                         det_activations, stoch_activations, log)
 
@@ -78,9 +87,6 @@ class Classifier():
 
         self.lbn_input = T.concatenate([bone.output for bone in self.bone_representations] +
                                                                             [self.x[:,-2:]], axis=1)
-        self.lbn_n_hidden = lbn_n_hidden
-        self.det_activations = det_activations
-        self.stoch_activations = stoch_activations
 
         self.lbn = LBN(len(self.bone_representations)*self.mlp_n_hidden[-1]+2, self.lbn_n_hidden,
                                                         self.n_out,
@@ -92,6 +98,10 @@ class Classifier():
 
         self.get_log_likelihood = theano.function(inputs=[self.x, self.lbn.y, self.lbn.m],
                                                 outputs=self.lbn.log_likelihood)
+
+        
+        mlp_params = [mlp_i.params for mlp_i in self.bone_representations]
+        self.params = [mlp_params, self.lbn.params]
         self.predict = theano.function(inputs=[self.x, self.lbn.m], outputs=self.lbn.output)
         self.log.info("Network created with n_in: {0}, mlp_n_hidden: {1}, "
                         "mlp_activation_names: {2}, lbn_n_hidden: {3}, det_activations: {4}, "
@@ -132,6 +142,10 @@ class Classifier():
         c = callBack(self, save_every, fname, epoch0)
         return c.cback
 
+    def get_cost(self):
+        cost = -1./self.x.shape[0]*self.lbn.log_likelihood
+        return cost
+
     def fit(self, x, y, m, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1,
                                                                         x_test=None, y_test=None):
 
@@ -150,9 +164,9 @@ class Classifier():
 
             test_set_y = theano.shared(np.asarray(y_test,
                                             dtype=theano.config.floatX))
-
-        flat_params = [p for layer in self.lbn.params for p in layer]
-        cost = -1./self.x.shape[0]*self.lbn.log_likelihood
+        
+        flat_params = flatten(self.params)
+        cost = self.get_cost()
         compute_error = theano.function(inputs=[self.x, self.lbn.y], outputs=cost,
                                         givens={self.lbn.m: m})
 
@@ -265,22 +279,35 @@ class Classifier():
 
 class RecurrentClassifier(Classifier):
 
+    def parse_inputs(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
+                     lbn_n_out, det_activations, stoch_activations,
+                     rnn_hidden, rnn_activations, log):
+        super(RecurrentClassifier, self).parse_inputs(n_in, n_out, mlp_n_in, mlp_n_hidden,
+                                                      mlp_activation_names, lbn_n_hidden,
+                                                      det_activations, stoch_activations, log)
+        
+        assert type(lbn_n_out) is IntType, "lbn_n_out must be an integer: {0!r}".format(lbn_n_out)
+        assert type(rnn_hidden) is ListType, "rnn_hidden must be a list: {0!r}".format(rnn_hidden)
+        assert type(rnn_activations) is ListType, "rnn_activations must be a list: {0!r}".format(
+                                                                                rnn_activations)
+        self.lbn_n_out = lbn_n_out
+        self.rnn_hidden = rnn_hidden
+        self.rnn_activations = rnn_activations
+
+
     def __init__(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                                     lbn_n_out, det_activations, stoch_activations,
                                     rnn_hiddden, rnn_activations,
                                     log=None, weights=None):
 
+        self.x = T.tensor3('x', dtype=theano.config.floatX)
         self.parse_inputs(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                                         det_activations, stoch_activations, log)
-        self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in, weights)
+        self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in, weights, timeseries_layer=True)
 
         self.lbn_input = T.concatenate([bone.output for bone in self.bone_representations] +
-                                                                            [self.x[:,-2:]], axis=1)
+                                                                            [self.x[:,:,-2:]], axis=2)
         
-        self.lbn_n_hidden = lbn_n_hidden
-        self.det_activations = det_activations
-        self.stoch_activations = stoch_activations
-        self.rnn_hidden = rnn_hidden
 
         lbn_properties = {'n_in':len(self.bone_representations)*self.mlp_n_hidden[-1]+2,
                         'n_hidden':self.lbn_n_hidden, 'n_out':lbn_n_out,
@@ -297,7 +324,8 @@ class RecurrentClassifier(Classifier):
                         'layers': None if weights is None else weights['lbnrnn']['rnn']['layers']}
 
         self.lbnrnn = LBNRNN_module(lbn_properties, rnn_properties)
-
+        mlp_params = [mlp_i.params for mlp_i in self.bone_representations]
+        self.params = [mlp_params, self.lbnrnn.params]
         self.get_log_likelihood = theano.function(inputs=[self.x, self.lbnrnn.y, self.lbnrnn.m],
                                                 outputs=self.lbnrnn.log_likelihood)
 
@@ -307,6 +335,39 @@ class RecurrentClassifier(Classifier):
                         "stoch_activations: {5}, n_out: {6}".format(
                         self.n_in, self.mlp_n_hidden, self.mlp_activation_names, self.lbn_n_hidden,
                         self.det_activations, self.stoch_activations, self.n_out))
+
+    def get_flat_params(self):
+        flat_params = []
+        return None
+
+    def get_cost(self):
+        return None
+
+
+    def generate_saving_string(self):
+        output_string = "{\"network_properties\":"
+        output_string += json.dumps({"n_in": self.n_in, "n_out": self.n_out,
+                                    "mlp_n_in": self.mlp_n_in, "mlp_n_hidden": self.mlp_n_hidden,
+                                    "mlp_activation_names": self.mlp_activation_names, 
+                                    "lbn_n_hidden": self.lbn_n_hidden,
+                                    "lbn_n_out": self.lbn_n_out,
+                                    "det_activations": self.det_activations,
+                                    "stoch_activations": self.stoch_activations,
+                                    "rnn_hidden": self.rnn_hidden,
+                                    "rnn_activations": self.rnn_activations })
+        output_string += ",\"layers\": {\"bone_mlps\":["
+        for i, bone in enumerate(self.bone_representations):
+            if i > 0:
+                output_string += ","
+            output_string += "{\"MLPLayer\":"
+            output_string += bone.generate_saving_string()
+            output_string += "}"
+        output_string += "]"
+        output_string += ",\"lbnrnn\":"
+        output_string += self.lbnrnn.generate_saving_string()
+        output_string += "}}"
+
+        return output_string
 
 
 class callBack:
@@ -370,6 +431,8 @@ class callBack:
             self.log_likelihoods = []
             self.epochs = []
 
+
+
 def main():
     n = 7
     train_size = 0.8
@@ -392,7 +455,7 @@ def main():
     stdy = np.std(y,axis=0)
     stdy[stdy==0] = 1.
     y = (y-muy)*1./stdy
-    y = y[idx]
+    y = y[idx,:-2]
     y_train = y[:train_bucket]
     y_test = y[train_bucket:]
     n_in = x.shape[1]

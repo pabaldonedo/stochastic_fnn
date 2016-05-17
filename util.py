@@ -85,3 +85,12 @@ def log_init(path, session_name=None):
                         datefmt="%m/%d/%Y %H:%M:%S")
     log = logging.getLogger(session_name)
     return log, session_name
+
+def flatten(alist):
+    t = []
+    for element in alist:
+        if not isinstance(element, list):
+            t.append(element)
+        else:
+            t.extend(flatten(element))
+    return t
