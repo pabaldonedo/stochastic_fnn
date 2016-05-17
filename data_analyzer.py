@@ -187,6 +187,26 @@ def bone_scatter(x,bone_features, bone_names, path):
         plt.savefig('{0}/{1}.png'.format(path, bname))
         print "DONE"
 
+def control_scatter(x, control_names, path):
+
+    fig, ax = plt.subplots(10,10, figsize=(50,50))
+    ax = ax.flatten()     
+    k = 0
+    i = 1
+    for ci, cname in enumerate(control_names):
+        for j, cname2 in enumerate(control_names[ci+1:]):
+            cj = ci+1+j
+            ax[k].scatter(x[:, ci], x[:, cj], color='b')
+            ax[k].set_xlabel(str(cname), fontsize=15)
+            ax[k].set_ylabel(str(cname2), fontsize=15)
+            k += 1
+            if k %100 == 0:
+                plt.savefig('{0}/{1}.png'.format(path, i))
+                i += 1
+                fig, ax = plt.subplots(10,10, figsize=(50,50))
+                ax = ax.flatten()     
+                k = 0
+                    
 
 def control_evolution_scatter(x, seq_len, path):
     
@@ -204,10 +224,12 @@ def control_evolution_scatter(x, seq_len, path):
 def main():
 
     n = 7
-    x = load_states(n)
-    idx = np.random.permutation(x.shape[0])
-    x = x[idx[:80000],:]
-    #y = load_controls(n)
+   # x = load_states(n)
+    #idx = np.random.permutation(x.shape[0])
+   # x = x[idx[:80000],:]
+    y = load_controls(n)
+    idx = np.random.permutation(y.shape[0])
+    y = y[idx[:80000],:-4]
     print "DATA LOADED"
     if not os.path.exists('bone_plots'):
         os.makedirs('bone_plots')
@@ -226,7 +248,15 @@ def main():
     #control_evolution_scatter(y, 61, 'bone_plots/sequence_evolution')
     if not os.path.exists('bone_plots/bone_scatter'):
         os.makedirs('bone_plots/bone_scatter')
-    bone_scatter(x, bone_features, bone_names[:-1], 'bone_plots/bone_scatter')
+   # bone_scatter(x, bone_features, bone_names[:-1], 'bone_plots/bone_scatter')
+    control_names = ['spine1', 'spine2', 'spine3', 'neck1', 'neck2', 'neck3', 'LeftUpLeg1', 'LeftUpLeg2',
+                     'LeftUpLeg3', 'LeftLeg', 'LeftFoot', 'RightUpLeg1', 'RightUpLeg2', 'RightUpLeg3',
+                     'RightLeg', 'RightFoot', 'LeftArm1', 'LeftArm2', 'LeftArm3', 'LeftForeArm',
+                     'LeftHand1', 'LeftHand2', 'LeftHand3', 'RightArm1', 'RightArm2', 'RightArm3',
+                     'RightForeArm', 'RightHand1', 'RightHand2', 'RightHand3']
+    if not os.path.exists('bone_plots/control_scatter'):
+        os.makedirs('bone_plots/control_scatter')
+    control_scatter(y, control_names, 'bone_plots/control_scatter')
 
 if __name__ == '__main__':
     main()

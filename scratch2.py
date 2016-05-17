@@ -444,8 +444,8 @@ class callBack:
 
     
 def main():
-    n = 1
-    recurrent = True
+    n = 7
+    recurrent = False
     seq_len = 61
     train_size = 0.8
     x = load_states(n)
@@ -480,7 +480,7 @@ def main():
     y = (y-muy)*1./stdy
     if recurrent:
         y = y.reshape(seq_len, -1, y.shape[1])
-        y = y[:,idx,:-2]
+        y = y[:,idx,:-4]
         y_train = y[:train_bucket]
         y_test = y[train_bucket:]
         n_in = x.shape[2]
@@ -493,14 +493,14 @@ def main():
         n_out = y.shape[1]
 
     mlp_activation_names = ['sigmoid']
-    lbn_n_hidden = [150, 100]
-    det_activations = ['linear', 'linear','linear']
+    lbn_n_hidden = [150, 100, 50]
+    det_activations = ['linear', 'linear','linear', 'linear']
     stoch_activations = ['sigmoid', 'sigmoid']
     
     mlp_n_in = 13
     mlp_n_hidden = [10]
     b_size= 100
-    n_epochs = 100
+    n_epochs = 5
     lr = .05
     save_every = 1
     m = 10
@@ -547,8 +547,8 @@ def main():
 
 
 
-#    f = c.fit(x,y,m,n_epochs, b_size, method, fname=fname, epoch0=epoch0,
-#                                                                    x_test=x_test, y_test=y_test)
+    f = c.fit(x,y,m,n_epochs, b_size, method, fname=fname, epoch0=epoch0,
+                                                                    x_test=x_test, y_test=y_test)
 
 
 if __name__ == '__main__':
