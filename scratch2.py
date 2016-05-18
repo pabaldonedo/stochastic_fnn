@@ -387,6 +387,7 @@ class callBack:
 
         self.epoch0 = epoch0
         self.log_likelihoods = []
+        self.test_log_likelihoods = []
         self.epochs = []
         self.classifier = classifier
 
@@ -413,6 +414,7 @@ class callBack:
                     f.write('{0},{1}\n'.format(e, l))
             if test_like is not None:
                 test_fname = os.path.splitext(os.path.basename(fname))
+
                 with open('{0}_test.csv'.format(test_fname), 'a') as f:
                     for e, l in zip(epochs, test_like):
                         f.write('{0},{1}\n'.format(e, l))                
@@ -420,27 +422,37 @@ class callBack:
 
         self.save_likelihood = save_likelihood
 
-    def cback(self, epoch, n_samples, train_error=None, opt_parameters=None, test_error=None):
+    def cback(self, epoch, n_samples, train_error=None, opt_parameters=None, test_error=None,
+                                                                                n_test=None):
         log_likelihood = -n_samples*train_error
         if test_error is None:
+
             self.classifier.log.info("epoch: {0} train_error: {1}, log_likelihood: {2} with" \
                                 "options: {3}.".format(epoch+self.epoch0, train_error,
                                                                     log_likelihood, opt_parameters))
+        
         else:
+            test_log_likelihood = -n_test*test_error
             self.classifier.log.info("epoch: {0} train_error: {1}, test_error: {2} "\
-                                "log_likelihood: {3} with options: {4}.".format(
-                                                                    epoch+self.epoch0, train_error,
-                                                                    test_error,
-                                                                    log_likelihood, opt_parameters))
-
+                                    "log_likelihood: {3}, test_log_likelihood: {4}, "\
+                                    "with options: {5}.".format(
+                                                                epoch+self.epoch0, train_error,
+                                                                test_error,
+                                                                log_likelihood,
+                                                                test_log_likelihood,
+                                                                opt_parameters))
+            self.test_log_likelihoods.append(test_log_likelihood)
 
         self.epochs.append(epoch+self.epoch0)
         self.log_likelihoods.append(log_likelihood)
         if epoch % self.save_every == 0 and self.fname is not None:
             self.classifier.save_network("{0}_epoch_{1}.json".format(self.fname, epoch+self.epoch0))
-            self.save_likelihood(self.epochs, self.log_likelihoods)
+            self.save_likelihood(self.epochs, self.log_likelihoods, test_like=None if test_error is
+                                                                None else self.test_log_likelihoods)
             self.log_likelihoods = []
             self.epochs = []
+            if test_error is not None:
+                self.test_log_likelihoods = []
 
     
 def main():
@@ -500,16 +512,16 @@ def main():
     mlp_n_in = 13
     mlp_n_hidden = [10]
     b_size= 100
-    n_epochs = 5
+    n_epochs = 50
     lr = .05
     save_every = 1
-    m = 10
+    m = 20
     opt_type = 'SGD'
 
     method={'type':opt_type, 'lr_decay_schedule':'constant', 'lr_decay_parameters':[lr],
             'momentum_type': 'nesterov', 'momentum': 0.01, 'b1': 0.9, 'b2':0.999, 'e':1e-6,
             'learning_rate':lr}
-    epoch0 = 1
+    epoch0 = 6
     rnn_hidden = [50]
     rnn_activations = ['sigmoid', 'linear']
     lbn_n_out = 50
@@ -529,9 +541,9 @@ def main():
     opath = "network_output/{0}".format(network_name)
     if not os.path.exists(opath):
         os.makedirs(opath)
-    fname = '{0}/{1}.json'.format(opath, network_name)
+    fname = '{0}/{1}'.format(opath, network_name)
     network_fname = '{0}/networks/{1}'.format(opath, network_name)
-    log, session_name = log_init(opath)#, session_name='donette')
+    log, session_name = log_init(opath, session_name='mason')
     if recurrent:
         c = RecurrentClassifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names,
                                 lbn_n_hidden,
@@ -539,11 +551,11 @@ def main():
                                 rnn_hidden, rnn_activations)
 
     else: 
-    #c = Classifier.init_from_file('{0}_epoch_{1}'.format(network_fname, epoch0-1), log=log)
+        c = Classifier.init_from_file('{0}_epoch_{1}.json'.format(network_fname, epoch0-1), log=log)
 
-        c = Classifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                                                            det_activations,
-                                                            stoch_activations, log=log)
+        #c = Classifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
+        #                                                    det_activations,
+        #                                                    stoch_activations, log=log)
 
 
 

@@ -141,11 +141,14 @@ class DetHiddenLayer(object):
             )
             if activation == theano.tensor.nnet.sigmoid:
                 W_values *= 4
-
+        else:
+            W_values = np.asarray(W_values, dtype=theano.config.floatX)
         W = theano.shared(value=W_values, name='W', borrow=True)
 
         if b_values is None:
             b_values = np.zeros((n_out,), dtype=theano.config.floatX)
+        else:
+            b_values = np.asarray(b_values, dtype=theano.config.floatX)
         if no_bias is False:
             b = theano.shared(value=b_values, name='b', borrow=True)
 

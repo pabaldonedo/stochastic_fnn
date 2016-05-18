@@ -84,12 +84,13 @@ class GradientBased(Optimizer):
 
         gtheta = [None]*len(theta)
         updates = []
-        self.it = theano.shared(np.asarray(1., dtype=theano.config.floatX))#floatX(0.))
-        i_t = self.it + 1.
+        self.it = theano.shared(np.asarray(1., dtype=theano.config.floatX))
+        i_t = self.it +np.asarray(1., dtype=theano.config.floatX)
         updates.append((self.it, i_t))
         for i, th in enumerate(theta):
             gtheta[i] = T.grad(cost, th)
             updates += self.get_updates(th, gtheta=gtheta[i])#[(th, th - 0.1*gtheta[i])]#
+        
         
         #Variables to keep track of the error while training
         train_error_evolution = []
@@ -131,7 +132,8 @@ class GradientBased(Optimizer):
 
                 call_back(epoch, self.n_train, train_error=this_train_loss,
                                                                 opt_parameters=self.opt_parameters,
-                                                                test_error=this_test_loss)
+                                                                test_error=this_test_loss,
+                                                                n_test=self.n_test)
             else:
                 call_back(epoch, self.n_train, train_error=this_train_loss,
                                                                 opt_parameters=self.opt_parameters)
