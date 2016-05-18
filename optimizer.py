@@ -40,7 +40,7 @@ class Optimizer():
         # compute number of minibatches for training
         # note that cases are the second dimension, not the first
         self.n_train = train_set_x.get_value(borrow=True).shape[0]
-        self.n_train_batches = int(np.ceil(1.0 * self.n_train / batch_size))
+
         if test_set_x is not None:
             self.n_test = test_set_x.get_value(borrow=True).shape[0]
             self.n_test_batches = int(np.ceil(1.0 * self.n_test / batch_size))
@@ -54,17 +54,13 @@ class GradientBased(Optimizer):
     def get_updates(self, theta, cost=None, gtheta=None):
         raise NotImplementedError
 
-    def fit(self, x, y, train_set_x, train_set_y, batch_size, cost, theta, n_epochs,
-                            compute_error, call_back, test_set_x=None, test_set_y=None,
-                            validate_every=1, extra_train_givens={}):
+    def fit(self, x, y, x_train, y_train, batch_size, cost, theta, n_epochs,
+                            compute_error, call_back, x_test=None, y_test=None,
+                            validate_every=1, extra_train_givens={}, chunk_size=None):
         """Performs the optimization using a Gradient Based algorithm.
 
         :param x: theano input variable of the rnn.
         :param y: theano output variable of the rnn.
-        :param train_set_x: Theano shared variable set to training set matrix.
-                            Dimensions: sequence length x #training samples x input dimensionality.
-        :param train_set_y: Theano shared variable set to objective matrix.
-                            Dimensions:sequence length x #training samples x output dimensionality.
         :param batch_size: integer #samples used per batch.
         :param cost: theano variable equals to the cost of the rnn.
         :param theta: List containing the parametsr.
@@ -76,7 +72,31 @@ class GradientBased(Optimizer):
         :param validate_every: telling every how many epochs the fit functions reports to the
                                call_back function. It can be a float.
         """
+        if chunk_size is None:
+            n_chunks = 1
+            chunk_size = x_train.shape[0]
 
+
+            train_set_x = theano.shared(np.asarray(x_train,
+                                        dtype=theano.config.floatX))
+
+            train_set_y = theano.shared(np.asarray(y_train,
+                                        dtype=theano.config.floatX))
+        
+        n_chunks = int(np.ceil(x_train.shape[0]*1./chunk_size))
+        x_train = np.asarray(x_train, dtype=theano.config.floatX)
+        y_train = np.asarray(y_train, dtype=theano.config.floatX)
+        train_set_x = theano.shared(x_train[:chunk_size])
+        train_set_y = theano.shared(y_train[:chunk_size])
+        if x_test is not None and y_test is not None:
+            
+            test_set_x = theano.shared(np.asarray(x_test[:chunk_size],
+                                            dtype=theano.config.floatX))
+
+            test_set_y = theano.shared(np.asarray(y_test[:chunk_size],
+                                            dtype=theano.config.floatX))
+        
+        
         self.test_availavility = test_set_x is not None
         #Setting up indicator variables for looping along batches
 
@@ -113,17 +133,23 @@ class GradientBased(Optimizer):
             givens=givens_default_values,
             on_unused_input='warn')
         epoch = 0
+        print "n_chunks"
+        print n_chunks
+        while epoch < n_epochs:
+            for chunk in xrange(n_chunks):
+                this_chunk_size = train_set_x.get_value().shape[0]
+                n_train_batches = int(np.ceil(1.0 * this_chunk_size / batch_size))
+                for minibatch_idx in xrange(n_train_batches):
 
-        while (epoch < n_epochs):
-            for minibatch_idx in xrange(self.n_train_batches):
+                    if 'lr' in self.opt_parameters.keys():
+                        minibatch_avg_cost, l_r = train_model(minibatch_idx, this_chunk_size)
+                        self.opt_parameters['lr'] = l_r
+                    else: 
+                        minibatch_avg_cost = train_model(minibatch_idx, this_chunk_size)
+                if chunk < n_chunks - 1:
+                    train_set_x.set_value(x_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_train.shape[0])])
+                    train_set_y.set_value(y_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, y_train.shape[0])])
 
-                if 'lr' in self.opt_parameters.keys():
-                    minibatch_avg_cost, l_r = train_model(minibatch_idx, self.n_train)
-                    self.opt_parameters['lr'] = l_r
-                else: 
-                    minibatch_avg_cost = train_model(minibatch_idx, self.n_train)
-
-                
             this_train_loss = compute_error(train_set_x.eval(), train_set_y.eval())
             train_error_evolution.append((epoch, this_train_loss))
             if self.test_availavility:

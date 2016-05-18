@@ -405,7 +405,8 @@ class LBN:
                                                                         layers_info=None,
                                                                         timeseries_network=False,
                                                                         log=None,
-                                                                        input_var=None):
+                                                                        input_var=None,
+                                                                        precision=1.):
         """
         :type n_in: int.
         :param n_in: input dimensionality of the network.
@@ -432,6 +433,10 @@ class LBN:
 
         :type layers_info: dict or None.
         :param layers_info: used when loading network from file.
+
+        :type precision: float or int.
+        :param precision: in the Gaussian Mixture Model the value of precison diagonal matrix:
+                         tau= precisoin * diag()
         """
         if input_var is None:
             if timeseries_network:
@@ -471,9 +476,10 @@ class LBN:
                 "len(stoch_n_hidden) must be len(stoch_activations) -1 or stoch_n_hidden = [-1]."\
                 " stoch_n_hidden = {0!r} and stoch_activations = {1!r}".format(stoch_n_hidden,
                                                                                 stoch_activations)
-        
+        assert type(precision) is IntType or FloatType, "precision must be int or float: {0!r}".\
+                                                                                format(precision)
         self.parse_properties(n_in, n_hidden, n_out, det_activations, stoch_activations,
-                                                                                    stoch_n_hidden)
+                                                                        stoch_n_hidden, precision)
         self.log.info('LBN Network created with n_in: {0}, n_hidden: {1}, n_out: {2}, '
                         'det_activations: {3}, stoch_activations: {4}, stoch_n_hidden: {5}'.format(
                         self.n_in, self.n_hidden, self.n_out, self.det_activation_names,
@@ -482,7 +488,7 @@ class LBN:
         self.define_network(layers_info=layers_info)
 
     def parse_properties(self, n_in, n_hidden, n_out, det_activations, stoch_activations,
-                                                                        stoch_n_hidden):
+                                                                        stoch_n_hidden, precision):
         self.n_hidden = np.array(n_hidden)
         self.n_out = n_out
         self.n_in = n_in
@@ -491,6 +497,7 @@ class LBN:
         self.det_activation, self.det_activation_prime = parse_activations(det_activations)
         self.stoch_activation_names = stoch_activations 
         self.stoch_activation, self.stoch_activation_prime = parse_activations(stoch_activations)    
+        self.precision = np.asarray(precision, dtype=theano.config.floatX)
 
     def define_network(self, layers_info=None):
         """
@@ -566,24 +573,21 @@ class LBN:
         self.params.append(self.output_layer.params)
         self.output = self.output_layer.output
         self.predict = theano.function(inputs=[self.x, self.m], outputs=self.output)
-
         if not self.timeseries_network:
-            exp_value = -0.5*T.sum((self.output - self.y.dimshuffle('x',0,1))**2, axis=2)
+            exp_value = -0.5*T.sum((self.output - self.y.dimshuffle('x',0,1))**2, axis=2)*self.precision
             max_exp_value = theano.ifelse.ifelse(T.lt(T.max(exp_value), -1*T.min(exp_value)),
-                                                                T.max(exp_value), T.min(exp_value))
-     
-            self.log_likelihood = T.sum(T.log(T.sum(T.exp(exp_value - max_exp_value), axis=0)) +
-                                                                                    max_exp_value)-\
-                                self.y.shape[0]*(T.log(self.m)+self.y.shape[1]/2.*T.log(2*np.pi))
+                                                                T.min(exp_value), T.max(exp_value))
             
-
-
+            self.log_likelihood = T.sum(T.log(T.sum(T.exp(exp_value - max_exp_value), axis=0)) +
+                                                                                    max_exp_value)#-\
+                               # self.y.shape[0]*(T.log(self.m)+self.y.shape[1]/2.*T.log(2*np.pi))
 
         else:
-            exp_value = -0.5*T.sum((self.output - self.y.dimshuffle(0, 'x',1, 2))**2, axis=3)
+            exp_value = -0.5*T.sum((self.output - self.y.dimshuffle(0, 'x',1, 2))**2, axis=3)*self.precision
             max_exp_value = theano.ifelse.ifelse(T.lt(T.max(exp_value), -1*T.min(exp_value)),
                                                                 T.max(exp_value), T.min(exp_value))
-            self.debugger = (self.output - self.y.dimshuffle(0, 'x',1, 2))**2
+            
+           
             self.log_likelihood = T.sum(T.log(T.sum(T.exp(exp_value - max_exp_value), axis=1)) +
                                                                                  max_exp_value)
         
@@ -609,7 +613,7 @@ class LBN:
         # Note that the last batch may be a smaller size
         # So we keep around the effective_batch_size (whose last element may
         # be smaller than the rest)
-        # And weight the reported error by the batch_size when we average
+        # And weight the reported error by the batch_size when we avrage
         # Also, by keeping batch_start and batch_stop as symbolic variables,
         # we make the theano function easier to read
         self.batch_start = self.index * batch_size
@@ -657,7 +661,7 @@ class LBN:
         train_set_y = theano.shared(np.asarray(y,
                                             dtype=theano.config.floatX))
 
-
+        print "SHARE"
         self.fiting_variables(batch_size, train_set_x, train_set_y)
 
         flat_params = [p for layer in self.params for p in layer]
@@ -687,6 +691,7 @@ class LBN:
         for e in xrange(epoch0,epochs+epoch0):
             for minibatch_idx in xrange(self.n_train_batches):
                 minibatch_likelihood = self.train_model(minibatch_idx, self.n_train)
+
             log_likelihood.append(self.get_log_likelihood(x,y,m))
 
             epoch_message = "Epoch {0} log likelihood: {1}".format(e, log_likelihood[-1])
@@ -702,8 +707,6 @@ class LBN:
                                             log_likelihood[e-epoch0-save_every+1:e-epoch0+1]):
                             f.write('{0},{1}\n'.format(e-save_every+i+1, l))
 
-        plt.plot(np.arange(epochs),np.array(log_likelihood))
-        plt.savefig('{0}_likelihood_evolution.png')
 
     def generate_saving_string(self):
         
@@ -713,7 +716,9 @@ class LBN:
                 "det_activations":self.det_activation_names,
                 "stoch_activations":self.stoch_activation_names,
                 "stoch_n_hidden":[sh.tolist() for sh in self.stoch_n_hidden],
-                "timeseries_network":self.timeseries_network})
+                "timeseries_network":self.timeseries_network,
+                "precision":self.precision.tolist()})
+
         output_string += ",\"layers\":{\"hidden_layers\":["
         for k, l in enumerate(self.hidden_layers):
             det = l.det_layer
@@ -797,7 +802,9 @@ class LBN:
                         network_properties['stoch_activations'],
                         network_properties['stoch_n_hidden'],
                         layers_info=network_description['layers'],
-                        log=log, session_name=session_name)
+                        log=log, session_name=session_name,
+                        precision=1 if 'precision' not in network_properties.keys() else
+                                                            network_properties['precision'])
 
         loaded_lbn.log.info('LBN Network loaded from file: {0}.'.format(fname))
 

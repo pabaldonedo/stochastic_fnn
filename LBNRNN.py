@@ -23,7 +23,10 @@ class LBNRNN_module(object):
                                                     timeseries_network=True,
                                                     layers_info=lbn_properties['layers']
                                                     if 'layers' in lbn_properties.keys() else None,
-                                                    input_var=input_var)
+                                                    input_var=input_var,
+                                                    precision=1 if 'precision' not in
+                                                                        lbn_properties.keys() else
+                                                                        lbn_properties['precision'])
 
         if input_var is None:
             self.x = self.lbn.x

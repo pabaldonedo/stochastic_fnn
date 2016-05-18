@@ -24,7 +24,7 @@ from util import flatten
 class Classifier(object):
 
     def parse_inputs(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                                        det_activations, stoch_activations, stoch_n_hidden, log):
+                             det_activations, stoch_activations, stoch_n_hidden, log, lbn_precision):
         self.log = log
         if self.log is None:
             logging.basicConfig(level=logging.INFO)
@@ -54,6 +54,7 @@ class Classifier(object):
         self.stoch_activations = stoch_activations
         self.n_in = n_in
         self.stoch_n_hidden = stoch_n_hidden
+        self.lbn_precision = lbn_precision
         self.n_out = n_out
 
     def set_up_mlp(self, mlp_n_hidden, mlp_activation_names, mlp_n_in, weights, timeseries_layer=False):
@@ -81,11 +82,12 @@ class Classifier(object):
 
 
     def __init__(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                 det_activations, stoch_activations, stoch_n_hidden=[-1], log=None, weights=None):
+                 det_activations, stoch_activations, stoch_n_hidden=[-1], log=None, weights=None,
+                 lbn_precision=1):
 
         self.x = T.matrix('x', dtype=theano.config.floatX)
         self.parse_inputs(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                                        det_activations, stoch_activations, stoch_n_hidden, log)
+                            det_activations, stoch_activations, stoch_n_hidden, log, lbn_precision)
 
         self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in, weights)
 
@@ -98,7 +100,8 @@ class Classifier(object):
                                                         self.stoch_activations,
                                                         input_var=self.lbn_input,
                                                         layers_info=None if weights is None else
-                                                                        weights['lbn']['layers'])
+                                                                        weights['lbn']['layers'],
+                                                        precision=self.lbn_precision)
 
         self.y = self.lbn.y
         self.m = self.lbn.m
@@ -153,24 +156,11 @@ class Classifier(object):
         return cost
 
     def fit(self, x, y, m, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1,
-                                                                        x_test=None, y_test=None):
-
+                                            x_test=None, y_test=None, chunk_size=None):
         l = self.get_log_likelihood(x,y,m)
         self.log.info("log_likelihood {0} and mean: {1}".format(l, l*1./x.shape[0]))
         self.log.info("Number of samples: {0}:".format(x.shape[0]))
-        train_set_x = theano.shared(np.asarray(x,
-                                        dtype=theano.config.floatX))
 
-        train_set_y = theano.shared(np.asarray(y,
-                                        dtype=theano.config.floatX))
-
-        if x_test is not None and y_test is not None:
-            test_set_x = theano.shared(np.asarray(x_test,
-                                            dtype=theano.config.floatX))
-
-            test_set_y = theano.shared(np.asarray(y_test,
-                                            dtype=theano.config.floatX))
-        
         flat_params = flatten(self.params)
         cost = self.get_cost()
         compute_error = theano.function(inputs=[self.x, self.y], outputs=cost,
@@ -197,10 +187,11 @@ class Classifier(object):
         self.log.info("Fit starts with epochs: {0}, batch size: {1}, method: {2}".format(
                                                                         n_epochs, b_size, method))
 
-        opt.fit(self.x, self.y, train_set_x, train_set_y, b_size, cost, flat_params, n_epochs,
+        opt.fit(self.x, self.y, x, y, b_size, cost, flat_params, n_epochs,
                                     compute_error, self.get_call_back(save_every, fname, epoch0),
                                     extra_train_givens={self.m:m},
-                                    test_set_x=test_set_x, test_set_y=test_set_y)
+                                    x_test=x_test, y_test=y_test,
+                                    chunk_size=chunk_size)
 
         """
         self.fiting_variables(b_size, train_set_x, train_set_y)
@@ -277,7 +268,10 @@ class Classifier(object):
                                 network_properties['det_activations'],
                                 network_properties['stoch_activations'],
                                 log=log,
-                                weights=network_description['layers'])
+                                weights=network_description['layers'],
+                                lbn_precision=1 if 'precision' not in
+                                                        network_properties['lbn_precision'] else
+                                                        network_properties['lbn_precision'])
 
         return loaded_classifier
 
@@ -503,7 +497,7 @@ def main():
         y_test = y[train_bucket:]
         n_in = x.shape[1]
         n_out = y.shape[1]
-
+    print "LOADED"
     mlp_activation_names = ['sigmoid']
     lbn_n_hidden = [150, 100, 50]
     det_activations = ['linear', 'linear','linear', 'linear']
@@ -512,19 +506,21 @@ def main():
     mlp_n_in = 13
     mlp_n_hidden = [10]
     b_size= 100
-    n_epochs = 50
+    n_epochs = 5
     lr = .05
     save_every = 1
-    m = 20
+    m = 10
     opt_type = 'SGD'
 
     method={'type':opt_type, 'lr_decay_schedule':'constant', 'lr_decay_parameters':[lr],
             'momentum_type': 'nesterov', 'momentum': 0.01, 'b1': 0.9, 'b2':0.999, 'e':1e-6,
             'learning_rate':lr}
-    epoch0 = 6
+    epoch0 = 1
     rnn_hidden = [50]
     rnn_activations = ['sigmoid', 'linear']
     lbn_n_out = 50
+    lbn_precision=0.01
+    chunk_size = 5000
     network_name = "{0}_n_{1}_mlp_hidden_[{2}]_mlp_activation_[{3}]_lbn_n_hidden_[{4}]"\
                     "_det_activations_[{5}]_stoch_activations_[{6}]_m_{7}_bsize_{8}_method_{9}".\
                                                     format(
@@ -543,7 +539,7 @@ def main():
         os.makedirs(opath)
     fname = '{0}/{1}'.format(opath, network_name)
     network_fname = '{0}/networks/{1}'.format(opath, network_name)
-    log, session_name = log_init(opath, session_name='mason')
+    log, session_name = log_init(opath)#, session_name='mason')
     if recurrent:
         c = RecurrentClassifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names,
                                 lbn_n_hidden,
@@ -551,16 +547,16 @@ def main():
                                 rnn_hidden, rnn_activations)
 
     else: 
-        c = Classifier.init_from_file('{0}_epoch_{1}.json'.format(network_fname, epoch0-1), log=log)
+       # c = Classifier.init_from_file('{0}_epoch_{1}.json'.format(network_fname, epoch0-1), log=log)
 
-        #c = Classifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-        #                                                    det_activations,
-        #                                                    stoch_activations, log=log)
+        c = Classifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
+                                                            det_activations,
+                                                            stoch_activations, log=log,
+                                                            lbn_precision=lbn_precision)
 
 
-
-    f = c.fit(x,y,m,n_epochs, b_size, method, fname=fname, epoch0=epoch0,
-                                                                    x_test=x_test, y_test=y_test)
+    f = c.fit(x_train, y_train,m,n_epochs, b_size, method, fname=fname, epoch0=epoch0,
+                                    x_test=x_test, y_test=y_test, chunk_size=chunk_size)
 
 
 if __name__ == '__main__':
