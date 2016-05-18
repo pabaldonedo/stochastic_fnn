@@ -51,7 +51,8 @@ class LBNOutputLayer(object):
             )
             if activation == theano.tensor.nnet.sigmoid:
                 V_values *= 4
-
+        else:
+            V_values = np.asarray(v_values, dtype=theano.config.floatX)
         V = theano.shared(value=V_values, name='V', borrow=True)
         self.n_in = n_in
         self.n_out = n_out
