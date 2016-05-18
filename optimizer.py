@@ -133,8 +133,7 @@ class GradientBased(Optimizer):
             givens=givens_default_values,
             on_unused_input='warn')
         epoch = 0
-        print "n_chunks"
-        print n_chunks
+
         while epoch < n_epochs:
             for chunk in xrange(n_chunks):
                 this_chunk_size = train_set_x.get_value().shape[0]
