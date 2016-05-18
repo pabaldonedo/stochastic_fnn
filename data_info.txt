@@ -1,0 +1,29 @@
+States -x- 197 dimensions
+15 bones
+each bone:  (position[3],velocity[3],rotation[4],angular_velocity[3])
+position is relative to the hip bone. Therefore in hip bone we have (0, global-y, 0).
+Last 2 values:
+-Left foot is in contact with the ground
+-Right foot is in contact with the ground
+
+
+Controls -y- 34 dimensions
+
+⦁    Spine 3
+⦁    Neck 3
+⦁    LeftUpLeg 3
+⦁    LeftLeg 1
+⦁    LeftFoot 1
+⦁    RightUpLeg 3
+⦁    RightLeg 1
+⦁    RightFoot 1
+⦁    Left Arm 3
+⦁    LeftForeArm 1
+⦁    LeftHand 3
+⦁    RightArm 3
+⦁    RightForeArm 1
+⦁    RightHand 3
+⦁    LEGS Force_max 1
+⦁    TORSO Force_max 1
+⦁    LEFTARM Force_max 1
+⦁    RIGHTARM Force_max 1
