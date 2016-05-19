@@ -1,0 +1,4 @@
+05/19/2016 10:51:56 Optimizer.py test_set bug when not available.
+05/19/2016 10:54:42 Write this bitacora
+05/19/2016 11:13:44 Scratch2 trying to compute log likelihood of entire dataset -> Memory crash
+05/19/2016 11:23:36 Optimizer memory efficient computation of train log likelihood

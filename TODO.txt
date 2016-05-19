@@ -6,4 +6,4 @@ fit optimizer for RNN with chunk memory
 fit optimizer test dataset with more than one chunk
 fit optimizer REPORTING ONLY LIKELIHOOD OF CHUNK
 LOG LIKELIHOOD NOT saving in folder??
-MEMORY paging NOT WORKING
+TEST LOG LIKELIHOOD Memory efficient
