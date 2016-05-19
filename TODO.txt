@@ -7,3 +7,4 @@ fit optimizer test dataset with more than one chunk
 fit optimizer REPORTING ONLY LIKELIHOOD OF CHUNK
 LOG LIKELIHOOD NOT saving in folder??
 TEST LOG LIKELIHOOD Memory efficient
+Reported Log Likelihood INCORRECTLY

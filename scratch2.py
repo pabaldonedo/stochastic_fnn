@@ -157,8 +157,8 @@ class Classifier(object):
 
     def fit(self, x, y, m, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1,
                                             x_test=None, y_test=None, chunk_size=None):
-        l = self.get_log_likelihood(x,y,m)
-        self.log.info("log_likelihood {0} and mean: {1}".format(l, l*1./x.shape[0]))
+        #l = self.get_log_likelihood(x,y,m)
+        #self.log.info("log_likelihood {0} and mean: {1}".format(l, l*1./x.shape[0]))
         self.log.info("Number of samples: {0}:".format(x.shape[0]))
 
         flat_params = flatten(self.params)
@@ -380,7 +380,7 @@ class callBack:
 
 
         self.epoch0 = epoch0
-        self.log_likelihoods = []
+        self.train_log_likelihoods = []
         self.test_log_likelihoods = []
         self.epochs = []
         self.classifier = classifier
@@ -416,14 +416,14 @@ class callBack:
 
         self.save_likelihood = save_likelihood
 
-    def cback(self, epoch, n_samples, train_error=None, opt_parameters=None, test_error=None,
-                                                                                n_test=None):
-        log_likelihood = -n_samples*train_error
+    def cback(self, epoch, n_samples, train_log_likelihood=None, opt_parameters=None,
+                                                                test_error=None, n_test=None):
+        train_error = -train_log_likelihood*1./n_samples
         if test_error is None:
 
             self.classifier.log.info("epoch: {0} train_error: {1}, log_likelihood: {2} with" \
                                 "options: {3}.".format(epoch+self.epoch0, train_error,
-                                                                    log_likelihood, opt_parameters))
+                                                      train_log_likelihood, opt_parameters))
         
         else:
             test_log_likelihood = -n_test*test_error
@@ -432,25 +432,25 @@ class callBack:
                                     "with options: {5}.".format(
                                                                 epoch+self.epoch0, train_error,
                                                                 test_error,
-                                                                log_likelihood,
+                                                                train_log_likelihood,
                                                                 test_log_likelihood,
                                                                 opt_parameters))
             self.test_log_likelihoods.append(test_log_likelihood)
 
         self.epochs.append(epoch+self.epoch0)
-        self.log_likelihoods.append(log_likelihood)
+        self.train_log_likelihoods.append(train_log_likelihood)
         if epoch % self.save_every == 0 and self.fname is not None:
             self.classifier.save_network("{0}_epoch_{1}.json".format(self.fname, epoch+self.epoch0))
-            self.save_likelihood(self.epochs, self.log_likelihoods, test_like=None if test_error is
+            self.save_likelihood(self.epochs, self.train_log_likelihoods, test_like=None if test_error is
                                                                 None else self.test_log_likelihoods)
-            self.log_likelihoods = []
+            self.train_log_likelihoods = []
             self.epochs = []
             if test_error is not None:
                 self.test_log_likelihoods = []
 
     
 def main():
-    n = 7
+    n = 1
     recurrent = False
     seq_len = 61
     train_size = 0.8
@@ -497,16 +497,15 @@ def main():
         y_test = y[train_bucket:]
         n_in = x.shape[1]
         n_out = y.shape[1]
-    print "LOADED"
     mlp_activation_names = ['sigmoid']
-    lbn_n_hidden = [150, 100, 50]
-    det_activations = ['linear', 'linear','linear', 'linear']
+    lbn_n_hidden =  [150, 100, 50]
+    det_activations = ['linear', 'linear', 'linear', 'linear']
     stoch_activations = ['sigmoid', 'sigmoid']
     
     mlp_n_in = 13
     mlp_n_hidden = [10]
     b_size= 100
-    n_epochs = 5
+    n_epochs = 100
     lr = .05
     save_every = 1
     m = 10

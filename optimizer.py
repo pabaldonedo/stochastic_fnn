@@ -82,7 +82,6 @@ class GradientBased(Optimizer):
 
             train_set_y = theano.shared(np.asarray(y_train,
                                         dtype=theano.config.floatX))
-        
         n_chunks = int(np.ceil(x_train.shape[0]*1./chunk_size))
         x_train = np.asarray(x_train, dtype=theano.config.floatX)
         y_train = np.asarray(y_train, dtype=theano.config.floatX)
@@ -96,7 +95,9 @@ class GradientBased(Optimizer):
             test_set_y = theano.shared(np.asarray(y_test[:chunk_size],
                                             dtype=theano.config.floatX))
         
-        
+        else:
+            test_set_x = None
+            test_set_y = None
         self.test_availavility = test_set_x is not None
         #Setting up indicator variables for looping along batches
 
@@ -123,9 +124,9 @@ class GradientBased(Optimizer):
                     y: train_set_y[self.batch_start:self.batch_stop]}
         givens_default_values.update(extra_train_givens)
 
-        outputs = cost
+        outputs = [cost, self.batch_stop-self.batch_start]
         if 'lr' in self.opt_parameters.keys():
-            outputs = [cost, self.opt_parameters['lr']]
+            outputs = [cost, self.batch_stop-self.batch_start, self.opt_parameters['lr']]
 
         train_model = theano.function(inputs=[self.index, self.n_ex],
             outputs=outputs,
@@ -135,32 +136,39 @@ class GradientBased(Optimizer):
         epoch = 0
 
         while epoch < n_epochs:
+            data_log_likelihood = 0
             for chunk in xrange(n_chunks):
                 this_chunk_size = train_set_x.get_value().shape[0]
                 n_train_batches = int(np.ceil(1.0 * this_chunk_size / batch_size))
+            
                 for minibatch_idx in xrange(n_train_batches):
 
                     if 'lr' in self.opt_parameters.keys():
-                        minibatch_avg_cost, l_r = train_model(minibatch_idx, this_chunk_size)
+                        minibatch_avg_cost, this_batch_size, l_r = train_model(minibatch_idx, this_chunk_size)
                         self.opt_parameters['lr'] = l_r
                     else: 
-                        minibatch_avg_cost = train_model(minibatch_idx, this_chunk_size)
+                        minibatch_avg_cost, this_batch_size = train_model(minibatch_idx, this_chunk_size)
+                    data_log_likelihood += minibatch_avg_cost*this_batch_size
+                
                 if chunk < n_chunks - 1:
                     train_set_x.set_value(x_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_train.shape[0])])
                     train_set_y.set_value(y_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, y_train.shape[0])])
+        
 
-            this_train_loss = compute_error(train_set_x.eval(), train_set_y.eval())
-            train_error_evolution.append((epoch, this_train_loss))
+            #this_train_loss = compute_error(train_set_x.eval(), train_set_y.eval())
+            data_log_likelihood *= -1
+            train_error_evolution.append((epoch, data_log_likelihood))
+            #TODO Memory optimize this if xontent
             if self.test_availavility:
                 this_test_loss = compute_error(test_set_x.eval(), test_set_y.eval())
                 test_error_evolution.append((epoch, this_test_loss))
 
-                call_back(epoch, self.n_train, train_error=this_train_loss,
+                call_back(epoch, self.n_train, train_log_likelihood=data_log_likelihood,
                                                                 opt_parameters=self.opt_parameters,
                                                                 test_error=this_test_loss,
                                                                 n_test=self.n_test)
             else:
-                call_back(epoch, self.n_train, train_error=this_train_loss,
+                call_back(epoch, self.n_train, train_log_likelihood=data_log_likelihood,
                                                                 opt_parameters=self.opt_parameters)
             epoch = epoch + 1
 
