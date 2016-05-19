@@ -8,3 +8,4 @@ fit optimizer REPORTING ONLY LIKELIHOOD OF CHUNK
 LOG LIKELIHOOD NOT saving in folder??
 TEST LOG LIKELIHOOD Memory efficient
 Reported Log Likelihood INCORRECTLY
+USE np.memmap for Loading data to CPU
