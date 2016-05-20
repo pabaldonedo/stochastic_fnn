@@ -580,7 +580,7 @@ class LBN:
             
             self.log_likelihood = T.sum(T.log(T.sum(T.exp(exp_value - max_exp_value), axis=0)) +
                                                                                     max_exp_value)#-\
-                               # self.y.shape[0]*(T.log(self.m)+self.y.shape[1]/2.*T.log(2*np.pi))
+                         #       self.y.shape[0]*(T.log(self.m)+self.y.shape[1]/2.*T.log(2*np.pi))
 
         else:
             exp_value = -0.5*T.sum((self.output - self.y.dimshuffle(0, 'x',1, 2))**2, axis=3)*self.precision

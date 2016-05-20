@@ -14,7 +14,7 @@ from collections import OrderedDict
 
 class Optimizer():
 
-    def fiting_variables(self, batch_size, train_set_x, test_set_x=None):
+    def fiting_variables(self, batch_size, train_set_x, test_set_x=None, sample_axis=0):
         """Sets useful variables for locating batches"""    
         self.index = T.lscalar('index')    # index to a [mini]batch
         self.n_ex = T.lscalar('n_ex')      # total number of examples
@@ -56,7 +56,8 @@ class GradientBased(Optimizer):
 
     def fit(self, x, y, x_train, y_train, batch_size, cost, theta, n_epochs,
                             compute_error, call_back, x_test=None, y_test=None,
-                            validate_every=1, extra_train_givens={}, chunk_size=None):
+                            validate_every=1, extra_train_givens={}, chunk_size=None,
+                            sample_axis=0):
         """Performs the optimization using a Gradient Based algorithm.
 
         :param x: theano input variable of the rnn.
@@ -72,6 +73,7 @@ class GradientBased(Optimizer):
         :param validate_every: telling every how many epochs the fit functions reports to the
                                call_back function. It can be a float.
         """
+
         if chunk_size is None:
             n_chunks = 1
             chunk_size = x_train.shape[0]
@@ -82,11 +84,14 @@ class GradientBased(Optimizer):
 
             train_set_y = theano.shared(np.asarray(y_train,
                                         dtype=theano.config.floatX))
-        n_chunks = int(np.ceil(x_train.shape[0]*1./chunk_size))
-        x_train = np.asarray(x_train, dtype=theano.config.floatX)
-        y_train = np.asarray(y_train, dtype=theano.config.floatX)
-        train_set_x = theano.shared(x_train[:chunk_size])
-        train_set_y = theano.shared(y_train[:chunk_size])
+        
+        else:    
+            n_chunks = int(np.ceil(x_train.shape[0]*1./chunk_size))
+            x_train = np.asarray(x_train, dtype=theano.config.floatX)
+            y_train = np.asarray(y_train, dtype=theano.config.floatX)
+            train_set_x = theano.shared(x_train[:chunk_size])
+            train_set_y = theano.shared(y_train[:chunk_size])
+        
         if x_test is not None and y_test is not None:
             
             test_set_x = theano.shared(np.asarray(x_test[:chunk_size],
@@ -95,13 +100,15 @@ class GradientBased(Optimizer):
             test_set_y = theano.shared(np.asarray(y_test[:chunk_size],
                                             dtype=theano.config.floatX))
         
+            test_n_chunks = int(np.ceil(x_test.shape[0]*1./chunk_size))
         else:
             test_set_x = None
             test_set_y = None
         self.test_availavility = test_set_x is not None
         #Setting up indicator variables for looping along batches
 
-        self.fiting_variables(batch_size, train_set_x, test_set_x=test_set_x)
+        self.fiting_variables(batch_size, train_set_x, test_set_x=test_set_x,
+                                                                sample_axis=0)
 
         gtheta = [None]*len(theta)
         updates = []
@@ -110,12 +117,12 @@ class GradientBased(Optimizer):
         updates.append((self.it, i_t))
         for i, th in enumerate(theta):
             gtheta[i] = T.grad(cost, th)
-            updates += self.get_updates(th, gtheta=gtheta[i])#[(th, th - 0.1*gtheta[i])]#
+            updates += self.get_updates(th, gtheta=gtheta[i])
         
         
         #Variables to keep track of the error while training
-        train_error_evolution = []
-        test_error_evolution = []
+        train_log_likelihood_evolution = []
+        test_log_likelihood_evolution = []
 
         # compiling a Theano function `train_model` that returns the
         # cost, but in the same time updates the parameter of the
@@ -148,31 +155,37 @@ class GradientBased(Optimizer):
                         self.opt_parameters['lr'] = l_r
                     else: 
                         minibatch_avg_cost, this_batch_size = train_model(minibatch_idx, this_chunk_size)
-                    data_log_likelihood += minibatch_avg_cost*this_batch_size
-                
-                if chunk < n_chunks - 1:
-                    train_set_x.set_value(x_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_train.shape[0])])
-                    train_set_y.set_value(y_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, y_train.shape[0])])
-        
 
-            #this_train_loss = compute_error(train_set_x.eval(), train_set_y.eval())
-            data_log_likelihood *= -1
-            train_error_evolution.append((epoch, data_log_likelihood))
-            #TODO Memory optimize this if xontent
+                    data_log_likelihood -= minibatch_avg_cost*this_batch_size
+               # import ipdb
+               # ipdb.set_trace()
+                if chunk < n_chunks - 1:
+                    train_set_x.set_value(x_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_train.shape[0])])#x_train.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, x_train.shape[sample_axis])), axis=sample_axis))
+                    train_set_y.set_value(y_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, y_train.shape[0])])#x_train.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, y_train.shape[sample_axis])), axis=sample_axis))
+                        
+            train_log_likelihood_evolution.append((epoch, data_log_likelihood))
+            
             if self.test_availavility:
-                this_test_loss = compute_error(test_set_x.eval(), test_set_y.eval())
-                test_error_evolution.append((epoch, this_test_loss))
+                test_log_likelihood = 0
+                for chunk in xrange(test_n_chunks):
+                    this_chunk_size = test_set_x.get_value().shape[0]
+                    test_log_likelihood -= compute_error(test_set_x.eval(), test_set_y.eval())*this_chunk_size
+                    
+                    if chunk < test_n_chunks - 1:
+                        test_set_x.set_value(x_test[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_test.shape[0])])#x_test.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, x_test.shape[sample_axis])), axis=sample_axis))
+                        test_set_y.set_value(y_test[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, y_test.shape[0])])#y_test.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, y_test.shape[sample_axis])), axis=sample_axis))
+                test_log_likelihood_evolution.append((epoch, test_log_likelihood))
 
                 call_back(epoch, self.n_train, train_log_likelihood=data_log_likelihood,
                                                                 opt_parameters=self.opt_parameters,
-                                                                test_error=this_test_loss,
+                                                                test_log_likelihood=test_log_likelihood,
                                                                 n_test=self.n_test)
             else:
                 call_back(epoch, self.n_train, train_log_likelihood=data_log_likelihood,
                                                                 opt_parameters=self.opt_parameters)
             epoch = epoch + 1
 
-        return train_error_evolution, test_error_evolution
+        return train_log_likelihood_evolution, test_log_likelihood_evolution
 
 
 class RMSProp(GradientBased):

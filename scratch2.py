@@ -157,15 +157,16 @@ class Classifier(object):
 
     def fit(self, x, y, m, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1,
                                             x_test=None, y_test=None, chunk_size=None):
-        #l = self.get_log_likelihood(x,y,m)
-        #self.log.info("log_likelihood {0} and mean: {1}".format(l, l*1./x.shape[0]))
-        self.log.info("Number of samples: {0}:".format(x.shape[0]))
+        
+        self.log.info("Number of training samples: {0}.".format(x.shape[0]))
+        if x_test is not None:
+            self.log.info("Number of test samples: {0}.".format(x_test.shape[0]))
 
         flat_params = flatten(self.params)
         cost = self.get_cost()
         compute_error = theano.function(inputs=[self.x, self.y], outputs=cost,
                                         givens={self.m: m})
-       
+        
         allowed_methods = ['SGD', "RMSProp", "AdaDelta", "AdaGrad", "Adam"]
 
         if method['type'] == allowed_methods[0]:
@@ -407,9 +408,9 @@ class callBack:
                 for e, l in zip(epochs, log_likelihoods):
                     f.write('{0},{1}\n'.format(e, l))
             if test_like is not None:
-                test_fname = os.path.splitext(os.path.basename(fname))
+                test_fname = os.path.splitext(os.path.basename(fname))[0]
 
-                with open('{0}_test.csv'.format(test_fname), 'a') as f:
+                with open('{0}/{1}_test.csv'.format(path_fname, test_fname), 'a') as f:
                     for e, l in zip(epochs, test_like):
                         f.write('{0},{1}\n'.format(e, l))                
             self.classifier.log.info("Log likelihoods saved.")
@@ -417,16 +418,16 @@ class callBack:
         self.save_likelihood = save_likelihood
 
     def cback(self, epoch, n_samples, train_log_likelihood=None, opt_parameters=None,
-                                                                test_error=None, n_test=None):
+                                                      test_log_likelihood=None, n_test=None):
         train_error = -train_log_likelihood*1./n_samples
-        if test_error is None:
+        if test_log_likelihood is None:
 
             self.classifier.log.info("epoch: {0} train_error: {1}, log_likelihood: {2} with" \
                                 "options: {3}.".format(epoch+self.epoch0, train_error,
                                                       train_log_likelihood, opt_parameters))
         
         else:
-            test_log_likelihood = -n_test*test_error
+            test_error = -test_log_likelihood/n_test
             self.classifier.log.info("epoch: {0} train_error: {1}, test_error: {2} "\
                                     "log_likelihood: {3}, test_log_likelihood: {4}, "\
                                     "with options: {5}.".format(
@@ -450,7 +451,10 @@ class callBack:
 
     
 def main():
+
+    #Number of datasets
     n = 1
+    #RNN on top of LBN
     recurrent = False
     seq_len = 61
     train_size = 0.8
@@ -497,29 +501,38 @@ def main():
         y_test = y[train_bucket:]
         n_in = x.shape[1]
         n_out = y.shape[1]
+
+    #MLP definition
     mlp_activation_names = ['sigmoid']
-    lbn_n_hidden =  [150, 100, 50]
-    det_activations = ['linear', 'linear', 'linear', 'linear']
-    stoch_activations = ['sigmoid', 'sigmoid']
-    
     mlp_n_in = 13
     mlp_n_hidden = [10]
-    b_size= 100
-    n_epochs = 100
-    lr = .05
-    save_every = 1
+    
+    #LBN definition
+    lbn_n_hidden =  [40]#[150, 100, 50]
+    det_activations = ['linear', 'linear']#, 'linear', 'linear']
+    stoch_activations = ['sigmoid', 'sigmoid']
+    lbn_precision = 0.1
     m = 10
-    opt_type = 'SGD'
 
-    method={'type':opt_type, 'lr_decay_schedule':'constant', 'lr_decay_parameters':[lr],
-            'momentum_type': 'nesterov', 'momentum': 0.01, 'b1': 0.9, 'b2':0.999, 'e':1e-6,
-            'learning_rate':lr}
-    epoch0 = 1
+    #RNN definiton + LBN n_out if RNN is the final layer
     rnn_hidden = [50]
     rnn_activations = ['sigmoid', 'linear']
     lbn_n_out = 50
-    lbn_precision=0.01
-    chunk_size = 5000
+
+    #Fit options
+    b_size = 100
+    epoch0 = 1
+    n_epochs = 10
+    lr = .01
+    save_every = 10 #Log saving
+    chunk_size = 20000 #Memory chunks
+    #Optimizer
+    opt_type = 'SGD'
+    method={'type':opt_type, 'lr_decay_schedule':'constant', 'lr_decay_parameters':[lr],
+            'momentum_type': 'nesterov', 'momentum': 0.01, 'b1': 0.9, 'b2':0.999, 'e':1e-6,
+            'learning_rate':lr}
+    
+    #Saving options
     network_name = "{0}_n_{1}_mlp_hidden_[{2}]_mlp_activation_[{3}]_lbn_n_hidden_[{4}]"\
                     "_det_activations_[{5}]_stoch_activations_[{6}]_m_{7}_bsize_{8}_method_{9}".\
                                                     format(
@@ -538,7 +551,11 @@ def main():
         os.makedirs(opath)
     fname = '{0}/{1}'.format(opath, network_name)
     network_fname = '{0}/networks/{1}'.format(opath, network_name)
+    
+    #LOGGING
     log, session_name = log_init(opath)#, session_name='mason')
+    
+    #Building network
     if recurrent:
         c = RecurrentClassifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names,
                                 lbn_n_hidden,
@@ -553,9 +570,10 @@ def main():
                                                             stoch_activations, log=log,
                                                             lbn_precision=lbn_precision)
 
-
+    #Training
     f = c.fit(x_train, y_train,m,n_epochs, b_size, method, fname=fname, epoch0=epoch0,
-                                    x_test=x_test, y_test=y_test, chunk_size=chunk_size)
+                                    x_test=x_test, y_test=y_test, chunk_size=chunk_size,
+                                    save_every=save_every)
 
 
 if __name__ == '__main__':
