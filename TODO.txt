@@ -3,9 +3,4 @@ RNN
 Check visualizations and exploits architectures
 Matrix dot product, ¿could be improved?
 fit optimizer for RNN with chunk memory
-fit optimizer test dataset with more than one chunk
-fit optimizer REPORTING ONLY LIKELIHOOD OF CHUNK
-LOG LIKELIHOOD NOT saving in folder??
-TEST LOG LIKELIHOOD Memory efficient
-Reported Log Likelihood INCORRECTLY
 USE np.memmap for Loading data to CPU

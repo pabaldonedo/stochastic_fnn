@@ -31,7 +31,7 @@ def main():
         lvl = logging.INFO
 
     logging.basicConfig(level=logging.INFO, filename=fname,
-                    format="%(asctime)s %(message)s",
+                    format="%(asctime)-15s %(levelname)-8s %(message)s",
                     datefmt="%m/%d/%Y %H:%M:%S")
 
     logging.log(lvl, message)
