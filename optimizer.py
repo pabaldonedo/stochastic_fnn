@@ -148,10 +148,6 @@ class GradientBased(Optimizer):
             on_unused_input='warn')
         epoch = 0
 
-#        debug = theano.function(inputs=[self.index, self.n_ex],
- #                               outputs=[train_set_x[self.batch_start:self.batch_stop], train_set_y[self.batch_start:self.batch_stop]],
- #                               givens=extra_train_givens, on_unused_input='warn')
-
         while epoch < n_epochs:
             data_log_likelihood = 0
             for chunk in xrange(n_chunks):

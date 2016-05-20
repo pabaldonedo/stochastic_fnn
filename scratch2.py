@@ -24,7 +24,7 @@ from util import flatten
 class Classifier(object):
 
     def parse_inputs(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                             det_activations, stoch_activations, stoch_n_hidden, log, lbn_precision):
+                             det_activations, stoch_activations, stoch_n_hidden, log, likelihood_precision):
         self.log = log
         if self.log is None:
             logging.basicConfig(level=logging.INFO)
@@ -54,7 +54,7 @@ class Classifier(object):
         self.stoch_activations = stoch_activations
         self.n_in = n_in
         self.stoch_n_hidden = stoch_n_hidden
-        self.lbn_precision = lbn_precision
+        self.likelihood_precision = likelihood_precision
         self.n_out = n_out
 
     def set_up_mlp(self, mlp_n_hidden, mlp_activation_names, mlp_n_in, weights, timeseries_layer=False):
@@ -83,11 +83,11 @@ class Classifier(object):
 
     def __init__(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                  det_activations, stoch_activations, stoch_n_hidden=[-1], log=None, weights=None,
-                 lbn_precision=1):
+                 likelihood_precision=1):
 
         self.x = T.matrix('x', dtype=theano.config.floatX)
         self.parse_inputs(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                            det_activations, stoch_activations, stoch_n_hidden, log, lbn_precision)
+                            det_activations, stoch_activations, stoch_n_hidden, log, likelihood_precision)
 
         self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in, weights)
 
@@ -101,7 +101,7 @@ class Classifier(object):
                                                         input_var=self.lbn_input,
                                                         layers_info=None if weights is None else
                                                                         weights['lbn']['layers'],
-                                                        precision=self.lbn_precision)
+                                                        likelihood_precision=self.likelihood_precision)
 
         self.y = self.lbn.y
         self.m = self.lbn.m
@@ -158,9 +158,9 @@ class Classifier(object):
     def fit(self, x, y, m, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1,
                             x_test=None, y_test=None, chunk_size=None, sample_axis=0):
         
-        self.log.info("Number of training samples: {0}.".format(x.shape[0]))
+        self.log.info("Number of training samples: {0}.".format(x.shape[sample_axis]))
         if x_test is not None:
-            self.log.info("Number of test samples: {0}.".format(x_test.shape[0]))
+            self.log.info("Number of test samples: {0}.".format(x_test.shape[sample_axis]))
 
         flat_params = flatten(self.params)
         cost = self.get_cost()
@@ -187,7 +187,7 @@ class Classifier(object):
 
         self.log.info("Fit starts with epochs: {0}, batch size: {1}, method: {2}".format(
                                                                         n_epochs, b_size, method))
-
+              
         opt.fit(self.x, self.y, x, y, b_size, cost, flat_params, n_epochs,
                                     compute_error, self.get_call_back(save_every, fname, epoch0),
                                     extra_train_givens={self.m:m},
@@ -271,9 +271,9 @@ class Classifier(object):
                                 network_properties['stoch_activations'],
                                 log=log,
                                 weights=network_description['layers'],
-                                lbn_precision=1 if 'precision' not in
-                                                        network_properties['lbn_precision'] else
-                                                        network_properties['lbn_precision'])
+                                likelihood_precision=1 if 'precision' not in
+                                                        network_properties['likelihood_precision'] else
+                                                        network_properties['likelihood_precision'])
 
         return loaded_classifier
 
@@ -282,13 +282,13 @@ class Classifier(object):
 class RecurrentClassifier(Classifier):
             
     def parse_inputs(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                     lbn_n_out, det_activations, stoch_activations, stoch_n_hidden, lbn_precision,
+                     lbn_n_out, det_activations, stoch_activations, stoch_n_hidden, likelihood_precision,
                      rnn_hidden, rnn_activations, log):
 
         super(RecurrentClassifier, self).parse_inputs(n_in, n_out, mlp_n_in, mlp_n_hidden,
                                                       mlp_activation_names, lbn_n_hidden,
                                                       det_activations, stoch_activations,
-                                                      stoch_n_hidden, log, lbn_precision)
+                                                      stoch_n_hidden, log, likelihood_precision)
         
         assert type(lbn_n_out) is IntType, "lbn_n_out must be an integer: {0!r}".format(lbn_n_out)
         assert type(rnn_hidden) is ListType, "rnn_hidden must be a list: {0!r}".format(rnn_hidden)
@@ -300,7 +300,7 @@ class RecurrentClassifier(Classifier):
 
 
     def __init__(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                                    lbn_n_out, det_activations, stoch_activations, lbn_precision,
+                                    lbn_n_out, det_activations, stoch_activations, likelihood_precision,
                                     rnn_hidden, rnn_activations, stoch_n_hidden=[-1],
                                     log=None, weights=None):
 
@@ -308,7 +308,7 @@ class RecurrentClassifier(Classifier):
 
         self.parse_inputs(n_in, n_out, mlp_n_in,
                           mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                          lbn_n_out, det_activations, stoch_activations, stoch_n_hidden, lbn_precision,
+                          lbn_n_out, det_activations, stoch_activations, stoch_n_hidden, likelihood_precision,
                           rnn_hidden, rnn_activations, log)
         self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in, weights, timeseries_layer=True)
 
@@ -330,7 +330,7 @@ class RecurrentClassifier(Classifier):
                         'activations': self.rnn_activations,
                         'layers': None if weights is None else weights['lbnrnn']['rnn']['layers']}
 
-        self.lbnrnn = LBNRNN_module(lbn_properties, rnn_properties, input_var=self.lbn_input)
+        self.lbnrnn = LBNRNN_module(lbn_properties, rnn_properties, input_var=self.lbn_input, likelihood_precision=self.likelihood_precision)
 
         self.y = self.lbnrnn.y
         self.m = self.lbnrnn.lbn.m
@@ -456,7 +456,7 @@ class callBack:
 def main():
 
     #Number of datasets
-    n = 1
+    n = 8
     #RNN on top of LBN
     recurrent = True
     seq_len = 61
@@ -511,10 +511,10 @@ def main():
     mlp_n_hidden = [10]
     
     #LBN definition
-    lbn_n_hidden =  [40]#[150, 100, 50]
-    det_activations = ['linear', 'linear']#, 'linear', 'linear']
+    lbn_n_hidden =  [150, 100, 50]
+    det_activations = ['linear', 'linear', 'linear', 'linear']
     stoch_activations = ['sigmoid', 'sigmoid']
-    lbn_precision = 0.1
+    likelihood_precision = 0.1
     m = 10
 
     #RNN definiton + LBN n_out if RNN is the final layer
@@ -525,10 +525,10 @@ def main():
     #Fit options
     b_size = 100
     epoch0 = 1
-    n_epochs = 10
-    lr = .01
+    n_epochs = 500
+    lr = .1
     save_every = 10 #Log saving
-    chunk_size = 20000 #Memory chunks
+    chunk_size = 10000 #Memory chunks
     #Optimizer
     opt_type = 'SGD'
     method={'type':opt_type, 'lr_decay_schedule':'constant', 'lr_decay_parameters':[lr],
@@ -562,7 +562,7 @@ def main():
     if recurrent:
         c = RecurrentClassifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names,
                                 lbn_n_hidden,
-                                lbn_n_out, det_activations, stoch_activations, lbn_precision,
+                                lbn_n_out, det_activations, stoch_activations, likelihood_precision,
                                 rnn_hidden, rnn_activations)
 
     else: 
@@ -571,7 +571,7 @@ def main():
         c = Classifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                                                             det_activations,
                                                             stoch_activations, log=log,
-                                                            lbn_precision=lbn_precision)
+                                                            likelihood_precision=likelihood_precision)
 
     #Training
     f = c.fit(x_train, y_train,m,n_epochs, b_size, method, fname=fname, epoch0=epoch0,

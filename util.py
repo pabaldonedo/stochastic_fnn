@@ -94,3 +94,24 @@ def flatten(alist):
         else:
             t.extend(flatten(element))
     return t
+
+
+def get_log_likelihood(output, y, precision, timeseries):
+    if not timeseries:
+        exp_value = -0.5*T.sum((output - y.dimshuffle('x',0,1))**2, axis=2)*precision
+        max_exp_value = theano.ifelse.ifelse(T.lt(T.max(exp_value), -1*T.min(exp_value)),
+                                         T.min(exp_value), T.max(exp_value))
+    
+        log_likelihood = T.sum(T.log(T.sum(T.exp(exp_value - max_exp_value), axis=0)) +
+                                        max_exp_value)#-\
+                #       self.y.shape[0]*(T.log(self.m)+self.y.shape[1]/2.*T.log(2*np.pi))
+
+    else:
+        exp_value = -0.5*T.sum((output - y.dimshuffle(0, 'x',1, 2))**2, axis=3)*precision
+        max_exp_value = theano.ifelse.ifelse(T.lt(T.max(exp_value), -1*T.min(exp_value)),
+                                             T.max(exp_value), T.min(exp_value))
+            
+           
+        log_likelihood = T.sum(T.log(T.sum(T.exp(exp_value - max_exp_value), axis=1)) +
+                                        max_exp_value)
+    return log_likelihood

@@ -10,11 +10,12 @@ import json
 from util import parse_activations
 from rnn import VanillaRNN
 from lbn import LBN
+from util import get_log_likelihood
 
 
 class LBNRNN_module(object):
 
-    def __init__(self, lbn_properties, rnn_definition, input_var=None):
+    def __init__(self, lbn_properties, rnn_definition, likelihood_precision=1, input_var=None):
       
         self.lbn = LBN(lbn_properties['n_in'], lbn_properties['n_hidden'], lbn_properties['n_out'],
                                                     lbn_properties['det_activations'],
@@ -24,16 +25,14 @@ class LBNRNN_module(object):
                                                     layers_info=lbn_properties['layers']
                                                     if 'layers' in lbn_properties.keys() else None,
                                                     input_var=input_var,
-                                                    precision=1 if 'precision' not in
-                                                                        lbn_properties.keys() else
-                                                                        lbn_properties['precision'])
+                                                    likelihood_precision=likelihood_precision)
 
         if input_var is None:
             self.x = self.lbn.x
         
         else:
             self.x = input_var
-
+        self.likelihood_precision = likelihood_precision
         self.y = T.tensor3('y', dtype=theano.config.floatX)
         self.n_in = lbn_properties['n_in']
         self.n_out = rnn_definition['n_out']
@@ -48,22 +47,10 @@ class LBNRNN_module(object):
         self.params = [self.lbn.params] + [self.rnn.params]
         self.output = self.rnn.output
         self.predict = theano.function(inputs=[self.x, self.lbn.m], outputs=self.lbn.output)
+        self.log_likelihood = get_log_likelihood(self.output, self.y, self.likelihood_precision, True)
         
-        exp_value = -0.5*T.sum((self.output - self.y.dimshuffle(0, 'x',1, 2))**2, axis=3)
-
-        self.tmp = exp_value
-    
-        #max_exp_value = theano.ifelse.ifelse(T.lt(T.max(exp_value), -1*T.min(exp_value)),
-        #                                                        T.max(exp_value), T.min(exp_value))
-        mean_exp_value = T.mean(exp_value)
-        self.log_likelihood = T.sum(T.log(T.sum(T.exp(exp_value - mean_exp_value), axis=1)) +
-                                                                                 mean_exp_value)
-                                            #This constant is not computed but is left here for
-                                            #completion of the defition of the log_likelihood    
-                                            #-self.y.shape[0]*self.y.shape[1]*(T.log(self.lbn.m)+\
-                                            #self.y.shape[2]/2.*T.log(2*np.pi))
         self.get_log_likelihood = theano.function(inputs=[self.x, self.y, self.lbn.m],
-                                                outputs=self.log_likelihood)
+                                                  outputs=self.log_likelihood)
 
     def fiting_variables(self, batch_size, train_set_x, train_set_y, test_set_x=None):
         """Sets useful variables for locating batches"""    
