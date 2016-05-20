@@ -141,8 +141,7 @@ class LBNRNN_module(object):
         for e in xrange(1,epochs+1):
             for minibatch_idx in xrange(self.n_train_batches):
                 minibatch_likelihood, d, o = self.pretrain_model(minibatch_idx, self.n_train)
-                print "Error: min: {0}, max: {1} and mean: {2}".format(np.min(d), np.max(d), np.mean(d))
-                print "Output: min: {0}, max: {1} and mean: {2}".format(np.min(o), np.max(o), np.mean(o))
+                
             log_likelihood.append(self.get_log_likelihood(x,y,m))
             print "Epoch {0} log likelihood: {1}".format(e, log_likelihood[-1])
         return log_likelihood

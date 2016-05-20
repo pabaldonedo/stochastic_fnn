@@ -39,11 +39,7 @@ class Optimizer():
 
         # compute number of minibatches for training
         # note that cases are the second dimension, not the first
-        self.n_train = train_set_x.get_value(borrow=True).shape[0]
 
-        if test_set_x is not None:
-            self.n_test = test_set_x.get_value(borrow=True).shape[0]
-            self.n_test_batches = int(np.ceil(1.0 * self.n_test / batch_size))
 
     def fit(self):
         """To be implemented in subclasses. Performs the optimization."""
@@ -73,10 +69,12 @@ class GradientBased(Optimizer):
         :param validate_every: telling every how many epochs the fit functions reports to the
                                call_back function. It can be a float.
         """
+        data_shape = x_train.shape
+        seq_len = 1 if len(data_shape) == 2 else np.prod(data_shape[:-2])
 
         if chunk_size is None:
             n_chunks = 1
-            chunk_size = x_train.shape[0]
+            chunk_size = x_train.shape[sample_axis]
 
 
             train_set_x = theano.shared(np.asarray(x_train,
@@ -86,7 +84,7 @@ class GradientBased(Optimizer):
                                         dtype=theano.config.floatX))
         
         else:    
-            n_chunks = int(np.ceil(x_train.shape[0]*1./chunk_size))
+            n_chunks = int(np.ceil(x_train.shape[sample_axis]*1./chunk_size))
             x_train = np.asarray(x_train, dtype=theano.config.floatX)
             y_train = np.asarray(y_train, dtype=theano.config.floatX)
             train_set_x = theano.shared(x_train[:chunk_size])
@@ -100,16 +98,17 @@ class GradientBased(Optimizer):
             test_set_y = theano.shared(np.asarray(y_test[:chunk_size],
                                             dtype=theano.config.floatX))
         
-            test_n_chunks = int(np.ceil(x_test.shape[0]*1./chunk_size))
+            test_n_chunks = int(np.ceil(x_test.shape[sample_axis]*1./chunk_size))
         else:
             test_set_x = None
             test_set_y = None
         self.test_availavility = test_set_x is not None
         #Setting up indicator variables for looping along batches
-
+        
         self.fiting_variables(batch_size, train_set_x, test_set_x=test_set_x,
-                                                                sample_axis=0)
-
+                              sample_axis=sample_axis)
+        self.n_train = x_train.shape[sample_axis]
+        self.n_test = x_test.shape[sample_axis]
         gtheta = [None]*len(theta)
         updates = []
         self.it = theano.shared(np.asarray(1., dtype=theano.config.floatX))
@@ -127,8 +126,15 @@ class GradientBased(Optimizer):
         # compiling a Theano function `train_model` that returns the
         # cost, but in the same time updates the parameter of the
         # model based on the rules defined in `updates`
-        givens_default_values = {x: train_set_x[self.batch_start:self.batch_stop],
-                    y: train_set_y[self.batch_start:self.batch_stop]}
+        if sample_axis == 0:
+            givens_default_values = {x: train_set_x[self.batch_start:self.batch_stop],
+                                     y: train_set_y[self.batch_start:self.batch_stop]}
+        elif sample_axis == 1:
+            givens_default_values = {x: train_set_x[:,self.batch_start:self.batch_stop],
+                                     y: train_set_y[:,self.batch_start:self.batch_stop]}
+        else:
+            raise NotImplementedError
+
         givens_default_values.update(extra_train_givens)
 
         outputs = [cost, self.batch_stop-self.batch_start]
@@ -142,38 +148,45 @@ class GradientBased(Optimizer):
             on_unused_input='warn')
         epoch = 0
 
+#        debug = theano.function(inputs=[self.index, self.n_ex],
+ #                               outputs=[train_set_x[self.batch_start:self.batch_stop], train_set_y[self.batch_start:self.batch_stop]],
+ #                               givens=extra_train_givens, on_unused_input='warn')
+
         while epoch < n_epochs:
             data_log_likelihood = 0
             for chunk in xrange(n_chunks):
-                this_chunk_size = train_set_x.get_value().shape[0]
+                this_chunk_size = train_set_x.get_value().shape[sample_axis]
                 n_train_batches = int(np.ceil(1.0 * this_chunk_size / batch_size))
             
                 for minibatch_idx in xrange(n_train_batches):
-
+                   
                     if 'lr' in self.opt_parameters.keys():
                         minibatch_avg_cost, this_batch_size, l_r = train_model(minibatch_idx, this_chunk_size)
                         self.opt_parameters['lr'] = l_r
                     else: 
                         minibatch_avg_cost, this_batch_size = train_model(minibatch_idx, this_chunk_size)
 
-                    data_log_likelihood -= minibatch_avg_cost*this_batch_size
-               # import ipdb
-               # ipdb.set_trace()
+                    data_log_likelihood -= minibatch_avg_cost*this_batch_size*seq_len
+
                 if chunk < n_chunks - 1:
-                    train_set_x.set_value(x_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_train.shape[0])])#x_train.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, x_train.shape[sample_axis])), axis=sample_axis))
-                    train_set_y.set_value(y_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, y_train.shape[0])])#x_train.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, y_train.shape[sample_axis])), axis=sample_axis))
-                        
+                    #train_set_x.set_value(x_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_train.shape[0])])
+                    train_set_x.set_value(x_train.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, x_train.shape[sample_axis])), axis=sample_axis))
+                    #train_set_y.set_value(y_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, y_train.shape[0])])
+                    train_set_y.set_value(y_train.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, y_train.shape[sample_axis])), axis=sample_axis))
+          
             train_log_likelihood_evolution.append((epoch, data_log_likelihood))
             
             if self.test_availavility:
                 test_log_likelihood = 0
                 for chunk in xrange(test_n_chunks):
                     this_chunk_size = test_set_x.get_value().shape[0]
-                    test_log_likelihood -= compute_error(test_set_x.eval(), test_set_y.eval())*this_chunk_size
+                    test_log_likelihood -= compute_error(test_set_x.eval(), test_set_y.eval())*this_chunk_size*seq_len
                     
                     if chunk < test_n_chunks - 1:
-                        test_set_x.set_value(x_test[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_test.shape[0])])#x_test.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, x_test.shape[sample_axis])), axis=sample_axis))
-                        test_set_y.set_value(y_test[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, y_test.shape[0])])#y_test.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, y_test.shape[sample_axis])), axis=sample_axis))
+                        #test_set_x.set_value(x_test[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_test.shape[0])])
+                        test_set_x.set_value(x_test.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, x_test.shape[sample_axis])), axis=sample_axis))
+                        #test_set_y.set_value(y_test[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, y_test.shape[0])])
+                        test_set_y.set_value(y_test.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, y_test.shape[sample_axis])), axis=sample_axis))
                 test_log_likelihood_evolution.append((epoch, test_log_likelihood))
 
                 call_back(epoch, self.n_train, train_log_likelihood=data_log_likelihood,

@@ -661,7 +661,6 @@ class LBN:
         train_set_y = theano.shared(np.asarray(y,
                                             dtype=theano.config.floatX))
 
-        print "SHARE"
         self.fiting_variables(batch_size, train_set_x, train_set_y)
 
         flat_params = [p for layer in self.params for p in layer]

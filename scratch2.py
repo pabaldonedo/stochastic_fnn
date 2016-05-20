@@ -156,7 +156,7 @@ class Classifier(object):
         return cost
 
     def fit(self, x, y, m, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1,
-                                            x_test=None, y_test=None, chunk_size=None):
+                            x_test=None, y_test=None, chunk_size=None, sample_axis=0):
         
         self.log.info("Number of training samples: {0}.".format(x.shape[0]))
         if x_test is not None:
@@ -192,7 +192,8 @@ class Classifier(object):
                                     compute_error, self.get_call_back(save_every, fname, epoch0),
                                     extra_train_givens={self.m:m},
                                     x_test=x_test, y_test=y_test,
-                                    chunk_size=chunk_size)
+                                    chunk_size=chunk_size,
+                                    sample_axis=sample_axis)
 
         """
         self.fiting_variables(b_size, train_set_x, train_set_y)
@@ -281,12 +282,13 @@ class Classifier(object):
 class RecurrentClassifier(Classifier):
             
     def parse_inputs(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                     lbn_n_out, det_activations, stoch_activations, stoch_n_hidden,
+                     lbn_n_out, det_activations, stoch_activations, stoch_n_hidden, lbn_precision,
                      rnn_hidden, rnn_activations, log):
+
         super(RecurrentClassifier, self).parse_inputs(n_in, n_out, mlp_n_in, mlp_n_hidden,
                                                       mlp_activation_names, lbn_n_hidden,
                                                       det_activations, stoch_activations,
-                                                      stoch_n_hidden, log)
+                                                      stoch_n_hidden, log, lbn_precision)
         
         assert type(lbn_n_out) is IntType, "lbn_n_out must be an integer: {0!r}".format(lbn_n_out)
         assert type(rnn_hidden) is ListType, "rnn_hidden must be a list: {0!r}".format(rnn_hidden)
@@ -298,14 +300,15 @@ class RecurrentClassifier(Classifier):
 
 
     def __init__(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                                    lbn_n_out, det_activations, stoch_activations,
+                                    lbn_n_out, det_activations, stoch_activations, lbn_precision,
                                     rnn_hidden, rnn_activations, stoch_n_hidden=[-1],
                                     log=None, weights=None):
 
         self.x = T.tensor3('x', dtype=theano.config.floatX)
+
         self.parse_inputs(n_in, n_out, mlp_n_in,
                           mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                          lbn_n_out, det_activations, stoch_activations, stoch_n_hidden,
+                          lbn_n_out, det_activations, stoch_activations, stoch_n_hidden, lbn_precision,
                           rnn_hidden, rnn_activations, log)
         self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in, weights, timeseries_layer=True)
 
@@ -455,7 +458,7 @@ def main():
     #Number of datasets
     n = 1
     #RNN on top of LBN
-    recurrent = False
+    recurrent = True
     seq_len = 61
     train_size = 0.8
     x = load_states(n)
@@ -491,8 +494,8 @@ def main():
     if recurrent:
         y = y.reshape(seq_len, -1, y.shape[1])
         y = y[:,idx,:-4]
-        y_train = y[:train_bucket]
-        y_test = y[train_bucket:]
+        y_train = y[:,:train_bucket]
+        y_test = y[:,train_bucket:]
         n_in = x.shape[2]
         n_out = y.shape[2]
     else:
@@ -559,7 +562,7 @@ def main():
     if recurrent:
         c = RecurrentClassifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names,
                                 lbn_n_hidden,
-                                lbn_n_out, det_activations, stoch_activations,
+                                lbn_n_out, det_activations, stoch_activations, lbn_precision,
                                 rnn_hidden, rnn_activations)
 
     else: 
@@ -573,7 +576,7 @@ def main():
     #Training
     f = c.fit(x_train, y_train,m,n_epochs, b_size, method, fname=fname, epoch0=epoch0,
                                     x_test=x_test, y_test=y_test, chunk_size=chunk_size,
-                                    save_every=save_every)
+                                    save_every=save_every, sample_axis=1 if recurrent else 0)
 
 
 if __name__ == '__main__':
