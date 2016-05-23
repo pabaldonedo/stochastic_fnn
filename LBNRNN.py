@@ -202,7 +202,6 @@ class LBNRNN_module(object):
                                     "rnn_type":self.rnn_type})
         output_string += ",\"lbn\":"
         output_string += self.lbn.generate_saving_string()
-        print self.lbn.generate_saving_string()
         output_string += ",\"rnn\":"
         output_string += self.rnn.generate_saving_string()
         output_string += "}"
