@@ -443,7 +443,7 @@ class callBack:
 
         self.epochs.append(epoch+self.epoch0)
         self.train_log_likelihoods.append(train_log_likelihood)
-        if epoch % self.save_every == 0 and self.fname is not None:
+        if epoch + 1 % self.save_every == 0 and self.fname is not None:
             self.classifier.save_network("{0}_epoch_{1}.json".format(self.fname, epoch+self.epoch0))
             self.save_likelihood(self.epochs, self.train_log_likelihoods, test_like=None if test_error is
                                                                 None else self.test_log_likelihoods)

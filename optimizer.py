@@ -175,7 +175,7 @@ class GradientBased(Optimizer):
             if self.test_availavility:
                 test_log_likelihood = 0
                 for chunk in xrange(test_n_chunks):
-                    this_chunk_size = test_set_x.get_value().shape[0]
+                    this_chunk_size = test_set_x.get_value().shape[sample_axis]
                     test_log_likelihood -= compute_error(test_set_x.eval(), test_set_y.eval())*this_chunk_size*seq_len
                     
                     if chunk < test_n_chunks - 1:
