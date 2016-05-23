@@ -115,3 +115,21 @@ def get_log_likelihood(output, y, precision, timeseries):
         log_likelihood = T.sum(T.log(T.sum(T.exp(exp_value - max_exp_value), axis=1)) +
                                         max_exp_value)
     return log_likelihood
+
+
+def get_weight_init_values(n_in, n_out, activation=None):
+    W_values = np.asarray(
+                rng.uniform(
+                    low=-np.sqrt(6. / (n_in + n_out)),
+                    high=np.sqrt(6. / (n_in + n_out)),
+                    size=(n_out, n_in)
+                ),
+                dtype=theano.config.floatX
+            )
+    if activation == theano.tensor.nnet.sigmoid:
+        W_values *= 4
+    return W_values
+
+def get_bias_init_values(n):
+    b_values = np.zeros((n,), dtype=theano.config.floatX)
+    return b_values

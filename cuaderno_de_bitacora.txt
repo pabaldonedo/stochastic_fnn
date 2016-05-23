@@ -26,3 +26,13 @@
 05/20/2016 18:07:44 INFO     Optimizer works with RNN
 05/20/2016 18:08:00 INFO     LBNRNN working within scratch
 05/20/2016 18:08:55 INFO     Log likelihood computation written in util.py for avoiding code replications. Precision parameter included in this computations (LBNRNN did not have it before).
+05/23/2016 10:33:09 INFO     Starting week. Solving test likelihood report
+05/23/2016 10:33:37 INFO     Trying to add precision optimization feature
+05/23/2016 10:43:59 INFO     GPU13, la madre que la parió, 3100$ de Jumbo/A380/sr-71
+
+05/23/2016 11:42:41 INFO     Aborting precision feature
+05/23/2016 12:23:05 INFO     CHecked that data is correctly saved and loaded
+
+05/23/2016 13:53:14 INFO     Fixed mistake with chunk size
+05/23/2016 15:54:11 INFO     Fixed another mistake with chunk size in test area that caused crashes
+05/23/2016 16:56:48 INFO     LSTM module coded. Need to test it

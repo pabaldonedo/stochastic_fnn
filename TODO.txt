@@ -1,5 +1,4 @@
 Now precision parameter of GMM is fixed by user. Also optimized?
-RNN
 Check visualizations and exploits architectures
 Matrix dot product, ¿could be improved?
 fit optimizer for RNN with chunk memory
