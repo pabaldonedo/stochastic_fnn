@@ -132,7 +132,8 @@ class Classifier(object):
                                     "mlp_activation_names": self.mlp_activation_names, 
                                     "lbn_n_hidden": self.lbn_n_hidden,
                                     "det_activations": self.det_activations,
-                                    "stoch_activations": self.stoch_activations})
+                                    "stoch_activations": self.stoch_activations,
+                                    "likelihood_precision":self.likelihood_precision})
         output_string += ",\"layers\": {\"bone_mlps\":["
         for i, bone in enumerate(self.bone_representations):
             if i > 0:
@@ -271,9 +272,7 @@ class Classifier(object):
                                 network_properties['stoch_activations'],
                                 log=log,
                                 weights=network_description['layers'],
-                                likelihood_precision=1 if 'precision' not in
-                                                        network_properties['likelihood_precision'] else
-                                                        network_properties['likelihood_precision'])
+                                likelihood_precision=network_properties['likelihood_precision'])
 
         return loaded_classifier
 
@@ -363,7 +362,8 @@ class RecurrentClassifier(Classifier):
                                     "det_activations": self.det_activations,
                                     "stoch_activations": self.stoch_activations,
                                     "rnn_hidden": self.rnn_hidden,
-                                    "rnn_activations": self.rnn_activations })
+                                    "rnn_activations": self.rnn_activations,
+                                    "likelihood_precision": self.likelihood_precision})
         output_string += ",\"layers\": {\"bone_mlps\":["
         for i, bone in enumerate(self.bone_representations):
             if i > 0:
@@ -526,7 +526,7 @@ def main():
     b_size = 100
     epoch0 = 1
     n_epochs = 500
-    lr = .1
+    lr = 1
     save_every = 10 #Log saving
     chunk_size = 10000 #Memory chunks
     #Optimizer

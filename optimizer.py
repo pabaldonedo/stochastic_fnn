@@ -153,7 +153,7 @@ class GradientBased(Optimizer):
             for chunk in xrange(n_chunks):
                 this_chunk_size = train_set_x.get_value().shape[sample_axis]
                 n_train_batches = int(np.ceil(1.0 * this_chunk_size / batch_size))
-            
+                tmp = 0
                 for minibatch_idx in xrange(n_train_batches):
                    
                     if 'lr' in self.opt_parameters.keys():
@@ -163,7 +163,8 @@ class GradientBased(Optimizer):
                         minibatch_avg_cost, this_batch_size = train_model(minibatch_idx, this_chunk_size)
 
                     data_log_likelihood -= minibatch_avg_cost*this_batch_size*seq_len
-
+                    tmp +=this_batch_size
+                print "TOTAL BATCH: {0}, CHUNK SIZE: {1}".format(tmp, this_chunk_size)
                 if chunk < n_chunks - 1:
                     #train_set_x.set_value(x_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_train.shape[0])])
                     train_set_x.set_value(x_train.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, x_train.shape[sample_axis])), axis=sample_axis))
