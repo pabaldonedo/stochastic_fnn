@@ -2,3 +2,27 @@
 05/19/2016 10:54:42 Write this bitacora
 05/19/2016 11:13:44 Scratch2 trying to compute log likelihood of entire dataset -> Memory crash
 05/19/2016 11:23:36 Optimizer memory efficient computation of train log likelihood
+05/19/2016 11:35:57 Running an experiment and starting with RL Course
+05/19/2016 16:45:37 Finished RL-course in Curious AI. STarting to repair TODOs regarding gpu training
+05/19/2016 17:22:52 SCRATCH fit() CHANGED THE OUTPUT OF compute_error() for debugging
+05/19/2016 17:24:31 In Rhea optimzer changed to FAST_COMPILE
+05/19/2016 17:29:09 SCRATCH fit() RESTORED the output of compute_error()
+05/19/2016 17:32:12 LOG LIKELIHOOD in LBN.py CHANGED
+05/19/2016 17:37:49 LOG LIKELIHOOD in LBN.py RESTORED
+05/19/2016 17:38:29 LOG LIKELIHOOD report was CORRECT, although positive, because it is scaled by the constant value
+05/19/2016 18:07:11 In Rhea optimizer back to normal
+05/20/2016 10:09:30 INFO     Starting new day with an improved logging system here.
+05/20/2016 10:27:30 INFO     Rereading paper of LBN
+05/20/2016 10:27:42 INFO     Starting to repair test likelihood saving path
+05/20/2016 10:36:01 INFO     test likelihood saving path REPAIR
+05/20/2016 10:42:30 INFO     Commenting a little bit scartch2.py
+05/20/2016 10:44:03 INFO     Starting coding a likelihood plotter from file
+05/20/2016 10:56:38 INFO     Some reading on .emacs. STop and back to plotter
+05/20/2016 11:50:10 INFO     Likelihood plotter coded and tested
+05/20/2016 11:51:20 INFO     STarting solving the test log likelihood reporting problem
+05/20/2016 12:22:03 INFO     Test log likelihood reporting problem FIXED
+05/20/2016 12:40:18 INFO     LUNCH, trying to adapt optimizer for RNN
+05/20/2016 14:14:45 INFO     Back from lunch
+05/20/2016 18:07:44 INFO     Optimizer works with RNN
+05/20/2016 18:08:00 INFO     LBNRNN working within scratch
+05/20/2016 18:08:55 INFO     Log likelihood computation written in util.py for avoiding code replications. Precision parameter included in this computations (LBNRNN did not have it before).
