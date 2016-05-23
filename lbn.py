@@ -748,7 +748,7 @@ class LBN:
                                     "no_bias": hs.no_bias,
                                     "timeseries":hs.timeseries})
                 output_string += "}"
-            output_string += "]}}"
+            output_string += "]}"
         else:
             output_string += json.dumps({"n_in": self.output_layer.n_in,
                                         "n_out":self.output_layer.n_out,

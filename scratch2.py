@@ -453,11 +453,10 @@ class callBack:
             if test_error is not None:
                 self.test_log_likelihoods = []
 
-    
-def main():
+def main2():
 
     #Number of datasets
-    n = 1
+    n = 13
     #RNN on top of LBN
     recurrent = True
     seq_len = 61
@@ -513,15 +512,15 @@ def main():
     
     #LBN definition
     lbn_n_hidden =  [150, 100, 50]
-    det_activations = ['linear', 'linear', 'linear', 'linear']
+    det_activations = ['linear', 'linear', 'linear', 'linear', 'linear']
     stoch_activations = ['sigmoid', 'sigmoid']
     likelihood_precision = 0.1
-    m = 10
+    m = 2
 
     #RNN definiton + LBN n_out if RNN is the final layer
-    rnn_type = "LSTM"
-    rnn_hidden = [50]
-    rnn_activations = [['sigmoid', 'tanh', 'sigmoid', 'sigmoid', 'tanh'], 'linear'] #['sigmoid', 'linear']
+    rnn_type = "rnn"
+    rnn_hidden = [30]
+    rnn_activations = ['linear', 'linear']#[['sigmoid', 'tanh', 'sigmoid', 'sigmoid', 'tanh'], 'linear'] #['sigmoid', 'linear']
     lbn_n_out = 50
 
     #Fit options
@@ -529,7 +528,7 @@ def main():
     epoch0 = 1
     n_epochs = 500
     lr = 1
-    save_every = 10 #Log saving
+    save_every = 1 #Log saving
     chunk_size = 4000 #Memory chunks
     #Optimizer
     opt_type = 'SGD'
@@ -559,7 +558,6 @@ def main():
     
     #LOGGING
     log, session_name = log_init(opath)#, session_name='mason')
-    
     #Building network
     if recurrent:
         c = RecurrentClassifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names,
@@ -574,7 +572,7 @@ def main():
                                                             det_activations,
                                                             stoch_activations, log=log,
                                                             likelihood_precision=likelihood_precision)
-
+    
     #Training
     f = c.fit(x_train, y_train,m,n_epochs, b_size, method, fname=fname, epoch0=epoch0,
                                     x_test=x_test, y_test=y_test, chunk_size=chunk_size,

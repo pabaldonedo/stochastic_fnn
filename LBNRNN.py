@@ -37,7 +37,7 @@ class LBNRNN_module(object):
         self.y = T.tensor3('y', dtype=theano.config.floatX)
         self.n_in = lbn_properties['n_in']
         self.n_out = rnn_definition['n_out']
-        
+        self.rnn_type = rnn_definition['type']
         if rnn_definition['type'] == 'rnn':
             self.rnn = VanillaRNN(self.lbn.n_out, rnn_definition['n_hidden'], self.n_out,
                                                     rnn_definition['activations'],
@@ -56,7 +56,7 @@ class LBNRNN_module(object):
             raise NotImplementedError
         self.params = [self.lbn.params] + [self.rnn.params]
         self.output = self.rnn.output
-        self.predict = theano.function(inputs=[self.x, self.lbn.m], outputs=self.lbn.output)
+        self.predict = theano.function(inputs=[self.x, self.lbn.m], outputs=self.rnn.output)
         self.log_likelihood = get_log_likelihood(self.output, self.y, self.likelihood_precision, True)
         
         self.get_log_likelihood = theano.function(inputs=[self.x, self.y, self.lbn.m],
@@ -202,6 +202,7 @@ class LBNRNN_module(object):
                                     "rnn_type":self.rnn_type})
         output_string += ",\"lbn\":"
         output_string += self.lbn.generate_saving_string()
+        print self.lbn.generate_saving_string()
         output_string += ",\"rnn\":"
         output_string += self.rnn.generate_saving_string()
         output_string += "}"

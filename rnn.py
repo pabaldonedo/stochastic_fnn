@@ -480,21 +480,22 @@ class LSTM(RNN):
             if k > 0:
                 output_string += ","
             output_string += "{\"LSTMHiddenLayer\":"
-            weights = {"Whi": l.Whi.get_value().toList(),
-                        "Whj": l.Whj.get_value().toList(),
-                        "Whf": l.Whf.get_value().toList(),
-                        "Who": l.Who.get_value().toList(),
-                        "Wxi": l.Wxi.get_value().toList(),
-                        "Wxj": l.Wxj.get_value().toList(),
-                        "Wxo": l.Wxo.get_value().toList()}
+            weights = {"Whi": l.Whi.get_value().tolist(),
+                        "Whj": l.Whj.get_value().tolist(),
+                        "Whf": l.Whf.get_value().tolist(),
+                        "Who": l.Who.get_value().tolist(),
+                        "Wxi": l.Wxi.get_value().tolist(),
+                        "Wxj": l.Wxj.get_value().tolist(),
+                        "Wxf": l.Wxf.get_value().tolist(),
+                        "Wxo": l.Wxo.get_value().tolist()}
 
-            biases = {  "bi": l.bi.get_value().toList(),
-                        "bj": l.bj.get_value().toList(),
-                        "bf": l.bf.get_value().toList(),
-                        "bo": l.bo.get_value().toList()}
+            biases = {  "bi": l.bi.get_value().tolist(),
+                        "bj": l.bj.get_value().tolist(),
+                        "bf": l.bf.get_value().tolist(),
+                        "bo": l.bo.get_value().tolist()}
 
-            zero_values = {"h0": l.h0.get_value().toList(),
-                            "c0": l.c0.get_value().toList()}
+            zero_values = {"h0": l.h0.get_value().tolist(),
+                            "c0": l.c0.get_value().tolist()}
 
             output_string += json.dumps({"n_in": l.n_in, "n_out": l.n_out,
                                         "activation":l.activation_names,
