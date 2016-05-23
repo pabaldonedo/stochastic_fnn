@@ -9,6 +9,7 @@ import logging
 import json
 from util import parse_activations
 from rnn import VanillaRNN
+from rnn import LSTM
 from lbn import LBN
 from util import get_log_likelihood
 
@@ -36,14 +37,23 @@ class LBNRNN_module(object):
         self.y = T.tensor3('y', dtype=theano.config.floatX)
         self.n_in = lbn_properties['n_in']
         self.n_out = rnn_definition['n_out']
-
-        self.rnn = VanillaRNN(self.lbn.n_out, rnn_definition['n_hidden'], self.n_out,
+        
+        if rnn_definition['type'] == 'rnn':
+            self.rnn = VanillaRNN(self.lbn.n_out, rnn_definition['n_hidden'], self.n_out,
                                                     rnn_definition['activations'],
                                                     rng=self.lbn.rng,
                                                     input_var=self.lbn.output,
                                                     layers_info=rnn_definition['layers']
                                                     if 'layers' in rnn_definition.keys() else None)
-
+        elif rnn_definition['type'] == 'LSTM':
+            self.rnn = LSTM(self.lbn.n_out, rnn_definition['n_hidden'], self.n_out,
+                                                    rnn_definition['activations'],
+                                                    rng=self.lbn.rng,
+                                                    input_var=self.lbn.output,
+                                                    layers_info=rnn_definition['layers']
+                                                    if 'layers' in rnn_definition.keys() else None)
+        else:
+            raise NotImplementedError
         self.params = [self.lbn.params] + [self.rnn.params]
         self.output = self.rnn.output
         self.predict = theano.function(inputs=[self.x, self.lbn.m], outputs=self.lbn.output)
@@ -188,7 +198,8 @@ class LBNRNN_module(object):
     def generate_saving_string(self):
         output_string = "{\"network_properties\":"
         output_string += json.dumps({"n_in":self.n_in,
-                "n_out":self.n_out})
+                                    "n_out":self.n_out,
+                                    "rnn_type":self.rnn_type})
         output_string += ",\"lbn\":"
         output_string += self.lbn.generate_saving_string()
         output_string += ",\"rnn\":"
@@ -213,7 +224,7 @@ class LBNRNN_module(object):
         network_properties = network_description['network_properties']
         lbn_definition = network_description['lbn']
         rnn_definition = network_description['rnn']
-
+        rnn_definition['type'] = network_properties['rnn_type']
         loaded_lbn = cls(lbn_definition['network_properties'],
                         rnn_definition['network_properties'])
 

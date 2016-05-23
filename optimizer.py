@@ -151,9 +151,11 @@ class GradientBased(Optimizer):
         while epoch < n_epochs:
             data_log_likelihood = 0
             for chunk in xrange(n_chunks):
+                train_set_x.set_value(x_train.take(xrange(chunk*chunk_size,min((chunk+1)*chunk_size, x_train.shape[sample_axis])), axis=sample_axis))
+                train_set_y.set_value(y_train.take(xrange(chunk*chunk_size,min((chunk+1)*chunk_size, y_train.shape[sample_axis])), axis=sample_axis))
+
                 this_chunk_size = train_set_x.get_value().shape[sample_axis]
                 n_train_batches = int(np.ceil(1.0 * this_chunk_size / batch_size))
-                tmp = 0
                 for minibatch_idx in xrange(n_train_batches):
                    
                     if 'lr' in self.opt_parameters.keys():
@@ -163,27 +165,37 @@ class GradientBased(Optimizer):
                         minibatch_avg_cost, this_batch_size = train_model(minibatch_idx, this_chunk_size)
 
                     data_log_likelihood -= minibatch_avg_cost*this_batch_size*seq_len
-                    tmp +=this_batch_size
-                print "TOTAL BATCH: {0}, CHUNK SIZE: {1}".format(tmp, this_chunk_size)
-                if chunk < n_chunks - 1:
+                #if chunk < n_chunks - 1:
                     #train_set_x.set_value(x_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_train.shape[0])])
-                    train_set_x.set_value(x_train.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, x_train.shape[sample_axis])), axis=sample_axis))
+                 #   train_set_x.set_value(x_train.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, x_train.shape[sample_axis])), axis=sample_axis))
                     #train_set_y.set_value(y_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, y_train.shape[0])])
-                    train_set_y.set_value(y_train.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, y_train.shape[sample_axis])), axis=sample_axis))
-          
+                #    train_set_y.set_value(y_train.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, y_train.shape[sample_axis])), axis=sample_axis))
+            print "EPOCH"
             train_log_likelihood_evolution.append((epoch, data_log_likelihood))
             
             if self.test_availavility:
                 test_log_likelihood = 0
                 for chunk in xrange(test_n_chunks):
+                    test_set_x.set_value(x_test.take(xrange(chunk*chunk_size,min((chunk+1)*chunk_size, x_test.shape[sample_axis])), axis=sample_axis))
+                    test_set_y.set_value(y_test.take(xrange(chunk*chunk_size,min((chunk+1)*chunk_size, y_test.shape[sample_axis])), axis=sample_axis))
                     this_chunk_size = test_set_x.get_value().shape[sample_axis]
-                    test_log_likelihood -= compute_error(test_set_x.eval(), test_set_y.eval())*this_chunk_size*seq_len
                     
-                    if chunk < test_n_chunks - 1:
+                    n_test_batches = int(np.ceil(1.0 * this_chunk_size / batch_size))
+                    for minibatch_idx in xrange(n_test_batches):
+                        if sample_axis==0:
+                            batch_log_likelihood = compute_error(test_set_x[minibatch_idx*batch_size:min((minibatch_idx+1)*batch_size, this_chunk_size)].eval(),
+                                                                 test_set_y[minibatch_idx*batch_size:min((minibatch_idx+1)*batch_size, this_chunk_size)].eval())
+                        elif sample_axis==1:
+                            batch_log_likelihood = compute_error(test_set_x[:,minibatch_idx*batch_size:min((minibatch_idx+1)*batch_size, this_chunk_size)].eval(),
+                                                                 test_set_y[:,minibatch_idx*batch_size:min((minibatch_idx+1)*batch_size, this_chunk_size)].eval())
+                        this_batch_size = min((minibatch_idx+1)*batch_size, this_chunk_size)-minibatch_idx*batch_size
+                        test_log_likelihood -= batch_log_likelihood*this_batch_size*seq_len
+
+                   # if chunk < test_n_chunks - 1:
                         #test_set_x.set_value(x_test[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_test.shape[0])])
-                        test_set_x.set_value(x_test.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, x_test.shape[sample_axis])), axis=sample_axis))
+                     #   test_set_x.set_value(x_test.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, x_test.shape[sample_axis])), axis=sample_axis))
                         #test_set_y.set_value(y_test[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, y_test.shape[0])])
-                        test_set_y.set_value(y_test.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, y_test.shape[sample_axis])), axis=sample_axis))
+                    #    test_set_y.set_value(y_test.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, y_test.shape[sample_axis])), axis=sample_axis))
                 test_log_likelihood_evolution.append((epoch, test_log_likelihood))
 
                 call_back(epoch, self.n_train, train_log_likelihood=data_log_likelihood,

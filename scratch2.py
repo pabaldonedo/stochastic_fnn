@@ -300,7 +300,7 @@ class RecurrentClassifier(Classifier):
 
     def __init__(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                                     lbn_n_out, det_activations, stoch_activations, likelihood_precision,
-                                    rnn_hidden, rnn_activations, stoch_n_hidden=[-1],
+                                    rnn_hidden, rnn_activations, rnn_type, stoch_n_hidden=[-1],
                                     log=None, weights=None):
 
         self.x = T.tensor3('x', dtype=theano.config.floatX)
@@ -327,7 +327,8 @@ class RecurrentClassifier(Classifier):
                         'n_out': self.n_out,
                         'n_hidden': self.rnn_hidden,
                         'activations': self.rnn_activations,
-                        'layers': None if weights is None else weights['lbnrnn']['rnn']['layers']}
+                        'layers': None if weights is None else weights['lbnrnn']['rnn']['layers'],
+                        'type':rnn_type}
 
         self.lbnrnn = LBNRNN_module(lbn_properties, rnn_properties, input_var=self.lbn_input, likelihood_precision=self.likelihood_precision)
 
@@ -443,7 +444,7 @@ class callBack:
 
         self.epochs.append(epoch+self.epoch0)
         self.train_log_likelihoods.append(train_log_likelihood)
-        if epoch + 1 % self.save_every == 0 and self.fname is not None:
+        if (epoch + 1) % self.save_every == 0 and self.fname is not None:
             self.classifier.save_network("{0}_epoch_{1}.json".format(self.fname, epoch+self.epoch0))
             self.save_likelihood(self.epochs, self.train_log_likelihoods, test_like=None if test_error is
                                                                 None else self.test_log_likelihoods)
@@ -456,7 +457,7 @@ class callBack:
 def main():
 
     #Number of datasets
-    n = 8
+    n = 1
     #RNN on top of LBN
     recurrent = True
     seq_len = 61
@@ -518,8 +519,9 @@ def main():
     m = 10
 
     #RNN definiton + LBN n_out if RNN is the final layer
+    rnn_type = "LSTM"
     rnn_hidden = [50]
-    rnn_activations = ['sigmoid', 'linear']
+    rnn_activations = [['sigmoid', 'tanh', 'sigmoid', 'sigmoid', 'tanh'], 'linear'] #['sigmoid', 'linear']
     lbn_n_out = 50
 
     #Fit options
@@ -528,7 +530,7 @@ def main():
     n_epochs = 500
     lr = 1
     save_every = 10 #Log saving
-    chunk_size = 10000 #Memory chunks
+    chunk_size = 4000 #Memory chunks
     #Optimizer
     opt_type = 'SGD'
     method={'type':opt_type, 'lr_decay_schedule':'constant', 'lr_decay_parameters':[lr],
@@ -539,7 +541,7 @@ def main():
     network_name = "{0}_n_{1}_mlp_hidden_[{2}]_mlp_activation_[{3}]_lbn_n_hidden_[{4}]"\
                     "_det_activations_[{5}]_stoch_activations_[{6}]_m_{7}_bsize_{8}_method_{9}".\
                                                     format(
-                                                    'recurrentclassifier' if recurrent else 
+                                                        'recurrentclassifier_{0}'.format(rnn_type) if recurrent else 
                                                                                     'classifier',
                                                     n,
                                                     ','.join(str(e) for e in mlp_n_hidden),
@@ -563,7 +565,7 @@ def main():
         c = RecurrentClassifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names,
                                 lbn_n_hidden,
                                 lbn_n_out, det_activations, stoch_activations, likelihood_precision,
-                                rnn_hidden, rnn_activations)
+                                rnn_hidden, rnn_activations, rnn_type, log=log)
 
     else: 
        # c = Classifier.init_from_file('{0}_epoch_{1}.json'.format(network_fname, epoch0-1), log=log)

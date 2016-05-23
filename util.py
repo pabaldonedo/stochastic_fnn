@@ -117,7 +117,11 @@ def get_log_likelihood(output, y, precision, timeseries):
     return log_likelihood
 
 
-def get_weight_init_values(n_in, n_out, activation=None):
+def get_weight_init_values(n_in, n_out, activation=None, rng=None):
+    
+    if rng is None:
+        rng = np.random.RandomState(0)
+
     W_values = np.asarray(
                 rng.uniform(
                     low=-np.sqrt(6. / (n_in + n_out)),
