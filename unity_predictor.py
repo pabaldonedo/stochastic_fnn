@@ -3,6 +3,8 @@ from classifiers import RecurrentClassifier
 class RNNPredictor():
     def __init__(self, fname, mux, stdx):
         self.classifier = RecurrentClassifier.init_from_file(fname)
+        self.mux = mux
+        self.stdx = stdx
 
     def predict(self, x):
         """
@@ -13,7 +15,7 @@ class RNNPredictor():
         """
         cols = [1] + list(range(3,x.shape[2]))
         x = x[:,:, cols]
-        x_norm = (x-mux)*1./stdx
+        x_norm = (x-self.mux)*1./self.stdx
         x_norm.reshape(1,1,-1)
         return classifier.predict(x_norm, 1)
 
