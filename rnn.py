@@ -47,19 +47,8 @@ class RNNOutputLayer():
         :param b_values: initialization values of the bias.
         """
         self.input = input_var
-        if W_values is None:
-            W_values = np.asarray(
-                rng.uniform(
-                    low=-np.sqrt(6. / (n_in + n_out)),
-                    high=np.sqrt(6. / (n_in + n_out)),
-                    size=(n_out, n_in)
-                ),
-                dtype=theano.config.floatX
-            )
-            if activation == theano.tensor.nnet.sigmoid:
-                W_values *= 4
-        if b_values is None:
-            b_values = np.zeros((n_out,), dtype=theano.config.floatX)
+        W_values = get_weight_init_values(n_in, n_out, activation=activation, rng=rng, W_values=W_values)
+        b_values = get_bias_init_values(n_out, b_values=b_values)
 
         W = theano.shared(value=W_values, name='V', borrow=True)
         b = theano.shared(value=b_values, name='b', borrow=True)
@@ -118,34 +107,11 @@ class VanillaRNNHiddenLayer(object):
         self.n_in = n_in
         self.n_out = n_out
         self.activation_name = activation_name
-        if W_f_values is None:
-            W_f_values = np.asarray(
-                rng.uniform(
-                    low=-np.sqrt(6. / (n_in + n_out)),
-                    high=np.sqrt(6. / (n_in + n_out)),
-                    size=(n_out, n_in)
-                ),
-                dtype=theano.config.floatX
-            )
-            if activation == theano.tensor.nnet.sigmoid:
-                W_f_values *= 4
-        
-        if W_r_values is None:
-            W_r_values = np.asarray(
-                rng.uniform(
-                    low=-np.sqrt(6. / (n_out + n_out)),
-                    high=np.sqrt(6. / (n_out + n_out)),
-                    size=(n_out, n_out)
-                ),
-                dtype=theano.config.floatX
-            )
-            if activation == theano.tensor.nnet.sigmoid:
-                W_r_values *= 4
+        W_f_values = get_weight_init_values(n_in, n_out, activation=activation, rng=rng, W_values = W_f_values)
+        W_r_values = get_weight_init_values(n_out, n_out, activation=activation, rng=rng, W_values = W_r_values)
+        b_values = get_bias_init_values(n_out, b_values=b_values)
+        h_values = get_bias_init_values(n_out, b_values=h_values)
 
-        if b_values is None:
-            b_values = np.zeros((n_out,), dtype=theano.config.floatX)
-        if h_values is None:
-            h_values = np.zeros((n_out,), dtype=theano.config.floatX)
         W_f = theano.shared(value=W_f_values, name='W_f', borrow=True)
         W_r = theano.shared(value=W_r_values, name='W_r', borrow=True)
         b = theano.shared(value=b_values, name='b', borrow=True)
@@ -302,7 +268,8 @@ class VanillaRNN(RNN):
         output_string = "{\"network_properties\":"
         output_string += json.dumps({"n_in":self.n_in, "n_hidden":self.n_hidden.tolist(),
                 "n_out":self.n_out,
-                "activations":self.activation_names})
+                "activations":self.activation_names,
+                "type":self.type})
         output_string += ", \"layers\": {\"hidden_layers\":["
         for k, l in enumerate(self.hidden_layers):
             if k > 0:
@@ -460,11 +427,11 @@ class LSTM(RNN):
                                                             W_values=None if layers_info is None
                                                             else np.array(
                                                             layers_info['output_layer']\
-                                                            ['LSTMHiddenLayer']['W']),
+                                                            ['RNNOutputLayer']['W']),
                                                             b_values=None if layers_info is None
                                                             else np.array(
                                                             layers_info['output_layer']\
-                                                            ['LSTMHiddenLayer']['b']))
+                                                            ['RNNOutputLayer']['b']))
 
         self.params.append(self.output_layer.params)
         self.output = self.output_layer.output
@@ -474,7 +441,8 @@ class LSTM(RNN):
         output_string = "{\"network_properties\":"
         output_string += json.dumps({"n_in":self.n_in, "n_hidden":self.n_hidden.tolist(),
                 "n_out":self.n_out,
-                "activations":self.activation_names})
+                "activations":self.activation_names,
+                "type":self.type})
         output_string += ", \"layers\": {\"hidden_layers\":["
         for k, l in enumerate(self.hidden_layers):
             if k > 0:
@@ -554,47 +522,24 @@ class LSTMHiddenLayer(object):
         self.n_out = n_out
         self.activation_names = activation_names
         self.rng=rng
+                                  
+        Whi_values = get_weight_init_values(n_out, n_out, activation=activations[0], rng=self.rng, W_values=None if weights is None else weights['Whi'])
+        Whj_values = get_weight_init_values(n_out, n_out, activation=activations[1], rng=self.rng,  W_values=None if weights is None else weights['Whj'])
+        Whf_values = get_weight_init_values(n_out, n_out, activation=activations[2], rng=self.rng, W_values=None if weights is None else weights['Whf'])
+        Who_values = get_weight_init_values(n_out, n_out, activation=activations[3], rng=self.rng, W_values=None if weights is None else weights['Who'])
+        Wxi_values = get_weight_init_values(n_in, n_out, activation=activations[0], rng=self.rng, W_values=None if weights is None else weights['Wxi'])
+        Wxj_values = get_weight_init_values(n_in, n_out, activation=activations[1], rng=self.rng, W_values=None if weights is None else weights['Wxj'])
+        Wxf_values = get_weight_init_values(n_in, n_out, activation=activations[2], rng=self.rng, W_values=None if weights is None else weights['Wxf'])
+        Wxo_values = get_weight_init_values(n_in, n_out, activation=activations[3], rng=self.rng, W_values=None if weights is None else weights['Wxo'])
 
-        if weights is None:
-            Whi_values = get_weight_init_values(n_out, n_out, activation=activations[0], rng=self.rng)
-            Whj_values = get_weight_init_values(n_out, n_out, activation=activations[1], rng=self.rng)
-            Whf_values = get_weight_init_values(n_out, n_out, activation=activations[2], rng=self.rng)
-            Who_values = get_weight_init_values(n_out, n_out, activation=activations[3], rng=self.rng)
-            Wxi_values = get_weight_init_values(n_in, n_out, activation=activations[0], rng=self.rng)
-            Wxj_values = get_weight_init_values(n_in, n_out, activation=activations[1], rng=self.rng)
-            Wxf_values = get_weight_init_values(n_in, n_out, activation=activations[2], rng=self.rng)
-            Wxo_values = get_weight_init_values(n_in, n_out, activation=activations[3], rng=self.rng)
-
-        else:
-            Whi_values = weights['Whi']
-            Whj_values = weights['Whj']
-            Whf_values = weights['Whf']
-            Who_values = weights['Who']
-            Wxi_values = weights['Wxi']
-            Wxj_values = weights['Wxj']
-            Wxf_values = weights['Wxf']
-            Wxo_values = weights['Wxo']
-
-        if biases is None:
-
-            bi_values = get_bias_init_values(n_out)
-            bj_values = get_bias_init_values(n_out)
-            bf_values = get_bias_init_values(n_out)
-            bo_values = get_bias_init_values(n_out)
-        else:
-
-            bi_values = biases['bi']
-            bj_values = biases['bj']
-            bf_values = biases['bf']
-            bo_values = biases['bo']
-
-        if zero_values is None:
-            h0_values = get_bias_init_values(n_out)
-            c0_values = get_bias_init_values(n_out)
-        else:
-            h0_values = zero_values['h0']
-            c0_values = zero_values['c0']
-
+        bi_values = get_bias_init_values(n_out, b_values=None if weights is None else biases['bi'])
+        bj_values = get_bias_init_values(n_out, b_values=None if weights is None else biases['bj'])
+        bf_values = get_bias_init_values(n_out, b_values=None if weights is None else biases['bf'])
+        bo_values = get_bias_init_values(n_out, b_values=None if weights is None else biases['bo'])
+ 
+        h0_values = get_bias_init_values(n_out, b_values=None if weights is None else zero_values['h0'])
+        c0_values = get_bias_init_values(n_out, b_values=None if weights is None else zero_values['c0'])
+        
         self.Whi = theano.shared(value=Whi_values, name='Whi', borrow=True)
         self.Whj = theano.shared(value=Whj_values, name='Whj', borrow=True)
         self.Whf = theano.shared(value=Whf_values, name='Whf', borrow=True)
@@ -616,6 +561,7 @@ class LSTMHiddenLayer(object):
 
 
         self.activations = activations
+
         def h_step(x_t, h_tm1, c_tm1):
             a_input_gate = T.tensordot(x_t, self.Wxi, axes=([2,1])) + T.tensordot(h_tm1, self.Whi,
                                                                            axes=[2,1]) + self.bi

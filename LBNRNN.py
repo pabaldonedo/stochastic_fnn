@@ -17,7 +17,7 @@ from util import get_log_likelihood
 class LBNRNN_module(object):
 
     def __init__(self, lbn_properties, rnn_definition, likelihood_precision=1, input_var=None):
-      
+        
         self.lbn = LBN(lbn_properties['n_in'], lbn_properties['n_hidden'], lbn_properties['n_out'],
                                                     lbn_properties['det_activations'],
                                                     lbn_properties['stoch_activations'],
@@ -28,11 +28,7 @@ class LBNRNN_module(object):
                                                     input_var=input_var,
                                                     likelihood_precision=likelihood_precision)
 
-        if input_var is None:
-            self.x = self.lbn.x
-        
-        else:
-            self.x = input_var
+        self.x = self.lbn.x
         self.likelihood_precision = likelihood_precision
         self.y = T.tensor3('y', dtype=theano.config.floatX)
         self.n_in = lbn_properties['n_in']

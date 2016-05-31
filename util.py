@@ -117,23 +117,33 @@ def get_log_likelihood(output, y, precision, timeseries):
     return log_likelihood
 
 
-def get_weight_init_values(n_in, n_out, activation=None, rng=None):
+def get_weight_init_values(n_in, n_out, activation=None, rng=None, W_values=None):
     
-    if rng is None:
-        rng = np.random.RandomState(0)
+    if W_values is None:
+        if rng is None:
+            rng = np.random.RandomState(0)
 
-    W_values = np.asarray(
-                rng.uniform(
+        W_values = np.asarray(
+                    rng.uniform(
                     low=-np.sqrt(6. / (n_in + n_out)),
                     high=np.sqrt(6. / (n_in + n_out)),
                     size=(n_out, n_in)
-                ),
-                dtype=theano.config.floatX
-            )
-    if activation == theano.tensor.nnet.sigmoid:
-        W_values *= 4
+                    ),
+                    dtype=theano.config.floatX
+                    )
+        if activation == theano.tensor.nnet.sigmoid:
+            W_values *= 4
+    else:
+        W_values = np.asarray(np.array(W_values), dtype=theano.config.floatX)
     return W_values
 
-def get_bias_init_values(n):
-    b_values = np.zeros((n,), dtype=theano.config.floatX)
+def get_bias_init_values(n, b0=None, b_values=None):
+    if b_values is None:
+        if b0 is None:
+            b_values = np.zeros((n,), dtype=theano.config.floatX)
+        else:
+            b_values = np.empty((n,), dtype=theano.config.floatX)
+            b_values.fill(b0)
+    else:
+        b_values = np.asarray(np.array(b_values), dtype=theano.config.floatX)
     return b_values

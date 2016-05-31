@@ -7,6 +7,8 @@ from types import ListType
 from types import FloatType
 import json
 from util import parse_activations
+from util import get_weight_init_values
+from util import get_bias_init_values
 
 
 class HiddenLayer(object):
@@ -15,30 +17,16 @@ class HiddenLayer(object):
                                                             b_values=None, timeseries_layer=False):
         
         self.input = input_var
+
         self.n_in = n_in
         self.n_out = n_out
         self.activation_name = activation_name
         self.activation = activation
-        if W_values is None:
-            if rng is None:
-                rng = np.random.RandomState()
-            W_values = np.asarray(
-                rng.uniform(
-                    low=-np.sqrt(6. / (n_in + n_out)),
-                    high=np.sqrt(6. / (n_in + n_out)),
-                    size=(n_out, n_in)
-                ),
-                dtype=theano.config.floatX
-            )
-            if activation == theano.tensor.nnet.sigmoid:
-                W_values *= 4
-        else:
-            W_values = np.asarray(W_values, dtype=theano.config.floatX)
+        W_values = get_weight_init_values(n_in, n_out, activation=activation, rng=rng, W_values=W_values)
+
         W = theano.shared(value=W_values, name='W', borrow=True)
-        if b_values is None:
-            b_values = np.zeros((n_out,), dtype=theano.config.floatX)
-        else:
-            b_vlaues = np.asarray(b_values, dtype=theano.config.floatX)
+        b_values = get_bias_init_values(n_out, b_values=b_values)
+
         b = theano.shared(value=b_values, name='b', borrow=True)
         self.W = W
         self.b = b

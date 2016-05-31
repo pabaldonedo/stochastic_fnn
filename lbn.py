@@ -11,6 +11,8 @@ from types import FloatType
 import json
 from util import parse_activations
 from util import get_log_likelihood
+from util import get_weight_init_values
+from util import get_bias_init_values
 
 
 class LBNOutputLayer(object):
@@ -41,19 +43,8 @@ class LBNOutputLayer(object):
         """
         
         self.input = input_var
-        if V_values is None:
-            V_values = np.asarray(
-                rng.uniform(
-                    low=-np.sqrt(6. / (n_in + n_out)),
-                    high=np.sqrt(6. / (n_in + n_out)),
-                    size=(n_out, n_in)
-                ),
-                dtype=theano.config.floatX
-            )
-            if activation == theano.tensor.nnet.sigmoid:
-                V_values *= 4
-        else:
-            V_values = np.asarray(v_values, dtype=theano.config.floatX)
+        V_values =  get_weight_init_values(n_in, n_out, activation=activation, rng=rng, W_values=V_values)
+
         V = theano.shared(value=V_values, name='V', borrow=True)
         self.n_in = n_in
         self.n_out = n_out
@@ -132,25 +123,11 @@ class DetHiddenLayer(object):
         self.n_out = n_out
         self.activation_name = activation_name
         self.m = m
-        if W_values is None:
-            W_values = np.asarray(
-                rng.uniform(
-                    low=-np.sqrt(6. / (n_in + n_out)),
-                    high=np.sqrt(6. / (n_in + n_out)),
-                    size=(n_out, n_in)
-                ),
-                dtype=theano.config.floatX
-            )
-            if activation == theano.tensor.nnet.sigmoid:
-                W_values *= 4
-        else:
-            W_values = np.asarray(W_values, dtype=theano.config.floatX)
+        W_values =  get_weight_init_values(n_in, n_out, activation=activation, rng=rng, W_values=W_values)
+       
         W = theano.shared(value=W_values, name='W', borrow=True)
+        b_values = get_bias_init_values(n_out,b_values=b_values)
 
-        if b_values is None:
-            b_values = np.zeros((n_out,), dtype=theano.config.floatX)
-        else:
-            b_values = np.asarray(b_values, dtype=theano.config.floatX)
         if no_bias is False:
             b = theano.shared(value=b_values, name='b', borrow=True)
 
