@@ -340,7 +340,9 @@ class RecurrentClassifier(Classifier):
                                                 outputs=self.lbnrnn.log_likelihood)
 
         self.output = self.lbnrnn.output
-        self.predict = theano.function(inputs=[self.x, self.lbnrnn.lbn.m], outputs=self.output)
+        self.predict_sequence = theano.function(inputs=[self.x, self.lbnrnn.lbn.m], outputs=self.output)
+        predict_upd = [(l.h0, l.output[0].flatten()) for l in self.lbnrnn.rnn.hidden_layers]
+        self.predict_one = theano.function(inputs=[self.x, self.lbnrnn.lbn.m], outputs=self.output, updates=predict_upd)
         self.log.info("Network created with n_in: {0}, mlp_n_hidden: {1}, "
                         "mlp_activation_names: {2}, lbn_n_hidden: {3}, det_activations: {4}, "
                         "stoch_activations: {5}, n_out: {6}".format(
