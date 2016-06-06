@@ -80,13 +80,14 @@ def main():
     rnn_hidden = [30]
     rnn_activations = [['sigmoid', 'tanh', 'sigmoid', 'sigmoid', 'tanh'], 'linear'] #['sigmoid', 'linear']
     lbn_n_out = 50
+    noise_type = 'additive'
 
     #Fit options
     b_size = 100
-    epoch0 = 1001
-    n_epochs = 2000
+    epoch0 = 1
+    n_epochs = 100
     lr = 1
-    save_every = 10 #Log saving
+    save_every = 1 #Log saving
     chunk_size = 2000 #Memory chunks
     #Optimizer
     opt_type = 'SGD'
@@ -96,7 +97,7 @@ def main():
     
     #Saving options
     network_name = "{0}_n_{1}_mlp_hidden_[{2}]_mlp_activation_[{3}]_lbn_n_hidden_[{4}]"\
-                    "_det_activations_[{5}]_stoch_activations_[{6}]_m_{7}_bsize_{8}_method_{9}".\
+                    "_det_activations_[{5}]_stoch_activations_[{6}]_m_{7}_noise_type_{8}_bsize_{9}_method_{10}".\
                                                     format(
                                                         'recurrentclassifier_{0}'.format(rnn_type) if recurrent else 
                                                                                     'classifier',
@@ -106,8 +107,8 @@ def main():
                                                     ','.join(str(e) for e in lbn_n_hidden),
                                                     ','.join(str(e) for e in det_activations),
                                                     ','.join(str(e) for e in stoch_activations),
-                                                    m, b_size, method['type'])
-
+                                                    m, noise_type, b_size, method['type'])
+    network_name = "TESTING"
     opath = "network_output/{0}".format(network_name)
     if not os.path.exists(opath):
         os.makedirs(opath)
@@ -116,13 +117,14 @@ def main():
     
     #LOGGING
     log, session_name = log_init(opath, session_name='lang')
+        
     #Building network
     if recurrent:
-       # c = RecurrentClassifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names,
-        #                        lbn_n_hidden,
-        #                        lbn_n_out, det_activations, stoch_activations, likelihood_precision,
-        #                        rnn_hidden, rnn_activations, rnn_type, log=log)
-        c = RecurrentClassifier.init_from_file('{0}_epoch_{1}.json'.format(network_fname, epoch0-1), log=log)
+        c = RecurrentClassifier(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names,
+                                lbn_n_hidden,
+                                lbn_n_out, det_activations, stoch_activations, likelihood_precision,
+                                rnn_hidden, rnn_activations, rnn_type, log=log, noise_type=noise_type)
+        #c = RecurrentClassifier.init_from_file('{0}_epoch_{1}.json'.format(network_fname, epoch0-1), log=log)
 
     else: 
        # c = Classifier.init_from_file('{0}_epoch_{1}.json'.format(network_fname, epoch0-1), log=log)
@@ -131,7 +133,7 @@ def main():
                                                             det_activations,
                                                             stoch_activations, log=log,
                                                             likelihood_precision=likelihood_precision)
-    
+
     #Training
     f = c.fit(x_train, y_train,m,n_epochs, b_size, method, fname=fname, epoch0=epoch0,
                                     x_test=x_test, y_test=y_test, chunk_size=chunk_size,

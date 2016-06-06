@@ -11,14 +11,17 @@ from util import parse_activations
 from rnn import VanillaRNN
 from rnn import LSTM
 from lbn import LBN
+from lbn import NoisyMLP
 from util import get_log_likelihood
 
 
 class LBNRNN_module(object):
 
-    def __init__(self, lbn_properties, rnn_definition, likelihood_precision=1, input_var=None):
+    def __init__(self, lbn_properties, rnn_definition, likelihood_precision=1, input_var=None, noise_type='multiplicative'):
         
-        self.lbn = LBN(lbn_properties['n_in'], lbn_properties['n_hidden'], lbn_properties['n_out'],
+        if noise_type == 'multiplicative':
+
+            self.lbn = LBN(lbn_properties['n_in'], lbn_properties['n_hidden'], lbn_properties['n_out'],
                                                     lbn_properties['det_activations'],
                                                     lbn_properties['stoch_activations'],
                                                     lbn_properties['stoch_n_hidden'],
@@ -27,7 +30,19 @@ class LBNRNN_module(object):
                                                     if 'layers' in lbn_properties.keys() else None,
                                                     input_var=input_var,
                                                     likelihood_precision=likelihood_precision)
-
+        elif noise_type == 'additive':
+            self.lbn = NoisyMLP(lbn_properties['n_in'], lbn_properties['n_hidden'], lbn_properties['n_out'],
+                                                    lbn_properties['det_activations'],
+                                                    lbn_properties['stoch_activations'],
+                                                    lbn_properties['stoch_n_hidden'],
+                                                    timeseries_network=True,
+                                                    layers_info=lbn_properties['layers']
+                                                    if 'layers' in lbn_properties.keys() else None,
+                                                    input_var=input_var,
+                                                    likelihood_precision=likelihood_precision)
+        else:
+            raise NotImplementedError
+        self.noise_type = noise_type
         self.x = self.lbn.x
         self.likelihood_precision = likelihood_precision
         self.y = T.tensor3('y', dtype=theano.config.floatX)
@@ -195,7 +210,8 @@ class LBNRNN_module(object):
         output_string = "{\"network_properties\":"
         output_string += json.dumps({"n_in":self.n_in,
                                     "n_out":self.n_out,
-                                    "rnn_type":self.rnn_type})
+                                    "rnn_type":self.rnn_type,
+                                    "noise_type":self.noise_type})
         output_string += ",\"lbn\":"
         output_string += self.lbn.generate_saving_string()
         output_string += ",\"rnn\":"
@@ -222,7 +238,8 @@ class LBNRNN_module(object):
         rnn_definition = network_description['rnn']
         rnn_definition['type'] = network_properties['rnn_type']
         loaded_lbn = cls(lbn_definition['network_properties'],
-                        rnn_definition['network_properties'])
+                        rnn_definition['network_properties'],
+                        noise_type=network_description['noise_type'])
 
         return loaded_lbn
 

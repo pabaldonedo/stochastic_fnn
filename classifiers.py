@@ -24,7 +24,8 @@ from util import flatten
 class Classifier(object):
 
     def parse_inputs(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                             det_activations, stoch_activations, stoch_n_hidden, log, likelihood_precision):
+                             det_activations, stoch_activations, stoch_n_hidden, log, likelihood_precision,
+                             noise_type):
         self.log = log
         if self.log is None:
             logging.basicConfig(level=logging.INFO)
@@ -48,7 +49,12 @@ class Classifier(object):
                                                                         format(stoch_activations)
         assert type(stoch_n_hidden) is ListType, "stoch_n_hidden must be a list: {0!r}".\
                                                                         format(stoch_n_hidden)
+        
+        allowed_noise = ['multiplicative', 'additive']
+        assert noise_type in allowed_noise, "noise_type must be one of {0!r}. Provided: "\
+                                                    "{1!r}".format(allowed_noise, noise_type)
 
+        self.noise_type = noise_type
         self.lbn_n_hidden = lbn_n_hidden
         self.det_activations = det_activations
         self.stoch_activations = stoch_activations
@@ -83,11 +89,12 @@ class Classifier(object):
 
     def __init__(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                  det_activations, stoch_activations, stoch_n_hidden=[-1], log=None, weights=None,
-                 likelihood_precision=1):
+                 likelihood_precision=1, noise_type='multiplicative'):
 
         self.x = T.matrix('x', dtype=theano.config.floatX)
         self.parse_inputs(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
-                            det_activations, stoch_activations, stoch_n_hidden, log, likelihood_precision)
+                            det_activations, stoch_activations, stoch_n_hidden, log, likelihood_precision,
+                            noise_type)
 
         self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in, weights)
 
@@ -133,7 +140,8 @@ class Classifier(object):
                                     "lbn_n_hidden": self.lbn_n_hidden,
                                     "det_activations": self.det_activations,
                                     "stoch_activations": self.stoch_activations,
-                                    "likelihood_precision":self.likelihood_precision})
+                                     "likelihood_precision":self.likelihood_precision,
+                                     "noise_type":self.noise_type})
         output_string += ",\"layers\": {\"bone_mlps\":["
         for i, bone in enumerate(self.bone_representations):
             if i > 0:
@@ -272,7 +280,8 @@ class Classifier(object):
                                 network_properties['stoch_activations'],
                                 log=log,
                                 weights=network_description['layers'],
-                                likelihood_precision=network_properties['likelihood_precision'])
+                                likelihood_precision=network_properties['likelihood_precision'],
+                                noise_type=network_properties['noise_type'])
 
         return loaded_classifier
 
@@ -282,12 +291,13 @@ class RecurrentClassifier(Classifier):
             
     def parse_inputs(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                      lbn_n_out, det_activations, stoch_activations, stoch_n_hidden, likelihood_precision,
-                     rnn_hidden, rnn_activations, rnn_type, log):
+                     rnn_hidden, rnn_activations, rnn_type, log, noise_type):
 
         super(RecurrentClassifier, self).parse_inputs(n_in, n_out, mlp_n_in, mlp_n_hidden,
                                                       mlp_activation_names, lbn_n_hidden,
                                                       det_activations, stoch_activations,
-                                                      stoch_n_hidden, log, likelihood_precision)
+                                                      stoch_n_hidden, log, likelihood_precision,
+                                                      noise_type)
         
         assert type(lbn_n_out) is IntType, "lbn_n_out must be an integer: {0!r}".format(lbn_n_out)
         assert type(rnn_hidden) is ListType, "rnn_hidden must be a list: {0!r}".format(rnn_hidden)
@@ -301,14 +311,14 @@ class RecurrentClassifier(Classifier):
     def __init__(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                                     lbn_n_out, det_activations, stoch_activations, likelihood_precision,
                                     rnn_hidden, rnn_activations, rnn_type, stoch_n_hidden=[-1],
-                                    log=None, weights=None):
+                                    log=None, weights=None, noise_type="multiplicative"):
 
         self.x = T.tensor3('x', dtype=theano.config.floatX)
 
         self.parse_inputs(n_in, n_out, mlp_n_in,
                           mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                           lbn_n_out, det_activations, stoch_activations, stoch_n_hidden, likelihood_precision,
-                          rnn_hidden, rnn_activations, rnn_type,  log)
+                          rnn_hidden, rnn_activations, rnn_type,  log, noise_type)
         self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in, weights, timeseries_layer=True)
 
         self.lbn_input = T.concatenate([bone.output for bone in self.bone_representations] +
@@ -330,7 +340,8 @@ class RecurrentClassifier(Classifier):
                         'layers': None if weights is None else weights['lbnrnn']['rnn']['layers'],
                         'type':self.rnn_type}
 
-        self.lbnrnn = LBNRNN_module(lbn_properties, rnn_properties, input_var=self.lbn_input, likelihood_precision=self.likelihood_precision)
+        self.lbnrnn = LBNRNN_module(lbn_properties, rnn_properties, input_var=self.lbn_input, likelihood_precision=self.likelihood_precision,
+                                    noise_type=noise_type)
 
         self.y = self.lbnrnn.y
         self.m = self.lbnrnn.lbn.m
@@ -367,7 +378,8 @@ class RecurrentClassifier(Classifier):
                                     "rnn_hidden": self.rnn_hidden,
                                     "rnn_activations": self.rnn_activations,
                                     "likelihood_precision": self.likelihood_precision,
-                                    "rnn_type": self.rnn_type})
+                                    "rnn_type": self.rnn_type,
+                                    "noise_type":self.noise_type})
         output_string += ",\"layers\": {\"bone_mlps\":["
         for i, bone in enumerate(self.bone_representations):
             if i > 0:
@@ -402,7 +414,8 @@ class RecurrentClassifier(Classifier):
                                 network_properties['rnn_activations'],
                                 network_properties['rnn_type'],
                                 log=log,
-                                weights=network_description['layers'])
+                                weights=network_description['layers'],
+                                noise_type=network_properties['noise_type'])
 
         return loaded_classifier
 

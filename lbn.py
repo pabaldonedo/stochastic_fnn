@@ -201,7 +201,7 @@ class DetHiddenLayer(object):
                                                                 n_steps=self.m)
 
 
-class StochHiddenLayer(object):
+class StochHiddenLayerInterface(object):
     """
     Stochastic hidden MLP that are included in each LBN hidden layer.
     """
@@ -246,6 +246,8 @@ class StochHiddenLayer(object):
         self.hidden_layers = [None]*(self.n_hidden.size+1)
         self.params = [None]*(self.n_hidden.size+1)*2
         self.timeseries_layer = timeseries_layer
+        self.rng = rng
+        self.trng = trng
 
         #Builds hidden layers of the MLP.
         for i, h in enumerate(self.n_hidden):
@@ -280,11 +282,19 @@ class StochHiddenLayer(object):
                                                     timeseries_layer=self.timeseries_layer)
         self.params[-2] = self.hidden_layers[-1].W
         self.params[-1] = self.hidden_layers[-1].b
+        
+        self.sample()
 
+        def sample(self):
+            pass
+
+
+class StochHiddenLayerBernoulli(StochHiddenLayerInterface):
+    def sample(self):
         #Sample from a Bernoulli distribution in each unit with a probability equal to the MLP
         #ouput.
         self.ph = self.hidden_layers[-1].output
-        sample = trng.uniform(size=self.ph.shape)
+        sample = self.trng.uniform(size=self.ph.shape)
 
         #Gradient that will be used is the one defined as "G3" in "Techniques for Learning Binary
         #stochastic feedforward Neural Networks" by Tapani Raiko, Mathias Berglund, Guillaum Alain
@@ -294,7 +304,15 @@ class StochHiddenLayer(object):
         self.output = self.ph + epsilon
 
 
-class LBNHiddenLayer():
+class StochHiddenLayerGaussian(StochHiddenLayerInterface):
+    def sample(self):
+
+        self.ph = self.hidden_layers[-1].output
+        sample = self.trng.normal(std=1., size=self.ph.shape)
+        epsilon = theano.gradient.disconnected_grad(sample)
+        self.output = self.ph + epsilon
+
+class HiddenLayerInterface(object):
     """
     Layer of the LBN. It is made of a deterministic layer and a stochastic layer.
     """
@@ -356,23 +374,68 @@ class LBNHiddenLayer():
         self.m = m
         self.timeseries_layer = timeseries_layer
         self.det_layer = DetHiddenLayer(rng, input_var, n_in, n_out, det_activation,
-                                        det_activation_name, m=m, no_bias=True, 
+                                        det_activation_name, m=m, no_bias=self.no_bias, 
                                         W_values=det_W, b_values=det_b,
                                         timeseries_layer=self.timeseries_layer)
            
         #If -1, same hidden units
         stoch_n_hidden = np.array([i if i > -1 else n_out for i in stoch_n_hidden])
-        self.stoch_layer = StochHiddenLayer(rng, trng, self.det_layer.no_bias_output,
+        self.stoch_layer = self.stoch_hidden_layer_type(rng, trng, self.det_layer.no_bias_output,
                                                     n_out, stoch_n_hidden, n_out,
                                                     stoch_activations, stoch_activation_names,
                                                     mlp_info=stoch_mlp_info,
                                                     timeseries_layer=self.timeseries_layer)
 
-        self.output = self.stoch_layer.output*self.det_layer.output
+        #self.output = self.stoch_layer.output*self.det_layer.output
+        self.define_output()
         self.params = self.det_layer.params + self.stoch_layer.params
 
 
-class LBN:
+class LBNHiddenLayer(HiddenLayerInterface):
+    def __init__(self, rng, trng, input_var, n_in, n_out, det_activation,
+                                stoch_n_hidden, stoch_activations,
+                                det_activation_name=None, stoch_activation_names=None, m=None,
+                                det_W=None, det_b=None, stoch_mlp_info=None,
+                                timeseries_layer=False):
+        
+        self.stoch_hidden_layer_type = StochHiddenLayerBernoulli
+        self.no_bias = True
+        super(LBNHiddenLayer, self).__init__(rng, trng, input_var, n_in, n_out, det_activation,
+                                stoch_n_hidden, stoch_activations,
+                                det_activation_name=det_activation_name,
+                                stoch_activation_names=stoch_activation_names,
+                                m=m,
+                                det_W=det_W, det_b=det_b,
+                                stoch_mlp_info=stoch_mlp_info,
+                                timeseries_layer=timeseries_layer)
+
+    def define_output(self):
+        self.output = self.stoch_layer.output*self.det_layer.output
+
+
+class NoisyMLPHiddenLayer(HiddenLayerInterface):
+    def __init__(self, rng, trng, input_var, n_in, n_out, det_activation,
+                                stoch_n_hidden, stoch_activations,
+                                det_activation_name=None, stoch_activation_names=None, m=None,
+                                det_W=None, det_b=None, stoch_mlp_info=None,
+                                timeseries_layer=False):
+        
+        self.stoch_hidden_layer_type = StochHiddenLayerGaussian
+        self.no_bias = False
+        super(NoisyMLPHiddenLayer, self).__init__(rng, trng, input_var, n_in, n_out, det_activation,
+                                stoch_n_hidden, stoch_activations,
+                                det_activation_name=det_activation_name,
+                                stoch_activation_names=stoch_activation_names,
+                                m=m,
+                                det_W=det_W, det_b=det_b,
+                                stoch_mlp_info=stoch_mlp_info,
+                                timeseries_layer=timeseries_layer)
+
+    def define_output(self):
+        self.output = self.stoch_layer.output + self.det_layer.output
+
+
+class StochasticInterface(object):
     """
     Linearizing Belief Net (LBN) as explained in "Predicting Distributions with
     Linearizing Belief Networks" paper by Yann N. Dauphin and David Grangie from Facebook AI
@@ -416,6 +479,7 @@ class LBN:
         :param precision: in the Gaussian Mixture Model the value of precison diagonal matrix:
                          tau= precisoin * diag()
         """
+
         if input_var is None:
             if timeseries_network:
                 self.x = T.tensor3('x', dtype=theano.config.floatX)
@@ -486,7 +550,7 @@ class LBN:
         self.params = []
         for i, h in enumerate(self.n_hidden):
             if i == 0:
-                self.hidden_layers[i] = LBNHiddenLayer(self.rng, self.trng, self.x, self.n_in,
+                self.hidden_layers[i] = self.hidden_layer_type(self.rng, self.trng, self.x, self.n_in,
                                         h, self.det_activation[i],
                                         self.stoch_n_hidden, self.stoch_activation,
                                         det_activation_name=self.det_activation_names[i],
@@ -503,7 +567,7 @@ class LBN:
                                         layers_info['hidden_layers'][i]['LBNlayer']['stochLayer'],
                                         timeseries_layer=self.timeseries_network)
             else:
-                self.hidden_layers[i] = LBNHiddenLayer(self.rng, self.trng,
+                self.hidden_layers[i] = self.hidden_layer_type(self.rng, self.trng,
                                         self.hidden_layers[i-1].output,
                                         self.n_hidden[i-1], h, self.det_activation[i],
                                         self.stoch_n_hidden, self.stoch_activation,
@@ -521,7 +585,7 @@ class LBN:
 
             self.params.append(self.hidden_layers[i].params)
         if not self.timeseries_network:
-            self.output_layer = LBNOutputLayer(self.rng, self.hidden_layers[-1].output,
+            self.output_layer = self.output_layer_type(self.rng, self.hidden_layers[-1].output,
                                                         self.n_hidden[-1], 
                                                         self.n_out, self.det_activation[-1],
                                                         self.det_activation_names[-1],
@@ -532,7 +596,7 @@ class LBN:
                                                         timeseries_layer=self.timeseries_network)
 
         else:
-            self.output_layer = LBNHiddenLayer(self.rng, self.trng,
+            self.output_layer = self.hidden_layer_type(self.rng, self.trng,
                                         self.hidden_layers[-1].output,
                                         self.n_hidden[-1], self.n_out, self.det_activation[-1],
                                         self.stoch_n_hidden, self.stoch_activation,
@@ -677,7 +741,9 @@ class LBN:
                 "stoch_activations":self.stoch_activation_names,
                 "stoch_n_hidden":[sh.tolist() for sh in self.stoch_n_hidden],
                 "timeseries_network":self.timeseries_network,
-                "likelihood_precision":self.likelihood_precision.tolist()})
+                "likelihood_precision":self.likelihood_precision.tolist(),
+                "hidden_layer_type":self.hidden_layer_type_name,
+                "output_layer_type":self.output_layer_type_name})
 
         output_string += ",\"layers\":{\"hidden_layers\":["
         for k, l in enumerate(self.hidden_layers):
@@ -770,3 +836,47 @@ class LBN:
 
         return loaded_lbn
 
+
+class LBN(StochasticInterface):
+    def __init__(self, n_in, n_hidden, n_out, det_activations, stoch_activations,
+                                                                        stoch_n_hidden=[-1],
+                                                                        layers_info=None,
+                                                                        timeseries_network=False,
+                                                                        log=None,
+                                                                        input_var=None,
+                                                                        likelihood_precision=1.):
+        self.hidden_layer_type = LBNHiddenLayer
+        self.output_layer_type = LBNOutputLayer
+        self.hidden_layer_type_name = "LBNHiddenLayer"
+        self.output_layer_type_name = "LBNOutputLayer"
+
+        super(LBN, self).__init__(n_in, n_hidden, n_out, det_activations, stoch_activations,
+                                                                        stoch_n_hidden=stoch_n_hidden,
+                                                                        layers_info=layers_info,
+                                                                        timeseries_network=timeseries_network,
+                                                                        log=log,
+                                                                        input_var=input_var,
+                                                                        likelihood_precision=likelihood_precision)
+        
+
+class NoisyMLP(StochasticInterface):
+    def __init__(self, n_in, n_hidden, n_out, det_activations, stoch_activations,
+                                                                        stoch_n_hidden=[-1],
+                                                                        layers_info=None,
+                                                                        timeseries_network=False,
+                                                                        log=None,
+                                                                        input_var=None,
+                                                                        likelihood_precision=1.):
+        self.hidden_layer_type = NoisyMLPHiddenLayer
+        self.output_layer_type = LBNOutputLayer
+        self.hidden_layer_type_name = "NoisyMLPHiddenLayer"
+        self.output_layer_type_name = "LBNOutputLayer"
+
+        super(NoisyMLP, self).__init__(n_in, n_hidden, n_out, det_activations, stoch_activations,
+                                                                        stoch_n_hidden=stoch_n_hidden,
+                                                                        layers_info=layers_info,
+                                                                        timeseries_network=timeseries_network,
+                                                                        log=log,
+                                                                        input_var=input_var,
+                                                                        likelihood_precision=likelihood_precision)
+        
