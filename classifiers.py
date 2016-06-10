@@ -541,11 +541,11 @@ class RecurrentClassifier(Classifier):
 
     def set_up_predict_one(self):
         warnings.warn("ONLY FOR ONE SAMPLE THE PREDICTION!!!")
-        predict_upd = [(l.h0, l.output[-1])  # TODO multiple samples
+        predict_upd = [(l.h0, l.output[-1].flatten())  # TODO multiple samples
                        for l in self.lbnrnn.rnn.hidden_layers]
 
         if self.rnn_type is "LSTM":
-            predict_upd += [(l.c0, l.c_t[-1])  # TODO multiple samples
+            predict_upd += [(l.c0, l.c_t[-1].flatten())  # TODO multiple samples
                             for l in self.lbnrnn.rnn.hidden_layers]
 
         self.predict_one = theano.function(
