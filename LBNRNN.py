@@ -13,33 +13,48 @@ from rnn import LSTM
 from lbn import LBN
 from lbn import NoisyMLP
 from util import get_log_likelihood
+import warnings
 
 
 class LBNRNN_module(object):
 
+    def gmm(self, means, x):
+        return T.sum(T.exp(-0.5 * self.likelihood_precision * T.sum((x - means)**2, axis=2)), axis=0)
+
+    def sample_from_distribution(self, input_x):
+        warnings.warn('ONLY CHECKING CURRENT MEANS')
+
+        def step(x):
+            buffer, _ = theano.scan(
+                lambda xi: self.gmm(x, xi), sequences=x)
+            return x[T.argmax(buffer, axis=0), T.arange(x.shape[1])]
+
+        output, _ = theano.scan(step, sequences=input_x)
+        return output.dimshuffle(0, 'x', 1, 2)
+
     def __init__(self, lbn_properties, rnn_definition, likelihood_precision=1, input_var=None, noise_type='multiplicative'):
-        
+
         if noise_type == 'multiplicative':
 
             self.lbn = LBN(lbn_properties['n_in'], lbn_properties['n_hidden'], lbn_properties['n_out'],
-                                                    lbn_properties['det_activations'],
-                                                    lbn_properties['stoch_activations'],
-                                                    lbn_properties['stoch_n_hidden'],
-                                                    timeseries_network=True,
-                                                    layers_info=lbn_properties['layers']
-                                                    if 'layers' in lbn_properties.keys() else None,
-                                                    input_var=input_var,
-                                                    likelihood_precision=likelihood_precision)
+                           lbn_properties['det_activations'],
+                           lbn_properties['stoch_activations'],
+                           lbn_properties['stoch_n_hidden'],
+                           timeseries_network=True,
+                           layers_info=lbn_properties['layers']
+                           if 'layers' in lbn_properties.keys() else None,
+                           input_var=input_var,
+                           likelihood_precision=likelihood_precision)
         elif noise_type == 'additive':
             self.lbn = NoisyMLP(lbn_properties['n_in'], lbn_properties['n_hidden'], lbn_properties['n_out'],
-                                                    lbn_properties['det_activations'],
-                                                    lbn_properties['stoch_activations'],
-                                                    lbn_properties['stoch_n_hidden'],
-                                                    timeseries_network=True,
-                                                    layers_info=lbn_properties['layers']
-                                                    if 'layers' in lbn_properties.keys() else None,
-                                                    input_var=input_var,
-                                                    likelihood_precision=likelihood_precision)
+                                lbn_properties['det_activations'],
+                                lbn_properties['stoch_activations'],
+                                lbn_properties['stoch_n_hidden'],
+                                timeseries_network=True,
+                                layers_info=lbn_properties['layers']
+                                if 'layers' in lbn_properties.keys() else None,
+                                input_var=input_var,
+                                likelihood_precision=likelihood_precision)
         else:
             raise NotImplementedError
         self.noise_type = noise_type
@@ -48,39 +63,46 @@ class LBNRNN_module(object):
         self.y = T.tensor3('y', dtype=theano.config.floatX)
         self.n_in = lbn_properties['n_in']
         self.n_out = rnn_definition['n_out']
+
+        self.rnn_input_variable = self.sample_from_distribution(
+            self.lbn.output)
         self.rnn_type = rnn_definition['type']
         if rnn_definition['type'] == 'rnn':
             self.rnn = VanillaRNN(self.lbn.n_out, rnn_definition['n_hidden'], self.n_out,
-                                                    rnn_definition['activations'],
-                                                    rng=self.lbn.rng,
-                                                    input_var=self.lbn.output,
-                                                    layers_info=rnn_definition['layers']
-                                                    if 'layers' in rnn_definition.keys() else None)
+                                  rnn_definition['activations'],
+                                  rng=self.lbn.rng,
+                                  input_var=self.rnn_input_variable,
+                                  layers_info=rnn_definition['layers']
+                                  if 'layers' in rnn_definition.keys() else None)
         elif rnn_definition['type'] == 'LSTM':
             self.rnn = LSTM(self.lbn.n_out, rnn_definition['n_hidden'], self.n_out,
-                                                    rnn_definition['activations'],
-                                                    rng=self.lbn.rng,
-                                                    input_var=self.lbn.output,
-                                                    layers_info=rnn_definition['layers']
-                                                    if 'layers' in rnn_definition.keys() else None)
+                            rnn_definition['activations'],
+                            rng=self.lbn.rng,
+                            input_var=self.rnn_input_variable,
+                            layers_info=rnn_definition['layers']
+                            if 'layers' in rnn_definition.keys() else None)
         else:
             raise NotImplementedError
         self.params = [self.lbn.params] + [self.rnn.params]
         self.output = self.rnn.output
-        self.predict = theano.function(inputs=[self.x, self.lbn.m], outputs=self.rnn.output)
-        self.log_likelihood = get_log_likelihood(self.output, self.y, self.likelihood_precision, True)
-        
+        self.predict = theano.function(
+            inputs=[self.x, self.lbn.m], outputs=self.rnn.output)
+        self.log_likelihood = get_log_likelihood(
+            self.output, self.y, self.likelihood_precision, True)
+
         self.get_log_likelihood = theano.function(inputs=[self.x, self.y, self.lbn.m],
                                                   outputs=self.log_likelihood)
 
     def fiting_variables(self, batch_size, train_set_x, train_set_y, test_set_x=None):
-        """Sets useful variables for locating batches"""    
+        """Sets useful variables for locating batches"""
         self.index = T.lscalar('index')    # index to a [mini]batch
         self.n_ex = T.lscalar('n_ex')      # total number of examples
 
-        assert type(batch_size) is IntType or FloatType, "Batch size must be an integer."
+        assert type(
+            batch_size) is IntType or FloatType, "Batch size must be an integer."
         if type(batch_size) is FloatType:
-            warnings.warn('Provided batch_size is FloatType, value has been truncated')
+            warnings.warn(
+                'Provided batch_size is FloatType, value has been truncated')
             batch_size = int(batch_size)
         # Proper implementation of variable-batch size evaluation
         # Note that the last batch may be a smaller size
@@ -94,7 +116,7 @@ class LBNRNN_module(object):
         self.effective_batch_size = self.batch_stop - self.batch_start
 
         self.get_batch_size = theano.function(inputs=[self.index, self.n_ex],
-                                          outputs=self.effective_batch_size)
+                                              outputs=self.effective_batch_size)
 
         # compute number of minibatches for training
         # note that cases are the second dimension, not the first
@@ -126,31 +148,33 @@ class LBNRNN_module(object):
         """
 
         train_set_x = theano.shared(np.asarray(x,
-                                            dtype=theano.config.floatX))
+                                               dtype=theano.config.floatX))
 
         train_set_y = theano.shared(np.asarray(y,
-                                            dtype=theano.config.floatX))
-
+                                               dtype=theano.config.floatX))
 
         self.fiting_variables(batch_size, train_set_x, train_set_y)
 
-        flat_params = [p for layer in self.params[0]  for p in layer]
-        gparams = [T.grad(-1./(x.shape[0]*x.shape[1])*self.lbn.log_likelihood, p) for p in flat_params]
+        flat_params = [p for layer in self.params[0] for p in layer]
+        gparams = [T.grad(-1. / (x.shape[0] * x.shape[1]) *
+                          self.lbn.log_likelihood, p) for p in flat_params]
         upd = [(param, param - learning_rate * gparam)
-                for param, gparam in zip(flat_params, gparams)]
+               for param, gparam in zip(flat_params, gparams)]
         self.pretrain_model = theano.function(inputs=[self.index, self.n_ex],
-                                    outputs=[self.lbn.log_likelihood, self.lbn.debugger, self.lbn.output],
-                                    updates=upd,
-                                    givens={self.x: train_set_x[:, self.batch_start:self.batch_stop],
-                                            self.lbn.y: train_set_y[:, self.batch_start:self.batch_stop],
-                                            self.lbn.m: m})
+                                              outputs=[
+                                                  self.lbn.log_likelihood, self.lbn.debugger, self.lbn.output],
+                                              updates=upd,
+                                              givens={self.x: train_set_x[:, self.batch_start:self.batch_stop],
+                                                      self.lbn.y: train_set_y[:, self.batch_start:self.batch_stop],
+                                                      self.lbn.m: m})
 
         log_likelihood = []
-        for e in xrange(1,epochs+1):
+        for e in xrange(1, epochs + 1):
             for minibatch_idx in xrange(self.n_train_batches):
-                minibatch_likelihood, d, o = self.pretrain_model(minibatch_idx, self.n_train)
-                
-            log_likelihood.append(self.get_log_likelihood(x,y,m))
+                minibatch_likelihood, d, o = self.pretrain_model(
+                    minibatch_idx, self.n_train)
+
+            log_likelihood.append(self.get_log_likelihood(x, y, m))
             print "Epoch {0} log likelihood: {1}".format(e, log_likelihood[-1])
         return log_likelihood
 
@@ -176,30 +200,33 @@ class LBNRNN_module(object):
         """
 
         train_set_x = theano.shared(np.asarray(x,
-                                            dtype=theano.config.floatX))
+                                               dtype=theano.config.floatX))
 
         train_set_y = theano.shared(np.asarray(y,
-                                            dtype=theano.config.floatX))
-
+                                               dtype=theano.config.floatX))
 
         self.fiting_variables(batch_size, train_set_x, train_set_y)
 
-        flat_params = [p for network in self.params for layer in network  for p in layer]
-        gparams = [T.grad(-1./(x.shape[0]*x.shape[1])*self.log_likelihood, p) for p in flat_params]
+        flat_params = [
+            p for network in self.params for layer in network for p in layer]
+        gparams = [T.grad(-1. / (x.shape[0] * x.shape[1]) *
+                          self.log_likelihood, p) for p in flat_params]
         upd = [(param, param - learning_rate * gparam)
-                for param, gparam in zip(flat_params, gparams)]
+               for param, gparam in zip(flat_params, gparams)]
         self.train_model = theano.function(inputs=[self.index, self.n_ex],
-                                    outputs=[self.log_likelihood, self.debugger, self.output],
-                                    updates=upd,
-                                    givens={self.x: train_set_x[:, self.batch_start:self.batch_stop],
-                                            self.y: train_set_y[:, self.batch_start:self.batch_stop],
-                                            self.lbn.m: m})
+                                           outputs=[self.log_likelihood,
+                                                    self.debugger, self.output],
+                                           updates=upd,
+                                           givens={self.x: train_set_x[:, self.batch_start:self.batch_stop],
+                                                   self.y: train_set_y[:, self.batch_start:self.batch_stop],
+                                                   self.lbn.m: m})
 
         log_likelihood = []
-        for e in xrange(1,epochs+1):
+        for e in xrange(1, epochs + 1):
             for minibatch_idx in xrange(self.n_train_batches):
-                minibatch_likelihood, d, o = self.train_model(minibatch_idx, self.n_train)
-            log_likelihood.append(self.get_log_likelihood(x,y,m))
+                minibatch_likelihood, d, o = self.train_model(
+                    minibatch_idx, self.n_train)
+            log_likelihood.append(self.get_log_likelihood(x, y, m))
             print "Epoch {0} log likelihood: {1}".format(e, log_likelihood[-1])
 
         if fname is not None:
@@ -208,16 +235,17 @@ class LBNRNN_module(object):
 
     def generate_saving_string(self):
         output_string = "{\"network_properties\":"
-        output_string += json.dumps({"n_in":self.n_in,
-                                    "n_out":self.n_out,
-                                    "rnn_type":self.rnn_type,
-                                    "noise_type":self.noise_type})
+        output_string += json.dumps({"n_in": self.n_in,
+                                     "n_out": self.n_out,
+                                     "rnn_type": self.rnn_type,
+                                     "noise_type": self.noise_type})
         output_string += ",\"lbn\":"
         output_string += self.lbn.generate_saving_string()
         output_string += ",\"rnn\":"
         output_string += self.rnn.generate_saving_string()
         output_string += "}"
         return output_string
+
     def save_network(self, fname):
         output_string = self.generate_saving_string()
         with open('{0}'.format(fname), 'w') as f:
@@ -238,15 +266,16 @@ class LBNRNN_module(object):
         rnn_definition = network_description['rnn']
         rnn_definition['type'] = network_properties['rnn_type']
         loaded_lbn = cls(lbn_definition['network_properties'],
-                        rnn_definition['network_properties'],
-                        noise_type=network_description['noise_type'])
+                         rnn_definition['network_properties'],
+                         noise_type=network_description['noise_type'])
 
         return loaded_lbn
 
 
 if __name__ == '__main__':
     from lbn import LBN
-    import cPickle, gzip
+    import cPickle
+    import gzip
     import numpy as np
     np.random.seed(0)
     f = gzip.open('mnist.pkl.gz', 'rb')
@@ -257,9 +286,9 @@ if __name__ == '__main__':
     y_val = valid_set[1]
     f.close()
 
-    x_train = x_train[:20].reshape(2,10,-1)
-    y_train = x_train[:, :,14*28:].copy()
-    x_train = x_train[:, :,:14*28]
+    x_train = x_train[:20].reshape(2, 10, -1)
+    y_train = x_train[:, :, 14 * 28:].copy()
+    x_train = x_train[:, :, :14 * 28]
     batch_size = 20
 
     n_in = x_train.shape[2]
@@ -269,13 +298,13 @@ if __name__ == '__main__':
     stoch_activations = ['sigmoid', 'sigmoid']
     stoch_n_hidden = [-1]
     m = 5
-    #n = LBN(n_in, n_hidden, n_out, det_activations, stoch_activations, stoch_n_hidden)
-    #lbn = LBN.init_from_file("last_network.json")
-    lbnrnn = LBNRNN_module({'n_in':n_in, 'n_hidden':n_hidden, 'n_out':n_out,
-                            'det_activations':det_activations,
-                            'stoch_activations':stoch_activations,
+    # n = LBN(n_in, n_hidden, n_out, det_activations, stoch_activations, stoch_n_hidden)
+    # lbn = LBN.init_from_file("last_network.json")
+    lbnrnn = LBNRNN_module({'n_in': n_in, 'n_hidden': n_hidden, 'n_out': n_out,
+                            'det_activations': det_activations,
+                            'stoch_activations': stoch_activations,
                             'stoch_n_hidden': stoch_n_hidden}, [20], 1, ['linear', 'linear', 'linear'])
-    #y_hat = lbnrnn.predict(x_train, m)
-    y = lbnrnn.predict(x_train,m)
+    # y_hat = lbnrnn.predict(x_train, m)
+    y = lbnrnn.predict(x_train, m)
     import ipdb
     ipdb.set_trace()

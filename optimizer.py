@@ -163,7 +163,6 @@ class GradientBased(Optimizer):
                         self.opt_parameters['lr'] = l_r
                     else: 
                         minibatch_avg_cost, this_batch_size = train_model(minibatch_idx, this_chunk_size)
-                    print "MINIBATCH DONE"
                     data_log_likelihood -= minibatch_avg_cost*this_batch_size*seq_len
                 #if chunk < n_chunks - 1:
                     #train_set_x.set_value(x_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_train.shape[0])])
