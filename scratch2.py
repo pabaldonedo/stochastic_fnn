@@ -82,9 +82,9 @@ def main():
 
     # Fit options
     b_size = 100
-    epoch0 = 1
+    epoch0 = 71
     n_epochs = 1000
-    lr = 5
+    lr = 1
     save_every = 10  # Log saving
     chunk_size = 2000  # Memory chunks
 
@@ -97,8 +97,8 @@ def main():
               'learning_rate': lr}
 
     # Load from file?
-    load_from_file = False
-    session_name = None
+    load_from_file = True
+    session_name = 'roberto'
 
     # Saving options
     network_name = "{0}_n_{1}_mlp_hidden_[{2}]_mlp_activation_[{3}]"\

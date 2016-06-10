@@ -16,6 +16,7 @@ from mlp import MLPLayer
 from lbn import LBN
 from LBNRNN import LBNRNN_module
 from util import flatten
+import warnings
 
 
 class Classifier(object):
@@ -505,6 +506,15 @@ class RecurrentClassifier(Classifier):
         self.lbnrnn = LBNRNN_module(lbn_properties, rnn_properties, input_var=self.lbn_input, likelihood_precision=self.likelihood_precision,
                                     noise_type=noise_type)
 
+        # Will be used for restarting the predictions
+        self.rnn0 = []
+        self.rnn0.append([l.h0.get_value(borrow=False)
+                          for l in self.lbnrnn.rnn.hidden_layers])
+
+        if self.rnn_type == 'LSTM':
+            self.rnn0.append([l.c0.get_value(borrow=False)
+                              for l in self.lbnrnn.rnn.hidden_layers])
+
         self.y = self.lbnrnn.y
         self.m = self.lbnrnn.lbn.m
         mlp_params = [mlp_i.params for mlp_i in self.bone_representations]
@@ -515,15 +525,31 @@ class RecurrentClassifier(Classifier):
         self.output = self.lbnrnn.output
         self.predict_sequence = theano.function(
             inputs=[self.x, self.lbnrnn.lbn.m], outputs=self.output)
-        predict_upd = [(l.h0, l.output[0].flatten())
-                       for l in self.lbnrnn.rnn.hidden_layers]
-        self.predict_one = theano.function(
-            inputs=[self.x, self.lbnrnn.lbn.m], outputs=self.output, updates=predict_upd)
+
+        self.set_up_predict_one()
         self.log.info("Network created with n_in: {0}, mlp_n_hidden: {1}, "
                       "mlp_activation_names: {2}, lbn_n_hidden: {3}, det_activations: {4}, "
                       "stoch_activations: {5}, n_out: {6}".format(
                           self.n_in, self.mlp_n_hidden, self.mlp_activation_names, self.lbn_n_hidden,
                           self.det_activations, self.stoch_activations, self.n_out))
+
+    def restart_prediction(self):
+        for i, l in enumerate(self.lbnrnn.rnn.hidden_layers):
+            l.h0.set_value(self.rnn0[0][i], borrow=False)
+            if self.rnn_type == 'LSTM':
+                l.c0.set_value(self.rnn0[1][i], borrow=False)
+
+    def set_up_predict_one(self):
+        warnings.warn("ONLY FOR ONE SAMPLE THE PREDICTION!!!")
+        predict_upd = [(l.h0, l.output[-1])  # TODO multiple samples
+                       for l in self.lbnrnn.rnn.hidden_layers]
+
+        if self.rnn_type is "LSTM":
+            predict_upd += [(l.c0, l.c_t[-1])  # TODO multiple samples
+                            for l in self.lbnrnn.rnn.hidden_layers]
+
+        self.predict_one = theano.function(
+            inputs=[self.x, self.lbnrnn.lbn.m], outputs=self.output[-1], updates=predict_upd)
 
     def get_cost(self):
         """Returns cost value to be optimized"""
