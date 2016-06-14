@@ -67,10 +67,10 @@ def main():
 
     # LBN definition
     lbn_n_hidden = [150, 100, 50]
-    det_activations = ['tanh', 'tanh', 'tanh', 'linear']
+    det_activations = ['linear', 'linear', 'linear', 'linear']
     stoch_activations = ['sigmoid', 'sigmoid']
     likelihood_precision = 0.1
-    m = 10
+    m = 15
 
     # RNN definiton + LBN n_out if RNN is the final layer
     rnn_type = "LSTM"
@@ -82,9 +82,9 @@ def main():
 
     # Fit options
     b_size = 100
-    epoch0 = 71
+    epoch0 = 1001
     n_epochs = 1000
-    lr = 1
+    lr = .1
     save_every = 10  # Log saving
     chunk_size = 2000  # Memory chunks
 
@@ -98,7 +98,7 @@ def main():
 
     # Load from file?
     load_from_file = True
-    session_name = 'roberto'
+    session_name = 'dilan'
 
     # Saving options
     network_name = "{0}_n_{1}_mlp_hidden_[{2}]_mlp_activation_[{3}]"\

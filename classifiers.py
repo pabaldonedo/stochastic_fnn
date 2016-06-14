@@ -12,10 +12,13 @@ from optimizer import RMSProp
 from optimizer import AdaDelta
 from optimizer import AdaGrad
 from optimizer import Adam
+import mlp
 from mlp import MLPLayer
 from lbn import LBN
 from LBNRNN import LBNRNN_module
 from util import flatten
+from util import get_activation_function
+from util import get_log_likelihood
 import warnings
 
 
@@ -288,7 +291,6 @@ class Classifier(object):
 
     def fit(self, x, y, m, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1,
             x_test=None, y_test=None, chunk_size=None, sample_axis=0):
-        """DEPRECATED USE OPTIMIZER MODULE IN STEAD"""
 
         self.log.info("Number of training samples: {0}.".format(
             x.shape[sample_axis]))
@@ -744,3 +746,150 @@ class callBack:
             self.epochs = []
             if test_error is not None:
                 self.test_log_likelihoods = []
+
+
+class MLPClassifier(object):
+
+    def __init__(self, n_in, n_out, mlp_n_hidden, mlp_activation_names,
+                 likelihood_precision=1, layers_info=None, log=None):
+
+        self.n_in = n_in
+        self.n_out = n_out
+        self.mlp_n_hidden = mlp_n_hidden
+        self.mlp_activation_names = mlp_activation_names
+        self.log = log
+        self.likelihood_precision = likelihood_precision
+        self.x = T.matrix('x', dtype=theano.config.floatX)
+        self.y = T.matrix('y', dtype=theano.config.floatX)
+        self.params = []
+
+        self.mlp = MLPLayer(self.n_in, self.mlp_n_hidden, self.mlp_activation_names,
+                            timeseries_network=False,
+                            input_var=self.x,
+                            layers_info=None if layers_info is None else layers_info['mlp'])
+
+        linear_activation = get_activation_function('linear')
+        self.params.append(self.mlp.params)
+        self.output_layer = mlp.HiddenLayer(self.mlp.output, self.mlp.hidden_layers[-1].n_out,
+                                            self.n_out, 'linear', linear_activation,
+                                            W_values=None if layers_info is None else layers_info[
+                                                'output_layer']['W'],
+                                            b_values=None if layers_info is None else layers_info[
+                                                'output_layer']['b'],
+                                            timeseries_layer=None)
+
+        self.params.append(self.output_layer.params)
+        self.log = log
+        if self.log is None:
+            logging.basicConfig(level=logging.INFO)
+            self.log = logging.getLogger()
+
+        self.output = self.output_layer.output
+
+    def get_call_back(self, save_every, fname, epoch0):
+        """Returns callback function to be sent to optimer for debugging and log purposes"""
+        c = callBack(self, save_every, fname, epoch0)
+        return c.cback
+
+    def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
+            y_test=None, chunk_size=None):
+
+        self.log.info("Number of training samples: {0}.".format(
+            x.shape[0]))
+        if x_test is not None:
+            self.log.info("Number of test samples: {0}.".format(
+                x_test.shape[0]))
+
+        flat_params = flatten(self.params)
+        cost = self.get_cost()
+        compute_error = theano.function(inputs=[self.x, self.y], outputs=cost)
+
+        allowed_methods = ['SGD', "RMSProp", "AdaDelta", "AdaGrad", "Adam"]
+
+        if method['type'] == allowed_methods[0]:
+            opt = SGD(method['lr_decay_schedule'], method['lr_decay_parameters'],
+                      method['momentum_type'], momentum=method['momentum'])
+        elif method['type'] == allowed_methods[1]:
+            opt = RMSProp(method['learning_rate'], method[
+                          'rho'], method['epsilon'])
+        elif method['type'] == allowed_methods[2]:
+            opt = AdaDelta(method['learning_rate'], method[
+                           'rho'], method['epsilon'])
+        elif method['type'] == allowed_methods[3]:
+            opt = AdaGrad(method['learning_rate'], method['epsilon'])
+        elif method['type'] == allowed_methods[4]:
+            opt = Adam(method['learning_rate'], method[
+                       'b1'], method['b2'], method['e'])
+        else:
+            raise NotImplementedError(
+                "Optimization method not implemented. Choose one out of: {0}".format(
+                    allowed_methods))
+
+        self.log.info("Fit starts with epochs: {0}, batch size: {1}, method: {2}".format(
+            n_epochs, b_size, method))
+
+        opt.fit(self.x, self.y, x, y, b_size, cost, flat_params, n_epochs,
+                compute_error, self.get_call_back(save_every, fname, epoch0),
+                x_test=x_test, y_test=y_test,
+                chunk_size=chunk_size,
+                sample_axis=0)
+
+    def get_cost(self):
+        """Returns cost value to be optimized"""
+        cost = -1. / self.x.shape[0] * get_log_likelihood(self.output_layer.output, self.y,
+                                                          self.likelihood_precision, False)
+        return cost
+
+    def generate_saving_string(self):
+        """Generate json representation of network parameters"""
+        output_string = "{\"network_properties\":"
+        output_string += json.dumps({"n_in": self.n_in, "n_out": self.n_out,
+                                     "mlp_n_hidden": self.mlp_n_hidden,
+                                     "mlp_activation_names": self.mlp_activation_names,
+                                     "likelihood_precision": self.likelihood_precision})
+
+        output_string += ",\"mlp\":"
+        output_string += self.mlp.generate_saving_string()
+        output_string += ",\"output_layer\":"
+        output_string += json.dumps({"n_in": self.output_layer.n_in,
+                                     "n_out": self.output_layer.n_out,
+                                     "activation": self.output_layer.activation_name,
+                                     "W": self.output_layer.W.get_value().tolist(),
+                                     "b": self.output_layer.b.get_value().tolist(),
+                                     "timeseries": self.output_layer.timeseries})
+
+        output_string += "}"
+
+        return output_string
+
+    def save_network(self, fname):
+        """Save network parameters in json format in fname"""
+
+        output_string = self.generate_saving_string()
+        with open(fname, 'w') as f:
+            f.write(output_string)
+        self.log.info("Network saved.")
+
+    @classmethod
+    def init_from_file(cls, fname, log=None):
+        """Class method that loads network using information in json file fname
+
+        :type fname: string.
+        :param fname: filename (with path) containing network information.
+
+        :type log: logging instance, None.
+        :param log: logging instance to be used by the classifier.
+        """
+        with open(fname, 'r') as f:
+            network_description = json.load(f)
+
+        network_properties = network_description['network_properties']
+        loaded_classifier = cls(network_properties['n_in'],
+                                network_properties['n_out'],
+                                network_properties['mlp_n_hidden'],
+                                network_properties['mlp_activation_names'],
+                                network_properties['likelihood_precision'],
+                                log=log,
+                                layers_info=network_description)
+
+        return loaded_classifier

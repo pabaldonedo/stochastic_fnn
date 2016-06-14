@@ -32,7 +32,7 @@ class LBNRNN_module(object):
         output, _ = theano.scan(step, sequences=input_x)
         return output.dimshuffle(0, 'x', 1, 2)
 
-    def __init__(self, lbn_properties, rnn_definition, likelihood_precision=1, input_var=None, noise_type='multiplicative'):
+    def __init__(self, lbn_properties, rnn_definition, likelihood_precision=1, input_var=None, noise_type='multiplicative', gmm=False):
 
         if noise_type == 'multiplicative':
 
@@ -63,9 +63,14 @@ class LBNRNN_module(object):
         self.y = T.tensor3('y', dtype=theano.config.floatX)
         self.n_in = lbn_properties['n_in']
         self.n_out = rnn_definition['n_out']
+        self.gmm = gmm
 
-        self.rnn_input_variable = self.sample_from_distribution(
-            self.lbn.output)
+        if self.gmm:
+            self.rnn_input_variable = self.sample_from_distribution(
+                self.lbn.output)
+        else:
+            self.rnn_input_variable = self.lbn.output
+
         self.rnn_type = rnn_definition['type']
         if rnn_definition['type'] == 'rnn':
             self.rnn = VanillaRNN(self.lbn.n_out, rnn_definition['n_hidden'], self.n_out,
