@@ -1,5 +1,6 @@
 from classifiers import RecurrentClassifier
 from classifiers import Classifier
+from classifiers import MLPClassifier
 import theano
 import numpy
 import warnings
@@ -93,23 +94,58 @@ class FNNPredictor(Predictor):
         x_norm.reshape(1, -1)
         return self.classifier.predict(x_norm, 1)[0]*self.stdy + self.muy
 
+class MLPPredictor(Predictor):
+
+    def __init__(self, fname, mux, stdx, muy, stdy):
+        self.classifier = MLPClassifier.init_from_file(fname)
+        self.set_up_means(mux, stdx, muy, stdy)
+
+    def predict(self, x):
+        """
+        :type x: numpy.array
+        :param x: input data of shape (1, 197)
+
+        :return (1,30) numpy.array containing the system controls (except the last 4)
+        """
+        assert type(
+            x) is numpy.ndarray, "Input must be a numpy array. Given type: {0!r}".format(type(x))
+
+        if x.dtype is not theano.config.floatX:
+            x = numpy.asarray(x, dtype=theano.config.floatX)
+
+        cols = [1] + list(range(3, x.shape[1]))
+
+        x = x[:, cols]
+        x_norm = (x - self.mux) * 1. / self.stdx
+        x_norm.reshape(1, -1)
+        return self.classifier.predict(x_norm)[0]*self.stdy + self.muy
+
 
 class UnityMessenger(object):
     """
     Opens a ZMQ socket to communicate with c++ Unity program
     """
 
-    def __init__(self, fname, mux, stdx, muy, stdy, recurrent=True, port=5555):
+    def __init__(self, fname, mux, stdx, muy, stdy, classifier_type, port=5555):
         # Sets up socket
         context = zmq.Context()
         self.socket = context.socket(zmq.REP)
         self.socket.bind("tcp://*:{0}".format(port))
+        classifier_types = ['Recurrent', 'Classifier', 'MLP']
+        
         # Sets up predictor
-        if recurrent:
+        if classifier_type == classifier_types[0]:
             self.predictor = RNNPredictor(fname, mux, stdx, muy, stdy)
-        else:
+            self.recurrent = True
+        elif classifier_type == classifier_types[1]:
             self.predictor = FNNPredictor(fname, mux, stdx, muy, stdy)
-
+            self.recurrent = False
+        elif classifier_type == classifier_types[2]:
+            self.predictor = MLPPredictor(fname, mux, stdx, muy, stdy)
+            self.recurrent = False
+        else:
+            raise NotImplementedError
+            
     def listen(self):
         print "Listening starts"
         while True:
@@ -119,7 +155,7 @@ class UnityMessenger(object):
 
             x = numpy.fromstring(message, sep=',')
             # Do the work
-            if recurrent:
+            if self.recurrent:
                 x = x.reshape(1, 1, -1)
             else:
                 x = x.reshape(1, -1)
@@ -131,9 +167,9 @@ class UnityMessenger(object):
 
 if __name__ == '__main__':
     port = 5555
-    fname = 'network_output/recurrent_gmm_test.json'
+    fname = 'network_output/mlp_lbn_150.json'
 
-    recurrent = True
+    classifier_type = 'Classifier'
 
     x_info = numpy.genfromtxt('mux_stdx_n_13.csv', delimiter=',')
     y_info = numpy.genfromtxt('muy_stdy_n_13.csv', delimiter=',')
@@ -144,5 +180,5 @@ if __name__ == '__main__':
     muy = y_info[0]
     stdy = y_info[1]
     
-    messenger = UnityMessenger(fname, mux, stdx, muy, stdy, recurrent=recurrent, port=port)
+    messenger = UnityMessenger(fname, mux, stdx, muy, stdy, classifier_type, port=port)
     messenger.listen()

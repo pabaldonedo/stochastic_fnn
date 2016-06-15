@@ -785,6 +785,7 @@ class MLPClassifier(object):
             self.log = logging.getLogger()
 
         self.output = self.output_layer.output
+        self.predict = theano.function(inputs=[self.x], outputs=self.output)
 
     def get_call_back(self, save_every, fname, epoch0):
         """Returns callback function to be sent to optimer for debugging and log purposes"""
