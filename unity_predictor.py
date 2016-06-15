@@ -8,12 +8,30 @@ import zmq
 
 
 class Predictor(object):
+    """Base class for all predictors used for control in Unity"""
 
     def __init__(self):
         pass
 
     def set_up_means(self, mux, stdx, muy, stdy):
-        # Set up mean and standard deviation correction
+        """ Set up mean and standard deviation correction
+
+        :type fname: string.
+        :param fname: Filename (with path) containing the classifier definition.
+
+        :type: mux: numpy.array.
+        :param mux: mean to be subtracted from the input array.
+
+        :type stdx: numpy.array.
+        :param stdx: standard deviation to scale the input array.
+
+        :type muy: numpy.array.
+        :param muy: mean to be added to the output array.
+
+        :type stdy: numpy.array.
+        :param stdy: standar deveiation to scale the output array.
+        """
+
         if mux.dtype is not theano.config.floatX:
             mux = numpy.asarray(mux, dtype=theano.config.floatX)
             warnings.warn("Mux dtype casted to: {0}".format(
@@ -38,15 +56,31 @@ class Predictor(object):
         self.stdx = stdx[cols]
         self.muy = muy[:-4]
         self.stdy = stdy[:-4]
-        
+
 
 class RNNPredictor(Predictor):
+    """ Predictor using LBN + RNN (defined as RecurrentClassifier in classifiers.py)"""
 
     def __init__(self, fname, mux, stdx, muy, stdy):
+        """
+        :type fname: string.
+        :param fname: Filename (with path) containing the classifier definition.
+
+        :type: mux: numpy.array.
+        :param mux: mean to be subtracted from the input array.
+
+        :type stdx: numpy.array.
+        :param stdx: standard deviation to scale the input array.
+
+        :type muy: numpy.array.
+        :param muy: mean to be added to the output array.
+
+        :type stdy: numpy.array.
+        :param stdy: standar deveiation to scale the output array.
+        """
         # Loads classifier from fname
         self.classifier = RecurrentClassifier.init_from_file(fname)
         self.set_up_means(mux, stdx, muy, stdy)
-
 
     def predict(self, x):
         """
@@ -65,12 +99,29 @@ class RNNPredictor(Predictor):
         x = x[:, :, cols]
         x_norm = (x - self.mux) * 1. / self.stdx
         x_norm.reshape(1, 1, -1)
-        return self.classifier.predict_one(x_norm, 1)[0]*self.stdy + self.muy
+        return self.classifier.predict_one(x_norm, 1)[0] * self.stdy + self.muy
 
 
 class FNNPredictor(Predictor):
+    """Predictor using LBN (defined sa Classifier in classifiers.py). """
 
     def __init__(self, fname, mux, stdx, muy, stdy):
+        """
+        :type fname: string.
+        :param fname: Filename (with path) containing the classifier definition.
+
+        :type: mux: numpy.array.
+        :param mux: mean to be subtracted from the input array.
+
+        :type stdx: numpy.array.
+        :param stdx: standard deviation to scale the input array.
+
+        :type muy: numpy.array.
+        :param muy: mean to be added to the output array.
+
+        :type stdy: numpy.array.
+        :param stdy: standar deveiation to scale the output array.
+        """
         self.classifier = Classifier.init_from_file(fname)
         self.set_up_means(mux, stdx, muy, stdy)
 
@@ -92,11 +143,31 @@ class FNNPredictor(Predictor):
         x = x[:, cols]
         x_norm = (x - self.mux) * 1. / self.stdx
         x_norm.reshape(1, -1)
-        return self.classifier.predict(x_norm, 1)[0]*self.stdy + self.muy
+        return self.classifier.predict(x_norm, 1)[0] * self.stdy + self.muy
+
 
 class MLPPredictor(Predictor):
+    """ Predictor using only a classical MLP network
+    (defined as MLPClassifier in classifiers.py)
+    """
 
     def __init__(self, fname, mux, stdx, muy, stdy):
+        """
+        :type fname: string.
+        :param fname: Filename (with path) containing the classifier definition.
+
+        :type: mux: numpy.array.
+        :param mux: mean to be subtracted from the input array.
+
+        :type stdx: numpy.array.
+        :param stdx: standard deviation to scale the input array.
+
+        :type muy: numpy.array.
+        :param muy: mean to be added to the output array.
+
+        :type stdy: numpy.array.
+        :param stdy: standar deveiation to scale the output array.
+        """
         self.classifier = MLPClassifier.init_from_file(fname)
         self.set_up_means(mux, stdx, muy, stdy)
 
@@ -118,7 +189,7 @@ class MLPPredictor(Predictor):
         x = x[:, cols]
         x_norm = (x - self.mux) * 1. / self.stdx
         x_norm.reshape(1, -1)
-        return self.classifier.predict(x_norm)[0]*self.stdy + self.muy
+        return self.classifier.predict(x_norm)[0] * self.stdy + self.muy
 
 
 class UnityMessenger(object):
@@ -127,12 +198,35 @@ class UnityMessenger(object):
     """
 
     def __init__(self, fname, mux, stdx, muy, stdy, classifier_type, port=5555):
+        """
+        :type fname: string.
+        :param fname: Filename (with path) containing the classifier definition.
+
+        :type: mux: numpy.array.
+        :param mux: mean to be subtracted from the input array.
+
+        :type stdx: numpy.array.
+        :param stdx: standard deviation to scale the input array.
+
+        :type muy: numpy.array.
+        :param muy: mean to be added to the output array.
+
+        :type stdy: numpy.array.
+        :param stdy: standar deveiation to scale the output array.
+
+        :type classifier_type: string.
+        :param classifier_type: defines which classifier to be used. One of
+                                "Recurrent, "Classifier" or "MLP".
+
+        :type port: int.
+        :param port: port number used in zeromq.
+        """
         # Sets up socket
         context = zmq.Context()
         self.socket = context.socket(zmq.REP)
         self.socket.bind("tcp://*:{0}".format(port))
         classifier_types = ['Recurrent', 'Classifier', 'MLP']
-        
+
         # Sets up predictor
         if classifier_type == classifier_types[0]:
             self.predictor = RNNPredictor(fname, mux, stdx, muy, stdy)
@@ -145,7 +239,7 @@ class UnityMessenger(object):
             self.recurrent = False
         else:
             raise NotImplementedError
-            
+
     def listen(self):
         print "Listening starts"
         while True:
@@ -159,7 +253,7 @@ class UnityMessenger(object):
                 x = x.reshape(1, 1, -1)
             else:
                 x = x.reshape(1, -1)
-                
+
             y = self.predictor.predict(x).flatten()
             print "Sent: {0}".format(y)
             #  Send reply back to client
@@ -173,12 +267,13 @@ if __name__ == '__main__':
 
     x_info = numpy.genfromtxt('mux_stdx_n_13.csv', delimiter=',')
     y_info = numpy.genfromtxt('muy_stdy_n_13.csv', delimiter=',')
-        
+
     mux = x_info[0]
     stdx = x_info[1]
 
     muy = y_info[0]
     stdy = y_info[1]
-    
-    messenger = UnityMessenger(fname, mux, stdx, muy, stdy, classifier_type, port=port)
+
+    messenger = UnityMessenger(
+        fname, mux, stdx, muy, stdy, classifier_type, port=port)
     messenger.listen()

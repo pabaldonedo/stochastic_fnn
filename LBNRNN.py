@@ -1,13 +1,9 @@
-import types
 from types import IntType
-from types import ListType
 from types import FloatType
 import numpy as np
 import theano
 import theano.tensor as T
-import logging
 import json
-from util import parse_activations
 from rnn import VanillaRNN
 from rnn import LSTM
 from lbn import LBN
@@ -19,7 +15,8 @@ import warnings
 class LBNRNN_module(object):
 
     def gmm(self, means, x):
-        return T.sum(T.exp(-0.5 * self.likelihood_precision * T.sum((x - means)**2, axis=2)), axis=0)
+        return T.sum(T.exp(-0.5 * self.likelihood_precision * T.sum((x - means)**2, axis=2)),
+                     axis=0)
 
     def sample_from_distribution(self, input_x):
         warnings.warn('ONLY CHECKING CURRENT MEANS')
@@ -32,8 +29,28 @@ class LBNRNN_module(object):
         output, _ = theano.scan(step, sequences=input_x)
         return output.dimshuffle(0, 'x', 1, 2)
 
-    def __init__(self, lbn_properties, rnn_definition, likelihood_precision=1, input_var=None, noise_type='multiplicative', gmm=False):
+    def __init__(self, lbn_properties, rnn_definition, likelihood_precision=1,
+                 input_var=None, noise_type='multiplicative', gmm=False):
+        """
+        :type lbn_properties: dictionary.
+        :param lbn_properties: lbn network properties.
 
+        :type rnn_definition: dictionary.
+        :param rnn_definition: rnn network properties.
+
+        :type likelihood_precision: integer.
+        :param likelihood_precision: precision value of the likelihood.
+
+        :type input_var: theano.tensor or None.
+        :param input_var: input variable of the network.
+
+        :type noise_type: string.
+        :param noise_type: defines if it used a LBN or MLPNoisy layer.
+
+        :type gmm: bool.
+        :param gmm: if True the output of the LBN is passed through a GMM
+                    before inputing it to the RNN.
+        """
         if noise_type == 'multiplicative':
 
             self.lbn = LBN(lbn_properties['n_in'], lbn_properties['n_hidden'], lbn_properties['n_out'],
@@ -133,6 +150,7 @@ class LBNRNN_module(object):
 
     def lbn_pretrain(self, x, y, m, learning_rate, epochs, batch_size):
         """
+        DEPRECATED
         :type x: numpy.array.
         :param x: input data of shape (n_samples, dimensionality).
 
@@ -185,6 +203,7 @@ class LBNRNN_module(object):
 
     def fit(self, x, y, m, learning_rate, epochs, batch_size, fname=None):
         """
+        DEPRECATED
         :type x: numpy.array.
         :param x: input data of shape (n_samples, dimensionality).
 
@@ -239,6 +258,7 @@ class LBNRNN_module(object):
         return log_likelihood
 
     def generate_saving_string(self):
+
         output_string = "{\"network_properties\":"
         output_string += json.dumps({"n_in": self.n_in,
                                      "n_out": self.n_out,

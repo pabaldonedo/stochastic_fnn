@@ -150,11 +150,24 @@ class VanillaRNN(RNN):
                  input_var=None):
         """Defines the basics of a Vanilla Recurrent Neural Network used on top of a LBN.
 
+        :type n_in: integer.
         :param n_in: integer defining the number of input units.
+
+        :type n_hidden: list.
         :param n_hidden: list of integers defining the number of hidden units per layer.
+
+        :type n_out: integer.
         :param n_out: integer defining the number of output units.
-        :param activation: list of size len(n_hidden) + 1 defining the activation function per layer.
+
+        :type activation_list: list.
+        :param activation_list: list of size len(n_hidden) + 1 defining the
+                                activation function per layer.
+
+        :type prng: numpy.random.RandomState.
         :param prng: random number generator.
+
+        :type layers_info: dictionary.
+        :param layers_info: network description.
         """
         if input_var is None:
             self.x = T.tensor3('x', dtype=theano.config.floatX)
@@ -164,6 +177,35 @@ class VanillaRNN(RNN):
             self.rng = np.random.RandomState(0)
         else:
             self.rng = rng
+
+        self.defined = False
+        self.parse_properties(n_in, n_hidden, n_out, activation_list)
+        self.type = 'VanillaRNN'
+        self.opt = {'type': self.type, 'n_in': self.n_in, 'n_hidden': self.n_hidden,
+                    'n_out': self.n_out, 'activation': self.activation_list}
+
+        logging.info('RNN loaded. Type: {0}, input layer: {1}, hidden layers: {2}, output layer: '
+                     '{3}, activation: {4}'.format(self.type, self.n_in, self.n_hidden, self.n_out,
+                                                   self.activation_list))
+
+        self.define_network(layers_info=layers_info)
+
+    def parse_properties(self, n_in, n_hidden, n_out, activation_list):
+        """ Parse inputs checking its types.
+
+        :type n_in: int.
+        :param n_in: network input dimensionality.
+
+        :type n_hidden: list of ints.
+        :param n_hidden: network hidden layer dimensionalities.
+
+        :type n_out: int.
+        :param n_out: network output dimensionality.
+
+        :type activation_list: list of strings.
+        :param activation_list: list of size len(n_hidden) + 1 defining the
+                                activation function per layer.
+        """
 
         assert type(
             n_in) is IntType, "n_in must be an integer: {0!r}".format(n_in)
@@ -183,19 +225,6 @@ class VanillaRNN(RNN):
         assert type(
             n_out) is IntType, "n_out must be an int: {0!r}".format(n_out)
 
-        self.defined = False
-        self.parse_properties(n_in, n_hidden, n_out, activation_list)
-        self.type = 'VanillaRNN'
-        self.opt = {'type': self.type, 'n_in': self.n_in, 'n_hidden': self.n_hidden,
-                    'n_out': self.n_out, 'activation': self.activation_list}
-
-        logging.info('RNN loaded. Type: {0}, input layer: {1}, hidden layers: {2}, output layer: '
-                     '{3}, activation: {4}'.format(self.type, self.n_in, self.n_hidden, self.n_out,
-                                                   self.activation_list))
-
-        self.define_network(layers_info=layers_info)
-
-    def parse_properties(self, n_in, n_hidden, n_out, activation_list):
         self.n_hidden = np.array(n_hidden)
         self.n_out = n_out
         self.n_in = n_in
@@ -204,7 +233,11 @@ class VanillaRNN(RNN):
             activation_list)
 
     def define_network(self, layers_info=None):
+        """ Builds computation graph
 
+        :type layers_info: dict.
+        :param layers_info: network description.
+        """
         self.hidden_layers = [None] * self.n_hidden.size
 
         self.params = []
@@ -288,6 +321,7 @@ class VanillaRNN(RNN):
         self.output = self.output_layer.output
 
     def generate_saving_string(self):
+        """ Generates a string for saving the network"""
         output_string = "{\"network_properties\":"
         output_string += json.dumps({"n_in": self.n_in, "n_hidden": self.n_hidden.tolist(),
                                      "n_out": self.n_out,
@@ -331,6 +365,7 @@ class VanillaRNN(RNN):
     def init_from_file(cls, fname, input_var=None):
         """
         Loads a saved network from file fname.
+
         :type fname: string.
         :param fname: file name (with local or global path) from where to load the network.
         """
@@ -352,13 +387,27 @@ class LSTM(RNN):
                  layers_info=None):
         """Defines the basics of a LSTM Neural Network.
 
+        :type n_in: integer.
         :param n_in: integer defining the number of input units.
-        :param n_hidden: list of integers defining the number of hidden units per layer.
+
+        :type n_hidden: list of integer.
+        :param n_hidden: defines the number of hidden units per layer.
+
+        :type n_out: integer.
         :param n_out: integer defining the number of output units.
-        :param activation: list with activation function for [input gate, candidate gate,
-        forget gate, output gate, network output].
+
+        :type activation: list.
+        :param activation: activation functions for [input gate, candidate gate,
+                                        forget gate, output gate, network output].
+
+        :type rng: numpy.random.RandomState.
         :param rng: random number generator.
-        :bias_init: bias initialization.
+
+        :type input_var: theano.Tensor or None.
+        :param input_var: input of computation graph. If None a thenao.Tensor.tensor3 is created.
+
+        :type layers_info: dict.
+        :param layers_info: network definition.
         """
 
         if input_var is None:
@@ -370,6 +419,35 @@ class LSTM(RNN):
             self.rng = np.random.RandomState(0)
         else:
             self.rng = rng
+
+        self.defined = False
+        self.parse_properties(n_in, n_hidden, n_out, activation_list)
+
+        self.type = 'LSTM'
+        self.opt = {'type': self.type, 'n_in': self.n_in, 'n_hidden': self.n_hidden,
+                    'n_out': self.n_out, 'activation': self.activation_names}
+
+        logging.info('RNN loaded. Type: {0}, input layer: {1}, hidden layers: {2}, output layer: {3}'
+                     .format(self.type, self.n_in, self.n_hidden, self.n_out))
+
+        self.define_network(layers_info=layers_info)
+
+    def parse_properties(self, n_in, n_hidden, n_out, activation_list):
+        """ Parse inputs checking its types.
+
+        :type n_in: int.
+        :param n_in: network input dimensionality.
+
+        :type n_hidden: list of ints.
+        :param n_hidden: network hidden layer dimensionalities.
+
+        :type n_out: int.
+        :param n_out: network output dimensionality.
+
+        :type activation_list: list of strings.
+        :param activation_list: list of size len(n_hidden) + 1 defining the
+                                activation function per layer.
+        """
 
         assert type(n_in) is IntType, "n_in must be an integer: {0!r}".format(
             n_in)
@@ -387,19 +465,6 @@ class LSTM(RNN):
         assert type(n_out) is IntType, "n_out must be an int: {0!r}".format(
             self.n_out)
 
-        self.defined = False
-        self.parse_properties(n_in, n_hidden, n_out, activation_list)
-
-        self.type = 'LSTM'
-        self.opt = {'type': self.type, 'n_in': self.n_in, 'n_hidden': self.n_hidden,
-                    'n_out': self.n_out, 'activation': self.activation_names}
-
-        logging.info('RNN loaded. Type: {0}, input layer: {1}, hidden layers: {2}, output layer: {3}'
-                     .format(self.type, self.n_in, self.n_hidden, self.n_out))
-
-        self.define_network(layers_info=layers_info)
-
-    def parse_properties(self, n_in, n_hidden, n_out, activation_list):
         self.n_hidden = np.array(n_hidden)
         self.n_out = n_out
         self.n_in = n_in
@@ -409,7 +474,11 @@ class LSTM(RNN):
         self.activations[1] = get_activation_function(activation_list[1])
 
     def define_network(self, layers_info=None):
+        """ Builds computation graph
 
+        :type layers_info: dict.
+        :param layers_info: network description.
+        """
         self.hidden_layers = [None] * self.n_hidden.size
         self.params = []
         for i, h in enumerate(self.n_hidden):
@@ -470,6 +539,8 @@ class LSTM(RNN):
         self.output = self.output_layer.output
 
     def generate_saving_string(self):
+        """ Generates a string for saving the network"""
+
         output_string = "{\"network_properties\":"
         output_string += json.dumps({"n_in": self.n_in, "n_hidden": self.n_hidden.tolist(),
                                      "n_out": self.n_out,
@@ -530,6 +601,7 @@ class LSTM(RNN):
     def init_from_file(cls, fname, input_var=None):
         """
         Loads a saved network from file fname.
+
         :type fname: string.
         :param fname: file name (with local or global path) from where to load the network.
         """
@@ -550,12 +622,45 @@ class LSTMHiddenLayer(object):
     def __init__(self, rng, input_var, n_in, n_out, activations, activation_names, weights=None,
                  biases=None,
                  zero_values=None):
+        """
+        Hidden layer: Weight matrix W is of shape (n_out,n_in)
+        and the bias vector b is of shape (n_out,).
+        :type rng: numpy.random.RandomState.
+        :param rng: a random number generator used to initialize weights.
+
+        :type input_var: theano.tensor.tensor4.
+        :param input_var: a symbolic tensor of shape (t, m stochastic draws,
+                                                                            training_samples, n_in).
+
+        :type n_in: int.
+        :param n_in: input dimensionality.
+
+        :type n_out: int.
+        :param n_out: number of hidden units.
+
+        :type activations: theano.Op or function.
+        :param activations: Non linearity to be applied in the hidden layer.
+
+        :type activation_name: string
+        :param activation_name: name of activation function.
+
+        :type weights: dictionary or None.
+        :param weights: information regarding the W matrices.
+
+        :type biases: dictionary or None.
+        :param biases: information regarding bias vectors.
+
+        :type zero_values: dictionary or None.
+        :param zero_values: information regarding the starting values h0 and c0.
+        """
+
         self.input = input_var
         self.n_in = n_in
         self.n_out = n_out
         self.activation_names = activation_names
         self.rng = rng
 
+        # Initialization values.
         Whi_values = get_weight_init_values(n_out, n_out, activation=activations[
                                             0], rng=self.rng, W_values=None if weights is None else weights['Whi'])
         Whj_values = get_weight_init_values(n_out, n_out, activation=activations[
@@ -587,6 +692,7 @@ class LSTMHiddenLayer(object):
         c0_values = get_bias_init_values(
             n_out, b_values=None if weights is None else zero_values['c0'])
 
+        # Create variables.
         self.Whi = theano.shared(value=Whi_values, name='Whi', borrow=True)
         self.Whj = theano.shared(value=Whj_values, name='Whj', borrow=True)
         self.Whf = theano.shared(value=Whf_values, name='Whf', borrow=True)
@@ -608,6 +714,7 @@ class LSTMHiddenLayer(object):
 
         self.activations = activations
 
+        # Computation graph.
         def h_step(x_t, h_tm1, c_tm1):
             a_input_gate = T.tensordot(x_t, self.Wxi, axes=([2, 1])) + T.tensordot(h_tm1, self.Whi,
                                                                                    axes=[2, 1]) + self.bi
