@@ -188,6 +188,86 @@ def get_log_likelihood(output, y, precision, timeseries):
     return log_likelihood
 
 
+def get_no_stochastic_log_likelihood(output, y, precision, timeseries):
+    """outputs theano variable that contains the UNNORMALIZED log-likelihood.
+
+    :type output: theano.tensor3 if timeseries False/ theano.tensor4 if
+                                                               timeseries True.
+    :param output: theano output variable of network.
+
+    :type y: theano.matrix.
+    :param y: theano variable containing true output.
+
+    :type precision: float.
+    :param precision: precision parameter of gaussian distribution.
+                      Useful to overcome numerical problems.
+                      If getting nans try to increase its value.
+
+    :type timeseries: bool.
+    :param timeseries: tells if the network is recurrent (True) or feedforward
+                                                                       (False).
+    """
+
+    if not timeseries:
+        exp_value = -0.5 * \
+            T.sum((output - y.dimshuffle('x', 0, 1))**2, axis=1) * precision
+
+        log_likelihood = T.sum(exp_value)  # -\
+        #       self.y.shape[0]*(T.log(self.m)+self.y.shape[1]/2.*T.log(2*np.pi))
+
+    else:
+        exp_value = -0.5 * \
+            T.sum((output - y.dimshuffle(0, 'x', 1, 2))**2, axis=2) * precision
+        log_likelihood = T.sum(exp_value)
+    return log_likelihood
+
+
+def get_log_likelihood(output, y, precision, timeseries, stochastic_samples=True):
+    """outputs theano variable that contains the UNNORMALIZED log-likelihood.
+
+    :type output: theano.tensor3 if timeseries False/ theano.tensor4 if
+                                                               timeseries True.
+    :param output: theano output variable of network.
+
+    :type y: theano.matrix.
+    :param y: theano variable containing true output.
+
+    :type precision: float.
+    :param precision: precision parameter of gaussian distribution.
+                      Useful to overcome numerical problems.
+                      If getting nans try to increase its value.
+
+    :type timeseries: bool.
+    :param timeseries: tells if the network is recurrent (True) or feedforward
+                                                                       (False).
+    """
+
+    if not timeseries:
+        exp_value = -0.5 * \
+            T.sum((output - y.dimshuffle('x', 0, 1))**2, axis=2) * precision
+        max_exp_value = theano.ifelse.ifelse(T.lt(T.max(exp_value),
+                                                  -1 * T.min(exp_value)),
+                                             T.min(exp_value), T.max(exp_value)
+                                             )
+
+        log_likelihood = T.sum(T.log(T.sum(T.exp(exp_value - max_exp_value),
+                                           axis=0)) +
+                               max_exp_value)  # -\
+        #       self.y.shape[0]*(T.log(self.m)+self.y.shape[1]/2.*T.log(2*np.pi))
+
+    else:
+        exp_value = -0.5 * \
+            T.sum((output - y.dimshuffle(0, 'x', 1, 2))**2, axis=3) * precision
+        max_exp_value = theano.ifelse.ifelse(T.lt(T.max(exp_value), -1 * T.min(
+            exp_value)),
+            T.max(exp_value), T.min(exp_value))
+
+        log_likelihood = T.sum(T.log(T.sum(T.exp(exp_value - max_exp_value),
+                                           axis=1)) +
+                               max_exp_value)
+    return log_likelihood
+
+
 def get_weight_init_values(n_in, n_out, activation=None, rng=None,
                            W_values=None):
     """Returns initial weights for a weight matrix.

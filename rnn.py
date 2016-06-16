@@ -23,14 +23,16 @@ class RNN():
 class RNNOutputLayer():
 
     def __init__(self, rng, input_var, n_in, n_out, activation, activation_name, W_values=None,
-                 b_values=None):
+                 b_values=None, stochastic_samples=True):
         """
         RNN output layer.
         :type rng: numpy.random.RandomState.
         :param rng: a random number generator used to initialize weights.
 
         :type input_var: theano.tensor.dmatrix.
-        :param input_var: a symbolic tensor of shape (m, n_samples, n_in).
+        :param input_var: a symbolic tensor of shape (sequence length, m, n_samples, n_in)
+                        if stochastic_samples is True
+                        (sequence length, n_samples, n_in) otherwise.
 
         :type n_in: int.
         :param n_in: input dimensionality.
@@ -49,6 +51,9 @@ class RNNOutputLayer():
 
         :type b_values: numpy array.
         :param b_values: initialization values of the bias.
+
+        :type stochastic_samples: bool.
+        :param stochastic_samples: tells if the network is on top a stochastic one like a LBN.
         """
         self.input = input_var
         W_values = get_weight_init_values(
@@ -68,7 +73,10 @@ class RNNOutputLayer():
         self.activation_name = activation_name
 
         def h_step(x):
-            a = T.tensordot(x, self.W, axes=([2, 1])) + self.b
+            if stochastic_samples:
+                a = T.tensordot(x, self.W, axes=([2, 1])) + self.b
+            else:
+                a = T.dot(x, self.W.T) + self.b
             h_t = self.activation(a)
             return h_t
         self.output, _ = theano.scan(h_step, sequences=self.input)
@@ -77,7 +85,8 @@ class RNNOutputLayer():
 class VanillaRNNHiddenLayer(object):
 
     def __init__(self, rng, input_var, n_in, n_out, activation, activation_name,
-                 W_f_values=None, W_r_values=None, b_values=None, h_values=None):
+                 W_f_values=None, W_r_values=None, b_values=None, h_values=None,
+                 stochastic_samples=True):
         """
         Hidden layer: Weight matrix W is of shape (n_out,n_in)
         and the bias vector b is of shape (n_out,).
@@ -108,6 +117,9 @@ class VanillaRNNHiddenLayer(object):
 
         :type b_values: numpy array.
         :param b_values: initialization values of the bias.
+
+        :type stochastic_samples: bool.
+        :param stochastic_samples: tells if the network is on top a stochastic one like a LBN.
         """
         self.input = input_var
         self.n_in = n_in
@@ -134,20 +146,30 @@ class VanillaRNNHiddenLayer(object):
         self.activation = activation
 
         def h_step(x, h_tm1):
-            a = T.tensordot(x, self.W_f, axes=([2, 1])) + T.tensordot(h_tm1, self.W_r,
-                                                                      axes=[2, 1]) + self.b
+            if stochastic_samples:
+                a = T.tensordot(x, self.W_f, axes=([2, 1])) + T.tensordot(h_tm1, self.W_r,
+                                                                          axes=[2, 1]) + self.b
+            else:
+                a = T.dot(x, self.W_f.T) + T.dot(h_tm1, self.W_r.T) + self.b
             h_t = self.activation(a)
             return h_t
-        self.output, _ = theano.scan(h_step, sequences=self.input,
-                                     outputs_info=T.alloc(self.h0, self.input.shape[1],
-                                                          self.input.shape[2],
-                                                          self.n_out))
+
+        if stochastic_samples:
+            self.output, _ = theano.scan(h_step, sequences=self.input,
+                                         outputs_info=T.alloc(self.h0, self.input.shape[1],
+                                                              self.input.shape[
+                                                                  2],
+                                                              self.n_out))
+        else:
+            self.output, _ = theano.scan(h_step, sequences=self.input,
+                                         outputs_info=T.alloc(self.h0, self.input.shape[1],
+                                                              self.n_out))
 
 
 class VanillaRNN(RNN):
 
     def __init__(self, n_in, n_hidden, n_out, activation_list, rng=None, layers_info=None,
-                 input_var=None):
+                 input_var=None, stochastic_samples=True):
         """Defines the basics of a Vanilla Recurrent Neural Network used on top of a LBN.
 
         :type n_in: integer.
@@ -178,6 +200,7 @@ class VanillaRNN(RNN):
         else:
             self.rng = rng
 
+        self.stochastic_samples = stochastic_samples
         self.defined = False
         self.parse_properties(n_in, n_hidden, n_out, activation_list)
         self.type = 'VanillaRNN'
@@ -268,7 +291,8 @@ class VanillaRNN(RNN):
                                                               else np.array(
                                                                   layers_info[
                                                                       'hidden_layers'][i]
-                                                                  ['VanillaRNNHiddenLayer']['h0']))
+                                                                  ['VanillaRNNHiddenLayer']['h0']),
+                                                              stochastic_samples=self.stochastic_samples)
 
             else:
                 self.hidden_layers[i] = VanillaRNNHiddenLayer(self.rng,
@@ -299,7 +323,8 @@ class VanillaRNN(RNN):
                                                               else np.array(
                                                                   layers_info[
                                                                       'hidden_layers'][i]
-                                                                  ['VanillaRNNHiddenLayer']['h0']))
+                                                                  ['VanillaRNNHiddenLayer']['h0']),
+                                                              stochastic_samples=self.stochastic_samples)
 
             self.params.append(self.hidden_layers[i].params)
 
@@ -315,7 +340,8 @@ class VanillaRNN(RNN):
             b_values=None if layers_info is None
             else np.array(
             layers_info['output_layer']
-            ['RNNOutputLayer']['b']))
+            ['RNNOutputLayer']['b']),
+            stochastic_samples=self.stochastic_samples)
 
         self.params.append(self.output_layer.params)
         self.output = self.output_layer.output
@@ -326,7 +352,8 @@ class VanillaRNN(RNN):
         output_string += json.dumps({"n_in": self.n_in, "n_hidden": self.n_hidden.tolist(),
                                      "n_out": self.n_out,
                                      "activations": self.activation_names,
-                                     "type": self.type})
+                                     "type": self.type,
+                                     "stochastic_samples": self.stochastic_samples})
         output_string += ", \"layers\": {\"hidden_layers\":["
         for k, l in enumerate(self.hidden_layers):
             if k > 0:
@@ -377,14 +404,15 @@ class VanillaRNN(RNN):
                          network_properties[
                              'n_out'], network_properties['activations'],
                          layers_info=network_description['layers'],
-                         input_var=input_var)
+                         input_var=input_var,
+                         stochastic_samples=network_properties['stochastic_samples'])
         return loaded_lbn
 
 
 class LSTM(RNN):
 
     def __init__(self, n_in, n_hidden, n_out, activation_list, rng=None, input_var=None,
-                 layers_info=None):
+                 layers_info=None, stochastic_samples=True):
         """Defines the basics of a LSTM Neural Network.
 
         :type n_in: integer.
@@ -408,6 +436,9 @@ class LSTM(RNN):
 
         :type layers_info: dict.
         :param layers_info: network definition.
+
+        :type stochastic_samples: bool.
+        :param stochastic_samples: tells if the network is built on top a stochastic one like LBN.
         """
 
         if input_var is None:
@@ -423,6 +454,7 @@ class LSTM(RNN):
         self.defined = False
         self.parse_properties(n_in, n_hidden, n_out, activation_list)
 
+        self.stochastic_samples = stochastic_samples
         self.type = 'LSTM'
         self.opt = {'type': self.type, 'n_in': self.n_in, 'n_hidden': self.n_hidden,
                     'n_out': self.n_out, 'activation': self.activation_names}
@@ -449,8 +481,8 @@ class LSTM(RNN):
                                 activation function per layer.
         """
 
-        assert type(n_in) is IntType, "n_in must be an integer: {0!r}".format(
-            n_in)
+        assert type(n_in) is IntType, "n_in must be an integer: {0!r} {1!r}".format(
+            n_in, type(n_in))
         assert type(n_hidden) is ListType, "n_hidden must be a list: {0!r}".format(
             n_hidden)
 
@@ -497,7 +529,9 @@ class LSTM(RNN):
                                                             'biases'],
                                                         zero_values=None if layers_info is None
                                                         else layers_info['hidden_layers'][i]
-                                                        ['LSTMHiddenLayer']['zero_values'])
+                                                        ['LSTMHiddenLayer'][
+                                                            'zero_values'],
+                                                        stochastic_samples=self.stochastic_samples)
 
             else:
                 self.hidden_layers[i] = LSTMHiddenLayer(self.rng,
@@ -518,7 +552,9 @@ class LSTM(RNN):
                                                             'biases'],
                                                         zero_values=None if layers_info is None
                                                         else layers_info['hidden_layers'][i]
-                                                        ['LSTMHiddenLayer']['zero_values'])
+                                                        ['LSTMHiddenLayer'][
+                                                            'zero_values'],
+                                                        stochastic_samples=self.stochastic_samples)
 
             self.params.append(self.hidden_layers[i].params)
         self.output_layer = RNNOutputLayer(self.rng, self.hidden_layers[-1].output,
@@ -533,7 +569,8 @@ class LSTM(RNN):
             b_values=None if layers_info is None
             else np.array(
             layers_info['output_layer']
-            ['RNNOutputLayer']['b']))
+            ['RNNOutputLayer']['b']),
+            stochastic_samples=self.stochastic_samples)
 
         self.params.append(self.output_layer.params)
         self.output = self.output_layer.output
@@ -545,7 +582,8 @@ class LSTM(RNN):
         output_string += json.dumps({"n_in": self.n_in, "n_hidden": self.n_hidden.tolist(),
                                      "n_out": self.n_out,
                                      "activations": self.activation_names,
-                                     "type": self.type})
+                                     "type": self.type,
+                                     "stochastic_samples": self.stochastic_samples})
         output_string += ", \"layers\": {\"hidden_layers\":["
         for k, l in enumerate(self.hidden_layers):
             if k > 0:
@@ -613,7 +651,8 @@ class LSTM(RNN):
                          network_properties[
                              'n_out'], network_properties['activations'],
                          layers_info=network_description['layers'],
-                         input_var=input_var)
+                         input_var=input_var,
+                         stochastic_samples=network_properties['stochastic_samples'])
         return loaded_lbn
 
 
@@ -621,7 +660,8 @@ class LSTMHiddenLayer(object):
 
     def __init__(self, rng, input_var, n_in, n_out, activations, activation_names, weights=None,
                  biases=None,
-                 zero_values=None):
+                 zero_values=None,
+                 stochastic_samples=True):
         """
         Hidden layer: Weight matrix W is of shape (n_out,n_in)
         and the bias vector b is of shape (n_out,).
@@ -716,28 +756,51 @@ class LSTMHiddenLayer(object):
 
         # Computation graph.
         def h_step(x_t, h_tm1, c_tm1):
-            a_input_gate = T.tensordot(x_t, self.Wxi, axes=([2, 1])) + T.tensordot(h_tm1, self.Whi,
-                                                                                   axes=[2, 1]) + self.bi
-            input_gate = self.activations[0](a_input_gate)
+            if stochastic_samples:
+                a_input_gate = T.tensordot(x_t, self.Wxi, axes=([2, 1])) + T.tensordot(h_tm1, self.Whi,
+                                                                                       axes=[2, 1]) + self.bi
 
-            a_candidate_gate = T.tensordot(x_t, self.Wxj, axes=([2, 1])) + T.tensordot(h_tm1,
-                                                                                       self.Whj, axes=[2, 1]) + self.bj
-            candidate_gate = self.activations[1](a_candidate_gate)
-            a_forget_gate = T.tensordot(x_t, self.Wxf, axes=([2, 1])) + T.tensordot(h_tm1, self.Whf,
-                                                                                    axes=[2, 1]) + self.bf
-            forget_gate = self.activations[2](a_forget_gate)
+                a_candidate_gate = T.tensordot(x_t, self.Wxj, axes=([2, 1])) + T.tensordot(h_tm1,
+                                                                                           self.Whj, axes=[2, 1]) + self.bj
 
-            a_output_gate = T.tensordot(x_t, self.Wxo, axes=([2, 1])) + T.tensordot(h_tm1, self.Who,
-                                                                                    axes=[2, 1]) + self.bo
+                a_forget_gate = T.tensordot(x_t, self.Wxf, axes=([2, 1])) + T.tensordot(h_tm1, self.Whf,
+                                                                                        axes=[2, 1]) + self.bf
+
+                a_output_gate = T.tensordot(x_t, self.Wxo, axes=([2, 1])) + T.tensordot(h_tm1, self.Who,
+                                                                                        axes=[2, 1]) + self.bo
+
+            else:
+                a_input_gate = T.dot(x_t, self.Wxi.T) + \
+                    T.dot(h_tm1, self.Whi.T) + self.bi
+
+                a_candidate_gate = T.dot(x_t, self.Wxj.T) + T.dot(h_tm1,
+                                                                  self.Whj.T) + self.bj
+
+                a_forget_gate = T.dot(x_t, self.Wxf.T) + \
+                    T.dot(h_tm1, self.Whf.T) + self.bf
+
+                a_output_gate = T.dot(x_t, self.Wxo.T) + \
+                    T.dot(h_tm1, self.Who.T) + self.bo
+
             output_gate = self.activations[3](a_output_gate)
+            forget_gate = self.activations[2](a_forget_gate)
+            candidate_gate = self.activations[1](a_candidate_gate)
+            input_gate = self.activations[0](a_input_gate)
 
             c_t = c_tm1 * forget_gate + input_gate * candidate_gate
             a_t = c_t * output_gate
             h_t = self.activations[4](a_t) * output_gate
             return h_t, c_t
 
-        [self.output, self.c_t], _ = theano.scan(h_step, sequences=self.input,
-                                                 outputs_info=[T.alloc(self.h0, self.input.shape[1],
-                                                                       self.input.shape[2], self.n_out),
-                                                               T.alloc(self.c0, self.input.shape[1],
-                                                                       self.input.shape[2], self.n_out)])
+        if stochastic_samples:
+            [self.output, self.c_], _ = theano.scan(h_step, sequences=self.input,
+                                                    outputs_info=[T.alloc(self.h0, self.input.shape[1],
+                                                                          self.input.shape[2], self.n_out),
+                                                                  T.alloc(self.c0, self.input.shape[1],
+                                                                          self.input.shape[2], self.n_out)])
+        else:
+            [self.output, self.c_], _ = theano.scan(h_step, sequences=self.input,
+                                                    outputs_info=[T.alloc(self.h0, self.input.shape[1],
+                                                                          self.n_out),
+                                                                  T.alloc(self.c0, self.input.shape[1],
+                                                                          self.n_out)])
