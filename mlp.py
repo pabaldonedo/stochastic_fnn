@@ -216,10 +216,10 @@ class MLPLayer(object):
 
         output_string += ", \"layers\":["
         for j, layer in enumerate(self.hidden_layers):
-            output_string += "{\"HiddenLayer\":"
-
             if j > 0:
                 output_string += ","
+            output_string += "{\"HiddenLayer\":"
+
             output_string += json.dumps({"n_in": layer.n_in, "n_out": layer.n_out,
                                          "activation": layer.activation_name,
                                          "W": layer.W.get_value().tolist(),
