@@ -306,6 +306,14 @@ class Classifier(object):
         compute_error = theano.function(inputs=[self.x, self.y], outputs=cost,
                                         givens={self.m: m})
 
+        if sample_axis == 0:
+            seq_length = 1
+        else:
+            seq_length = x.shape[0]
+
+        log_likelihood_constant = x.shape[sample_axis] * seq_length * np.log(
+            m) + self.n_out * 0.5 * np.log(2 * np.pi * 1. / self.likelihood_precision)
+
         allowed_methods = ['SGD', "RMSProp", "AdaDelta", "AdaGrad", "Adam"]
 
         if method['type'] == allowed_methods[0]:
@@ -331,7 +339,8 @@ class Classifier(object):
             n_epochs, b_size, method))
 
         opt.fit(self.x, self.y, x, y, b_size, cost, flat_params, n_epochs,
-                compute_error, self.get_call_back(save_every, fname, epoch0),
+                compute_error, self.get_call_back(
+                    save_every, fname, epoch0),
                 extra_train_givens={self.m: m},
                 x_test=x_test, y_test=y_test,
                 chunk_size=chunk_size,
@@ -531,7 +540,7 @@ class RecurrentClassifier(Classifier):
         self.predict_sequence = theano.function(
             inputs=[self.x, self.lbnrnn.lbn.m], outputs=self.output)
 
-        self.set_up_predict_one()
+        # self.set_up_predict_one()
         self.log.info("Network created with n_in: {0}, mlp_n_hidden: {1}, "
                       "mlp_activation_names: {2}, lbn_n_hidden: {3}, det_activations: {4}, "
                       "stoch_activations: {5}, n_out: {6}".format(
@@ -629,7 +638,7 @@ class RecurrentClassifier(Classifier):
 class callBack:
     """Call back class used for logging and debugging in the optimizer"""
 
-    def __init__(self, classifier, save_every, fname, epoch0):
+    def __init__(self, classifier, save_every, fname, epoch0, log_likelihood_constant=0):
         """
         :type classifier: classifier instance.
         :param classifier: network being used.
@@ -642,6 +651,10 @@ class callBack:
 
         :type epoch0: int.
         :param epoch0: starting epoch number. If first time trained, set it to 1.
+
+        :type log_likelihood_constant: float.
+        :param log_likelihood_constant: constant to be subtracted from reported
+        log_likelihood_constant.
         """
 
         self.epoch0 = epoch0
@@ -649,6 +662,7 @@ class callBack:
         self.test_log_likelihoods = []
         self.epochs = []
         self.classifier = classifier
+        self.log_likelihood_constant = log_likelihood_constant
 
         opath = os.path.dirname(fname)
         file_name = os.path.basename(fname)
@@ -718,6 +732,7 @@ class callBack:
         :param n_test: number of samples in test set.
         """
 
+        train_log_likelihood -= self.log_likelihood_constant
         train_error = -train_log_likelihood * 1. / n_samples
         if test_log_likelihood is None:
 
@@ -726,6 +741,7 @@ class callBack:
                                                             train_log_likelihood, opt_parameters))
 
         else:
+            test_log_likelihood -= self.log_likelihood_constant
             test_error = -test_log_likelihood / n_test
             self.classifier.log.info("epoch: {0} train_error: {1}, test_error: {2} "
                                      "log_likelihood: {3}, test_log_likelihood: {4}, "
@@ -833,7 +849,11 @@ class MLPClassifier(object):
             n_epochs, b_size, method))
 
         opt.fit(self.x, self.y, x, y, b_size, cost, flat_params, n_epochs,
-                compute_error, self.get_call_back(save_every, fname, epoch0),
+                compute_error, self.get_call_back(save_every, fname, epoch0,
+                                                  log_likelihood_constant=x.shape[
+                                                      0] * 0.5 * x.shape[1] *
+                                                  np.log(2 * np.pi /
+                                                         np.sqrt(self.likelihood_precision))),
                 x_test=x_test, y_test=y_test,
                 chunk_size=chunk_size,
                 sample_axis=0)
@@ -930,15 +950,15 @@ class RecurrentMLP(object):
             self.rnn = VanillaRNN(int(self.mlp.hidden_layers[-1].n_out), self.rnn_hidden,
                                   self.n_out, self.rnn_activations,
                                   layers_info=None if layers_info is None else layers_info[
-                                      'rnn'],
-                                  input_var=self.mlp.output,
-                                  stochastic_samples=False)
+                'rnn']['layers'],
+                input_var=self.mlp.output,
+                stochastic_samples=False)
         elif self.rnn_type == rnn_types[1]:
             self.rnn = LSTM(int(self.mlp.hidden_layers[-1].n_out), self.rnn_hidden, self.n_out,
                             self.rnn_activations, input_var=self.mlp.output,
                             layers_info=None if layers_info is None else layers_info[
-                                'rnn'],
-                            stochastic_samples=False)
+                'rnn']['layers'],
+                stochastic_samples=False)
         else:
             raise NotImplementedError
         self.params.append(self.rnn.params)
@@ -969,6 +989,9 @@ class RecurrentMLP(object):
         cost = self.get_cost()
         compute_error = theano.function(inputs=[self.x, self.y], outputs=cost)
 
+        log_likelihood_constant = x.shape[
+            0] * x.shape[1] * 0.5 * x.shape[2] * np.log(2 * np.pi * 1. / np.sqrt(self.likelihood_precision))
+
         allowed_methods = ['SGD', "RMSProp", "AdaDelta", "AdaGrad", "Adam"]
 
         if method['type'] == allowed_methods[0]:
@@ -976,15 +999,15 @@ class RecurrentMLP(object):
                       method['momentum_type'], momentum=method['momentum'])
         elif method['type'] == allowed_methods[1]:
             opt = RMSProp(method['learning_rate'], method[
-                          'rho'], method['epsilon'])
+                'rho'], method['epsilon'])
         elif method['type'] == allowed_methods[2]:
             opt = AdaDelta(method['learning_rate'], method[
-                           'rho'], method['epsilon'])
+                'rho'], method['epsilon'])
         elif method['type'] == allowed_methods[3]:
             opt = AdaGrad(method['learning_rate'], method['epsilon'])
         elif method['type'] == allowed_methods[4]:
             opt = Adam(method['learning_rate'], method[
-                       'b1'], method['b2'], method['e'])
+                'b1'], method['b2'], method['e'])
         else:
             raise NotImplementedError(
                 "Optimization method not implemented. Choose one out of: {0}".format(
@@ -994,7 +1017,8 @@ class RecurrentMLP(object):
             n_epochs, b_size, method))
 
         opt.fit(self.x, self.y, x, y, b_size, cost, flat_params, n_epochs,
-                compute_error, self.get_call_back(save_every, fname, epoch0),
+                compute_error, self.get_call_back(
+                    save_every, fname, epoch0, log_likelihood_constant=log_likelihood_constant),
                 x_test=x_test, y_test=y_test,
                 chunk_size=chunk_size,
                 sample_axis=1)
@@ -1055,8 +1079,8 @@ class RecurrentMLP(object):
                                 network_properties['rnn_activations'],
                                 network_properties['rnn_type'],
                                 likelihood_precision=network_properties[
-                                    'likelihood_precision'],
-                                log=log,
-                                layers_info=network_description)
+            'likelihood_precision'],
+            log=log,
+            layers_info=network_description)
 
         return loaded_classifier

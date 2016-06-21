@@ -99,6 +99,22 @@ def load_controls(n):
     return x
 
 
+def load_files(n, fname):
+    """Loads into np.array all the files controls_i_len_61 from 1 to n.
+
+    :type n: int
+    """
+
+    x = np.genfromtxt("data/{0}_1_len_61.txt".format(fname),
+                      delimiter=',', dtype=theano.config.floatX)
+    for i in xrange(2, n + 1):
+        tmp = np.genfromtxt(
+            "data/{0}_{1}_len_61.txt".format(fname, i), delimiter=',',
+            dtype=theano.config.floatX)
+        x = np.vstack((x, tmp))
+    return x
+
+
 def log_init(path, session_name=None):
     """Initializes logging module.
 
