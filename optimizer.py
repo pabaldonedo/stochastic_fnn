@@ -193,6 +193,7 @@ class GradientBased(Optimizer):
 
         outputs = [cost, self.batch_stop - self.batch_start]
         if 'lr' in self.opt_parameters.keys():
+            print self.opt_parameters.keys()
             outputs = [cost, self.batch_stop -
                        self.batch_start, self.opt_parameters['lr']]
 
@@ -334,9 +335,9 @@ class AdaDelta(GradientBased):
         assert 0 < self.epsilon, "Epsilon must be positive: {0!r}".format(
             self.epsilon)
         self.opt_parameters = {
-            'opt': 'AdaDelta', 'lr': self.learning_rate, 'rho': self.rho, 'e': self.epsilon}
+            'opt': 'AdaDelta', 'learning_rate': self.learning_rate, 'rho': self.rho, 'e': self.epsilon}
         logging.info('Optimizer loaded. Type: {0}, learning rate: {1}, rho decay: {2},'
-                     ' epsilon: {3}'.format(self.opt_parameters['opt'], self.opt_parameters['lr'],
+                     ' epsilon: {3}'.format(self.opt_parameters['opt'], self.opt_parameters['learning_rate'],
                                             self.opt_parameters['rho'], self.opt_parameters['e']))
 
     def get_updates(self, theta, cost=None, gtheta=None):

@@ -282,9 +282,10 @@ class Classifier(object):
 
         return output_string
 
-    def get_call_back(self, save_every, fname, epoch0):
+    def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0):
         """Returns callback function to be sent to optimer for debugging and log purposes"""
-        c = callBack(self, save_every, fname, epoch0)
+        c = callBack(self, save_every, fname, epoch0,
+                     log_likelihood_constant=log_likelihood_constant)
         return c.cback
 
     def get_cost(self):
@@ -338,9 +339,12 @@ class Classifier(object):
         self.log.info("Fit starts with epochs: {0}, batch size: {1}, method: {2}".format(
             n_epochs, b_size, method))
 
+        log_likelihood_constant = x.shape[sample_axis] * seq_length * np.log(
+            m) + self.n_out * 0.5 * np.log(2 * np.pi * 1. / self.likelihood_precision)
+
         opt.fit(self.x, self.y, x, y, b_size, cost, flat_params, n_epochs,
                 compute_error, self.get_call_back(
-                    save_every, fname, epoch0),
+                    save_every, fname, epoch0, log_likelihood_constant=log_likelihood_constant),
                 extra_train_givens={self.m: m},
                 x_test=x_test, y_test=y_test,
                 chunk_size=chunk_size,
@@ -806,9 +810,10 @@ class MLPClassifier(object):
         self.output = self.output_layer.output
         self.predict = theano.function(inputs=[self.x], outputs=self.output)
 
-    def get_call_back(self, save_every, fname, epoch0):
+    def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0):
         """Returns callback function to be sent to optimer for debugging and log purposes"""
-        c = callBack(self, save_every, fname, epoch0)
+        c = callBack(self, save_every, fname, epoch0,
+                     log_likelihood_constant=log_likelihood_constant)
         return c.cback
 
     def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
@@ -969,11 +974,31 @@ class RecurrentMLP(object):
             self.log = logging.getLogger()
 
         self.output = self.rnn.output
+        self.set_up_predict_one()
         self.predict = theano.function(inputs=[self.x], outputs=self.output)
 
-    def get_call_back(self, save_every, fname, epoch0):
+    def restart_prediction(self):
+        for i, l in enumerate(self.rnn.hidden_layers):
+            l.h0.set_value(self.rnn0[0][i], borrow=False)
+            if self.rnn_type == 'LSTM':
+                l.c0.set_value(self.rnn0[1][i], borrow=False)
+
+    def set_up_predict_one(self):
+        warnings.warn("ONLY FOR ONE SAMPLE THE PREDICTION!!!")
+        predict_upd = [(l.h0, l.output[-1].flatten())  # TODO multiple samples
+                       for l in self.rnn.hidden_layers]
+
+        if self.rnn_type is "LSTM":
+            predict_upd += [(l.c0, l.c_t[-1].flatten())  # TODO multiple samples
+                            for l in self.rnn.hidden_layers]
+
+        self.predict_one = theano.function(
+            inputs=[self.x], outputs=self.output[-1], updates=predict_upd)
+
+    def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0):
         """Returns callback function to be sent to optimer for debugging and log purposes"""
-        c = callBack(self, save_every, fname, epoch0)
+        c = callBack(self, save_every, fname, epoch0,
+                     log_likelihood_constant=log_likelihood_constant)
         return c.cback
 
     def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,

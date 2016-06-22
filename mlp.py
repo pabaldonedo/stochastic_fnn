@@ -146,8 +146,8 @@ class MLPLayer(object):
         assert type(activation_names) is ListType, "activation_names must be a list: {0!r}".format(
             activation_names)
         assert len(n_hidden) == len(activation_names), "len(n_hidden) must be =="\
-            " len(det_activations) - 1. n_hidden: {0!r} and det_activations: {1!r}".format(n_hidden,
-                                                                                           activation_names)
+            " len(det_activations). n_hidden: {0!r} and det_activations: {1!r}".format(n_hidden,
+                                                                                       activation_names)
 
         self.n_in = n_in
         self.n_hidden = np.array(n_hidden)
