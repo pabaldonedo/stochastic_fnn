@@ -13,13 +13,13 @@ def main():
 
     # Number of datasets
     n = 13
-    n_impulse_2000 = 5
+    n_impulse_2000 = 0
     # RNN on top of LBN
     recurrent = False
 
     # Only for NO recurrent
-    feet_learning = True
-    feet_min = 200
+    feet_learning = False
+    feet_min = 100
 
     assert not (
         feet_learning and recurrent), "Feet learning and recurrent cannot be true at the same time"
@@ -116,7 +116,7 @@ def main():
 
     # Fit options
     b_size = 100
-    epoch0 = 2391
+    epoch0 = 1
     n_epochs = 1000
     lr = 1
     save_every = 10  # Log saving
@@ -134,7 +134,7 @@ def main():
     # Load from file?
     load_from_file = False
     session_name = None
-    load_different_file = True
+    load_different_file = False
 
     assert not (load_different_file and not load_from_file), "You have set load different_file to True but you are not loading any network!"
 
