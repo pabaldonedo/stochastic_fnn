@@ -35,7 +35,7 @@ class Classifier(object):
                      mlp_activation_names, lbn_n_hidden,
                      det_activations, stoch_activations, stoch_n_hidden,
                      log, likelihood_precision,
-                     noise_type):
+                     noise_type, batch_normalization):
         """Checks the type of the inputs and initializes instance variables.
 
         :type n_in: int.
@@ -92,25 +92,27 @@ class Classifier(object):
 
         assert type(
             n_out) is IntType, "n_out must be an integer: {0!r}".format(n_out)
-        assert type(mlp_n_hidden) is ListType, "mlp_n_hidden must be a list: {0!r}".\
-            format(mlp_n_hidden)
-        assert type(mlp_activation_names) is ListType, "mlp_activation_names must be a list:"\
-            " {0!r}".\
-            format(
+        assert type(mlp_n_hidden) is ListType, "mlp_n_hidden must be a list: {0!r}".format(
             mlp_n_hidden)
-        assert type(lbn_n_hidden) is ListType, "lbn_n_hidden must be a list: {0!r}".\
-            format(lbn_n_hidden)
-        assert type(det_activations) is ListType, "det_activations must be a list: {0!r}".\
-            format(det_activations)
-        assert type(stoch_activations) is ListType, "stoch_activations must be a list: {0!r}".\
-            format(stoch_activations)
-        assert type(stoch_n_hidden) is ListType, "stoch_n_hidden must be a list: {0!r}".\
-            format(stoch_n_hidden)
+        assert type(
+            mlp_activation_names) is ListType, "mlp_activation_names must be a list: {0!r}".format(
+                mlp_n_hidden)
+        assert type(lbn_n_hidden) is ListType, "lbn_n_hidden must be a list: {0!r}".format(
+            lbn_n_hidden)
+        assert type(det_activations) is ListType, "det_activations must be a list: {0!r}".format(
+            det_activations)
+        assert type(stoch_activations) is ListType, "stoch_activations must be a list: {0!r}". format(
+            stoch_activations)
+        assert type(stoch_n_hidden) is ListType, "stoch_n_hidden must be a list: {0!r}". format(
+            stoch_n_hidden)
+        assert type(batch_normalization) is bool, "batch_normalization must be bool. Given: {0!r}".format(
+            batch_normalization)
 
         allowed_noise = ['multiplicative', 'additive']
-        assert noise_type in allowed_noise, "noise_type must be one of {0!r}. Provided: "\
-            "{1!r}".format(allowed_noise, noise_type)
+        assert noise_type in allowed_noise, "noise_type must be one of {0!r}. Provided: {1!r}".format(
+            allowed_noise, noise_type)
 
+        self.batch_normalization = batch_normalization
         self.noise_type = noise_type
         self.lbn_n_hidden = lbn_n_hidden
         self.det_activations = det_activations
@@ -120,7 +122,8 @@ class Classifier(object):
         self.likelihood_precision = likelihood_precision
         self.n_out = n_out
 
-    def set_up_mlp(self, mlp_n_hidden, mlp_activation_names, mlp_n_in, weights, timeseries_layer=False):
+    def set_up_mlp(self, mlp_n_hidden, mlp_activation_names, mlp_n_in, weights=None, timeseries_layer=False,
+                   batch_normalization=False):
         """Defines the MLP networks for the 15 bones.
 
         :type mlp_n_hidden: list of ints.
@@ -152,7 +155,8 @@ class Classifier(object):
                                     else self.x[:, :mlp_n_in - 2],
                                     layers_info=None if weights is
                                     None else weights['bone_mlps'][i]['MLPLayer'],
-                                    timeseries_network=timeseries_layer)
+                                    timeseries_network=timeseries_layer,
+                                    batch_normalization=batch_normalization)
             else:
                 bone_mlp = MLPLayer(mlp_n_in, self.mlp_n_hidden, self.mlp_activation_names,
                                     input_var=self.x[
@@ -162,12 +166,13 @@ class Classifier(object):
                                            2:(i + 1) * mlp_n_in - 2],
                                     layers_info=None if weights is None else
                                     weights['bone_mlps'][i]['MLPLayer'],
-                                    timeseries_network=timeseries_layer)
+                                    timeseries_network=timeseries_layer,
+                                    batch_normalization=batch_normalization)
             self.bone_representations[i] = bone_mlp
 
     def __init__(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                  det_activations, stoch_activations, stoch_n_hidden=[-1], log=None, weights=None,
-                 likelihood_precision=1, noise_type='multiplicative'):
+                 likelihood_precision=1, noise_type='multiplicative', batch_normalization=False):
         """
         :type n_in: int.
         :param n_in: network input dimensionality.
@@ -218,9 +223,10 @@ class Classifier(object):
         self.x = T.matrix('x', dtype=theano.config.floatX)
         self.parse_inputs(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                           det_activations, stoch_activations, stoch_n_hidden, log, likelihood_precision,
-                          noise_type)
+                          noise_type, batch_normalization)
 
-        self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in, weights)
+        self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in,
+                        weights=weights, batch_normalization=self.batch_normalization)
 
         self.lbn_input = T.concatenate([bone.output for bone in self.bone_representations] +
                                        [self.x[:, -2:]], axis=1)
@@ -232,7 +238,8 @@ class Classifier(object):
                        input_var=self.lbn_input,
                        layers_info=None if weights is None else
                        weights['lbn']['layers'],
-                       likelihood_precision=self.likelihood_precision)
+                       likelihood_precision=self.likelihood_precision,
+                       batch_normalization=self.batch_normalization)
 
         self.y = self.lbn.y
         self.m = self.lbn.m
@@ -241,6 +248,8 @@ class Classifier(object):
 
         mlp_params = [mlp_i.params for mlp_i in self.bone_representations]
         self.params = [mlp_params, self.lbn.params]
+        if self.batch_normalization:
+            self.frozen_weights = False
         self.predict = theano.function(
             inputs=[self.x, self.lbn.m], outputs=self.lbn.output)
         self.log.info("Network created with n_in: {0}, mlp_n_hidden: {1}, "
@@ -248,6 +257,25 @@ class Classifier(object):
                       "stoch_activations: {5}, n_out: {6}".format(
                           self.n_in, self.mlp_n_hidden, self.mlp_activation_names, self.lbn_n_hidden,
                           self.det_activations, self.stoch_activations, self.n_out))
+
+    def freeze_weights(self, fname=None, dataset=None):
+        assert fname is not None or dataset is not None, "with batch_normalization weights are required "\
+            "to be frozen. For freezing a json file or a dataset is required"
+        if fname is not None:
+            if dataset is not None:
+                warnings.warn(
+                    "File name and dataset for freezing weights are provided. Only using the filename")
+            with open(fname, 'r') as f:
+                json.load  # TODO
+        else:
+            pass
+            # TODO
+
+    def predictTODO(self, fname=None, dataset=None):
+        if self.batch_normalization:
+            if not self.frozen_weights:
+                self.freeze_weights(fname=fname, dataset=dataset)
+                self.frozen_weights = True
 
     def save_network(self, fname):
         """Save network parameters in json format in fname"""
@@ -267,7 +295,8 @@ class Classifier(object):
                                      "det_activations": self.det_activations,
                                      "stoch_activations": self.stoch_activations,
                                      "likelihood_precision": self.likelihood_precision,
-                                     "noise_type": self.noise_type})
+                                     "noise_type": self.noise_type,
+                                     "batch_normalization": self.batch_normalization})
         output_string += ",\"layers\": {\"bone_mlps\":["
         for i, bone in enumerate(self.bone_representations):
             if i > 0:
@@ -332,9 +361,8 @@ class Classifier(object):
             opt = Adam(method['learning_rate'], method[
                        'b1'], method['b2'], method['e'])
         else:
-            raise NotImplementedError, \
-                "Optimization method not implemented. Choose one out of: {0}".format(
-                    allowed_methods)
+            raise NotImplementedError("Optimization method not implemented. Choose one out of: {0}".format(
+                allowed_methods))
 
         self.log.info("Fit starts with epochs: {0}, batch size: {1}, method: {2}".format(
             n_epochs, b_size, method))
@@ -441,7 +469,10 @@ class Classifier(object):
                                 weights=network_description['layers'],
                                 likelihood_precision=network_properties[
                                     'likelihood_precision'],
-                                noise_type=network_properties['noise_type'])
+                                noise_type=network_properties['noise_type'],
+                                batch_normalization=False if 'batch_normalization'
+                                not in network_properties.keys() else
+                                network_properties['batch_normalization'])
 
         return loaded_classifier
 

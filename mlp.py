@@ -7,12 +7,15 @@ import json
 from util import parse_activations
 from util import get_weight_init_values
 from util import get_bias_init_values
+from util import init_bn
 
 
 class HiddenLayer(object):
 
     def __init__(self, input_var, n_in, n_out, activation_name, activation, rng=None,
-                 W_values=None, b_values=None, timeseries_layer=False):
+                 W_values=None, b_values=None, timeseries_layer=False,
+                 batch_normalization=False, gamma_values=None, beta_values=None, epsilon=1e-12,
+                 fixed_means=False, stdb=None, mub=None):
         """
         Hidden layer: Weight matrix W is of shape (n_out,n_in)
         and the bias vector b is of shape (n_out,).
@@ -46,6 +49,16 @@ class HiddenLayer(object):
         :type timeseries_layer: bool.
         :param timeseries_layer: if True the input is considered to be timeseries.
         """
+        if fixed_means:
+            assert type(
+                stdb) is np.ndarray, "Minibatch std must be a numpy array. Given: {0!r}".format(stdb)
+            assert stdb.size == n_out, "Minibatch std must be of size n_out ({0}). Given shape: {1}".format(
+                n_out, stdb.shape)
+
+            assert type(
+                mub) is np.ndarray, "Minibatch mean must be a numpy array. Given: {0!r}".format(mub)
+            assert mub.size == n_out, "Minibatch mean must be of size n_out ({0}). Given shape: {1}".format(
+                n_out, mub.shape)
 
         self.input = input_var
 
@@ -65,6 +78,18 @@ class HiddenLayer(object):
         self.params = [self.W, self.b]
         self.timeseries = timeseries_layer
 
+        self.batch_normalization = batch_normalization
+
+        if self.batch_normalization:
+            init_bn(self, n_out, gamma_values=gamma_values,
+                    beta_values=beta_values)
+            self.fixed_means = fixed_means
+            self.mub = None
+            self.stdb = None
+            self.epsilon = epsilon
+            self.params.append(self.gamma)
+            self.params.append(self.beta)
+
         if self.timeseries:
             self.timeseries_layer()
         else:
@@ -72,21 +97,50 @@ class HiddenLayer(object):
 
     def feedforward_layer(self):
         self.a = T.dot(self.input, self.W.T) + self.b
+        if self.batch_normalization:
+            if self.fixed_means:
+                mub = self.mub
+                stdb = self.stdb
+            else:
+                mub = T.mean(self.a, axis=0)
+                sigma2b = T.var(self.a, axis=0)
+                stdb = T.sqrt(sigma2b + self.epsilon)
+
+            self.a = theano.tensor.nnet.bn.batch_normalization(
+                self.a, self.gamma, self.beta, mub, stdb)
+
         self.output = self.activation(self.a)
 
     def timeseries_layer(self):
         def step(x):
             a = T.dot(x, self.W.T) + self.b
-            output = self.activation(a)
-            return a, output
-        [self.a, self.output], _ = theano.scan(step, sequences=self.input)
+            return a
+        self.a, _ = theano.scan(step, sequences=self.input)
+        if self.batch_normalization:
+            if self.fixed_means:
+                mub = self.mub
+                stdb = self.stdb
+            else:
+                mub = T.sum(self.a, axis=(0, 1)) * 1. / \
+                    T.prod(self.a.shape[:-1])
+
+                sigma2b = T.sum((self.a - mub)**2, axis=(0, 1)) * \
+                    1. / T.prod(self.a.shape[:-1])
+
+                stdb = T.sqrt(sigma2b + self.epsilon)
+
+            self.a = theano.tensor.nnet.bn.batch_normalization(
+                self.a, self.gamma, self.beta, mub, stdb)
+
+        self.output = self.activation(self.a)
 
 
 class MLPLayer(object):
 
     def __init__(self, n_in, n_hidden, activation_names, timeseries_network=False,
                  input_var=None,
-                 layers_info=None):
+                 layers_info=None,
+                 batch_normalization=False):
         """
         MLP network used as a layer in a bigger network.
 
@@ -123,11 +177,12 @@ class MLPLayer(object):
 
         self.timeseries_network = timeseries_network
         self.rng = np.random.RandomState()
-        self.parse_properties(n_in, n_hidden, activation_names)
+        self.parse_properties(
+            n_in, n_hidden, activation_names, batch_normalization)
 
         self.define_network(layers_info=layers_info)
 
-    def parse_properties(self, n_in, n_hidden, activation_names):
+    def parse_properties(self, n_in, n_hidden, activation_names, batch_normalization):
         """
         :type n_in: integer.
         :param n_in: input dimensionality.
@@ -148,12 +203,15 @@ class MLPLayer(object):
         assert len(n_hidden) == len(activation_names), "len(n_hidden) must be =="\
             " len(det_activations). n_hidden: {0!r} and det_activations: {1!r}".format(n_hidden,
                                                                                        activation_names)
+        assert type(batch_normalization) is bool, "batch_normalization must be bool. Given: {0!r}".format(
+            batch_normalization)
 
         self.n_in = n_in
         self.n_hidden = np.array(n_hidden)
         self.activation_names = activation_names
         self.activation, self.activation_prime = parse_activations(
             activation_names)
+        self.batch_normalization = batch_normalization
 
     def define_network(self, layers_info=None):
         """
@@ -177,7 +235,16 @@ class MLPLayer(object):
                                                     layers_info['layers'][
                                                         i]['HiddenLayer']
                                                     ['b']),
-                                                    timeseries_layer=self.timeseries_network)
+                                                    timeseries_layer=self.timeseries_network,
+                                                    batch_normalization=self.batch_normalization,
+                                                    gamma_values=None if layers_info is None or
+                                                    'gamma_values' not in layers_info[
+                                                        'layers'][i]['HiddenLayer'].keys() else layers_info['layers'][i]['HiddenLayer']['gamma_values'],
+                                                    beta_values=None if layers_info is None or 'beta_values' not in layers_info[
+                                                        'layers'][i]['HiddenLayer'].keys() else layers_info['layers'][i]['HiddenLayer']['beta_values'],
+                                                    epsilon=1e-12 if layers_info is None or 'epsilon' not in layers_info[
+                                                        'layers'][i]['HiddenLayer'].keys() else layers_info['layers'][i]['HiddenLayer']['epsilon'],
+                                                    fixed_means=False)
             else:
                 self.hidden_layers[i] = HiddenLayer(self.hidden_layers[i - 1].output,
                                                     self.n_hidden[
@@ -194,7 +261,15 @@ class MLPLayer(object):
                                                     layers_info['layers'][
                                                         i]['HiddenLayer']
                                                     ['b']),
-                                                    timeseries_layer=self.timeseries_network)
+                                                    timeseries_layer=self.timeseries_network,
+                                                    batch_normalization=self.batch_normalization,
+                                                    gamma_values=None if layers_info is None or 'gamma_values' not in layers_info[
+                                                        'layers'][i]['HiddenLayer'].keys() else layers_info['layers'][i]['HiddenLayer']['gamma_values'],
+                                                    beta_values=None if layers_info is None or 'beta_values' not in layers_info[
+                                                        'layers'][i]['HiddenLayer'].keys() else layers_info['layers'][i]['HiddenLayer']['beta_values'],
+                                                    epsilon=1e-12 if layers_info is None or 'epsilon' not in layers_info[
+                                                        'layers'][i]['HiddenLayer'].keys() else layers_info['layers'][i]['HiddenLayer']['epsilon'],
+                                                    fixed_means=False)
 
             self.params.append(self.hidden_layers[i].params)
 
@@ -212,7 +287,8 @@ class MLPLayer(object):
         output_string = "{\"network_properties\":"
         output_string += json.dumps({"n_in": self.n_in, "n_hidden": list(self.n_hidden),
                                      "activation": self.activation_names,
-                                     "timeseries": self.timeseries_network})
+                                     "timeseries": self.timeseries_network,
+                                     "batch_normalization": self.batch_normalization})
 
         output_string += ", \"layers\":["
         for j, layer in enumerate(self.hidden_layers):
@@ -220,11 +296,18 @@ class MLPLayer(object):
                 output_string += ","
             output_string += "{\"HiddenLayer\":"
 
-            output_string += json.dumps({"n_in": layer.n_in, "n_out": layer.n_out,
-                                         "activation": layer.activation_name,
-                                         "W": layer.W.get_value().tolist(),
-                                         "b": layer.b.get_value().tolist(),
-                                         "timeseries": layer.timeseries})
+            buffer_dict = {"n_in": layer.n_in, "n_out": layer.n_out,
+                           "activation": layer.activation_name,
+                           "W": layer.W.get_value().tolist(),
+                           "b": layer.b.get_value().tolist(),
+                           "timeseries": layer.timeseries}
+
+            if self.batch_normalization:
+                buffer_dict['gamma_values'] = layer.gamma.get_value().tolist()
+                buffer_dict['beta_values'] = layer.beta.get_value().tolist()
+                buffer_dict['epsilon'] = layer.epsilon
+
+            output_string += json.dumps(buffer_dict)
 
             output_string += "}"
         output_string += "]}"

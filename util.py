@@ -347,3 +347,16 @@ def get_bias_init_values(n, b0=None, b_values=None):
     else:
         b_values = np.asarray(np.array(b_values), dtype=theano.config.floatX)
     return b_values
+
+
+def init_bn(layer, n_in, gamma_values=None, beta_values=None):
+    if gamma_values is None:
+        gamma_values = np.ones(n_in, dtype=theano.config.floatX)
+
+    if beta_values is None:
+        beta_values = np.zeros(n_in, dtype=theano.config.floatX)
+
+    layer.gamma = theano.shared(
+        value=np.asarray(gamma_values, dtype=theano.config.floatX), name='gamma', borrow=True)
+    layer.beta = theano.shared(
+        value=np.asarray(beta_values, dtype=theano.config.floatX), name='beta', borrow=True)
