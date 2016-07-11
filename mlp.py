@@ -67,7 +67,7 @@ class HiddenLayer(object):
         self.activation_name = activation_name
         self.activation = activation
         W_values = get_weight_init_values(
-            n_out, n_in, activation=activation, rng=rng, W_values=W_values)
+            n_in, n_out, activation=activation, rng=rng, W_values=W_values)
 
         W = theano.shared(value=W_values, name='W', borrow=True)
         b_values = get_bias_init_values(n_out, b_values=b_values)
@@ -96,7 +96,7 @@ class HiddenLayer(object):
             self.feedforward_layer()
 
     def feedforward_layer(self):
-        self.a = T.dot(self.input, self.W) + self.b
+        self.a = T.dot(self.input, self.W.T) + self.b
         if self.batch_normalization:
             if self.fixed_means:
                 mub = self.mub
@@ -113,7 +113,7 @@ class HiddenLayer(object):
 
     def timeseries_layer(self):
         def step(x):
-            a = T.dot(x, self.W) + self.b
+            a = T.dot(x, self.W.T) + self.b
             return a
         self.a, _ = theano.scan(step, sequences=self.input)
         if self.batch_normalization:

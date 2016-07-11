@@ -56,7 +56,7 @@ class LBNOutputLayer(object):
 
         self.input = input_var
         V_values = get_weight_init_values(
-            n_out, n_in, activation=activation, rng=rng, W_values=V_values)
+            n_in, n_out, activation=activation, rng=rng, W_values=V_values)
 
         V = theano.shared(value=V_values, name='V', borrow=True)
         self.n_in = n_in
@@ -87,7 +87,7 @@ class LBNOutputLayer(object):
     def timeseries_layer(self):
         def t_step(x):
             def h_step(x):
-                a = T.dot(x, self.W)
+                a = T.dot(x, self.W.T)
                 return a
 
             a, _ = theano.scan(h_step, sequences=x)
@@ -116,7 +116,7 @@ class LBNOutputLayer(object):
 
     def feedforward_layer(self):
         def h_step(x):
-            a = T.dot(x, self.W)
+            a = T.dot(x, self.W.T)
             return a
 
         self.a, _ = theano.scan(h_step, sequences=self.input)
@@ -201,7 +201,7 @@ class DetHiddenLayer(object):
         self.activation_name = activation_name
         self.m = m
         W_values = get_weight_init_values(
-            n_out, n_in, activation=activation, rng=rng, W_values=W_values)
+            n_in, n_out, activation=activation, rng=rng, W_values=W_values)
 
         W = theano.shared(value=W_values, name='W', borrow=True)
         b_values = get_bias_init_values(n_out, b_values=b_values)
@@ -239,7 +239,7 @@ class DetHiddenLayer(object):
 
         def t_step(x):
             def h_step(x):
-                no_bias_output = T.dot(x, self.W)
+                no_bias_output = T.dot(x, self.W.T)
                 if self.no_bias:
                     a = no_bias_output
                 else:
@@ -280,7 +280,7 @@ class DetHiddenLayer(object):
 
     def feedforward_layer(self):
         def h_step(x):
-            no_bias_output = T.dot(x, self.W)
+            no_bias_output = T.dot(x, self.W.T)
             if self.no_bias:
                 a = no_bias_output
             else:

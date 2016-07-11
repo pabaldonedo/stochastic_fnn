@@ -13,13 +13,14 @@ def main():
 
     # Number of datasets
     n = 13
-    n_impulse_2000 = 0
+    n_impulse_2000 = 5
     # RNN on top of LBN
     recurrent = False
 
     # Only for NO recurrent
-    feet_learning = False
-    feet_min = 100
+    feet_learning = True
+    feet_min = 50
+    feet_max = 100
 
     assert not (
         feet_learning and recurrent), "Feet learning and recurrent cannot be true at the same time"
@@ -37,7 +38,8 @@ def main():
 
     if feet_learning:
         feet_idx = np.arange(y.shape[0])
-        feet_idx = feet_idx[np.any(np.abs(y[:, 6:16]) >= feet_min, axis=1)]
+        feet_idx = feet_idx[np.any(np.logical_and(
+            np.abs(y[:, 6:16]) >= feet_min, np.abs(y[:, 6:16]) < feet_max), axis=1)]
         y = y[feet_idx, :]
 
     train_size = 0.8
@@ -116,9 +118,9 @@ def main():
 
     # Fit options
     b_size = 100
-    epoch0 = 1
-    n_epochs = 1000
-    lr = 1
+    epoch0 = 1001
+    n_epochs = 300
+    lr = .1
     save_every = 10  # Log saving
     chunk_size = 2000  # Memory chunks
     batch_normalization = False  # TODO FOR RECURRENT CLASSIFIER!
@@ -132,9 +134,9 @@ def main():
               'learning_rate': lr}
 
     # Load from file?
-    load_from_file = False
+    load_from_file = True
     session_name = None
-    load_different_file = False
+    load_different_file = True
 
     assert not (load_different_file and not load_from_file), "You have set load different_file to True but you are not loading any network!"
 
@@ -169,10 +171,10 @@ def main():
         warnings.warn(
             "CAUTION: loading log and network from different path than the saving path")
 
-        loaded_network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_hidden_[{3}]_mlp_activation_[{4}]"\
+        loaded_network_folder = "{0}_n_{1}_n_impulse_2000_0_mlp_hidden_[{3}]_mlp_activation_[{4}]"\
             "_lbn_n_hidden_[{5}]_det_activations_[{6}]_stoch"\
             "_activations_[{7}]_m_{8}_noise_type_{9}_bsize_{10}"\
-            "_method_AdaDelta".\
+            "_method_SGD_bn_False".\
             format(
                 'recurrentclassifier_{0}'.format(rnn_type) if recurrent
                 else 'classifier',
@@ -183,9 +185,11 @@ def main():
                 ','.join(str(e) for e in det_activations),
                 ','.join(str(e) for e in stoch_activations),
                 m, noise_type, b_size, method['type'], batch_normalization)
-        loaded_opath = "network_output/{0}".format(loaded_network_name)
+        loaded_opath = "network_output/{0}".format(loaded_network_folder)
         assert os.path.exists(
-            loaded_opath), "Trying to load a network for non existing path"
+            loaded_opath), "Trying to load a network for non existing path: {0}".format(loaded_opath)
+
+        loaded_network_name = "classifier_lbn_n_hidden_[150]"
 
         loaded_network_fname = '{0}/networks/{1}'.format(
             loaded_opath, loaded_network_name)
@@ -196,6 +200,10 @@ def main():
     # LOGGING
     log, session_name = log_init(
         opath, session_name=session_name if load_from_file else None)
+
+    if feet_learning:
+        log.info("Using feet learning.\nFeet min: {0}\nFeet max: {1}".format(
+            feet_min, feet_max))
 
     # Building network
     if recurrent:
