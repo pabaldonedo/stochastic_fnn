@@ -757,6 +757,9 @@ class RNNClassifier(object):
         cost = self.get_cost()
         compute_error = theano.function(inputs=[self.x, self.y], outputs=cost)
 
+        log_likelihood_constant = y.shape[2]*0.5 * x.shape[1] *x.shape[0]
+                                                  np.log(2 * np.pi /
+                                                         self.likelihood_precision)
         allowed_methods = ['SGD', "RMSProp", "AdaDelta", "AdaGrad", "Adam"]
 
         if method['type'] == allowed_methods[0]:
@@ -783,9 +786,7 @@ class RNNClassifier(object):
 
         opt.fit(self.x, self.y, x, y, b_size, cost, flat_params, n_epochs,
                 compute_error, self.get_call_back(save_every, fname, epoch0,
-                                                  log_likelihood_constant=x.shape[2]*0.5 * x.shape[1] *x.shape[0]
-                                                  np.log(2 * np.pi /
-                                                         np.sqrt(self.likelihood_precision))),
+                                                  log_likelihood_constant=log_likelihood_constant),
                 x_test=x_test, y_test=y_test,
                 chunk_size=chunk_size,
                 sample_axis=1)
