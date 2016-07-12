@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import theano
 import warnings
 from util import load_states
 from util import load_controls
@@ -13,14 +14,14 @@ def main():
 
     load_means_from_file = True
     #mean and std files:
-    x_info = numpy.genfromtxt('mux_stdx_n_16_n_impulse_2000_5.csv', delimiter=',')
-    y_info = numpy.genfromtxt('muy_stdy_n_16_n_impulse_2000_5.csv', delimiter=',')
+    x_info = np.asarray(np.genfromtxt('mux_stdx_n_16_n_impulse_2000_5.csv', delimiter=','), dtype=theano.config.floatX)
+    y_info = np.asarray(np.genfromtxt('muy_stdy_n_16_n_impulse_2000_5.csv', delimiter=','), dtype=theano.config.floatX)
 
     assert not (load_means_from_file and x_info is None and y_info is None)
 
     # Number of datasets
     n = 13
-    n_impulse_2000 = 5
+    n_impulse_2000 = 0
     # RNN on top of LBN
     recurrent = False
 
@@ -137,7 +138,7 @@ def main():
     n_epochs = 300
     lr = .1
     save_every = 10  # Log saving
-    chunk_size = 2000  # Memory chunks
+    chunk_size = None  # Memory chunks
     batch_normalization = False  # TODO FOR RECURRENT CLASSIFIER!
 
     # Optimizer

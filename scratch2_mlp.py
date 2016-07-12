@@ -1,4 +1,5 @@
 import numpy as np
+import theano
 import os
 import warnings
 from util import load_states
@@ -13,12 +14,12 @@ def main():
 
     load_means_from_file = True
     #mean and std files:
-    x_info = numpy.genfromtxt('mux_stdx_n_16_n_impulse_2000_5.csv', delimiter=',')
-    y_info = numpy.genfromtxt('muy_stdy_n_16_n_impulse_2000_5.csv', delimiter=',')
+    x_info = np.asarray(np.genfromtxt('mux_stdx_n_16_n_impulse_2000_5.csv', delimiter=','), dtype=theano.config.floatX)
+    y_info = np.asarray(np.genfromtxt('muy_stdy_n_16_n_impulse_2000_5.csv', delimiter=','), dtype=theano.config.floatX)
 
     assert not (load_means_from_file and x_info is None and y_info is None)
     # Number of datasets
-    n = 13
+    n = 16
     n_impulse_2000 = 0
 
 
