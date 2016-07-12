@@ -670,6 +670,176 @@ class RecurrentClassifier(Classifier):
         return loaded_classifier
 
 
+class RNNClassifier(object):
+    """Builds a RNN on top of Classifier Network."""
+
+    def parse_inputs(self, n_in, n_out, rnn_hidden, rnn_activations, rnn_type, log, noise_type):
+        """Checks the type of the inputs and initializes instance variables.
+
+        :type rnn_hidden: list of ints.
+        :param rnn_hidden: dimensionality of hidden layers in the RNN.
+
+        :type rnn_activations: list of strings.
+        :param rnn_activations: names of activation functions of RNN.
+
+        :type rnn_type: string.
+        :param rnn_type: type of RNN (e.g. LSTM).
+        """
+        assert type(rnn_hidden) is ListType, "rnn_hidden must be a list: {0!r}".format(
+            rnn_hidden)
+        assert type(rnn_activations) is ListType, "rnn_activations must be a list: {0!r}".format(
+            rnn_activations)
+
+        self.rnn_hidden = rnn_hidden
+        self.rnn_activations = rnn_activations
+        self.rnn_type = rnn_type
+
+    def __init__(self, n_in, n_out, likelihood_precision,
+                 rnn_hidden, rnn_activations, rnn_type,
+                 log=None, weights=None):
+        """
+        :type rnn_hidden: list of ints.
+        :param rnn_hidden: dimensionality of hidden layers in the RNN.
+
+        :type rnn_activations: list of strings.
+        :param rnn_activations: names of activation functions of RNN.
+
+        :type rnn_type: string.
+        :param rnn_type: type of RNN (e.g. LSTM).
+        """
+        self.x = T.tensor3('x', dtype=theano.config.floatX)
+
+        self.parse_inputs(n_in, n_out, likelihood_precision,
+                          rnn_hidden, rnn_activations, rnn_type,  log, noise_type)
+
+
+        rnn_properties = {'n_in': lbn_properties['n_out'],
+                          'n_out': self.n_out,
+                          'n_hidden': self.rnn_hidden,
+                          'activations': self.rnn_activations,
+                          'layers': None if weights is None else weights['lbnrnn']['rnn']['layers'],
+                          'type': self.rnn_type}
+
+        if self.rnn_type == 'rnn':
+            self.rnn = VanillaRNN(self.n_in, self.rnn_hidden, self.n_out,
+                                  self.rnn_activations,
+                                  input_var=self.x,
+                                  layers_info=weights)
+        elif rnn_definition['type'] == 'LSTM':
+            self.rnn = LSTM(self.n_in, self.rnn_hidden, self.n_out,
+                            self.rnn_activations,
+                            input_var=self.x,
+                            layers_info=weights)
+        else:
+            raise NotImplementedError
+
+        self.y = T.tensor3('y', dtype=theano.config.floatX)
+
+        self.params = self.rnn.params
+        self.get_log_likelihood = theano.function(inputs=[self.x, self.lbnrnn.y],
+                                                  outputs=self.rnn.log_likelihood)
+
+        self.output = self.rnn.output
+        self.predict_sequence = theano.function(
+            inputs=[self.x], outputs=self.output)
+
+        # self.set_up_predict_one()
+        self.log.info("Network created with n_in: {0}, n_out: {1}, rnn_hidden: {2}, rnn_activations: {3}".format(
+                          self.n_in, self.n_out, self.rnn_hidden, self.rnn_activations))
+
+    def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
+            y_test=None, chunk_size=None):
+
+        self.log.info("Number of training samples: {0}.".format(
+            x.shape[1]))
+        if x_test is not None:
+            self.log.info("Number of test samples: {0}.".format(
+                x_test.shape[1]))
+
+        flat_params = flatten(self.params)
+        cost = self.get_cost()
+        compute_error = theano.function(inputs=[self.x, self.y], outputs=cost)
+
+        allowed_methods = ['SGD', "RMSProp", "AdaDelta", "AdaGrad", "Adam"]
+
+        if method['type'] == allowed_methods[0]:
+            opt = SGD(method['lr_decay_schedule'], method['lr_decay_parameters'],
+                      method['momentum_type'], momentum=method['momentum'])
+        elif method['type'] == allowed_methods[1]:
+            opt = RMSProp(method['learning_rate'], method[
+                          'rho'], method['epsilon'])
+        elif method['type'] == allowed_methods[2]:
+            opt = AdaDelta(method['learning_rate'], method[
+                           'rho'], method['epsilon'])
+        elif method['type'] == allowed_methods[3]:
+            opt = AdaGrad(method['learning_rate'], method['epsilon'])
+        elif method['type'] == allowed_methods[4]:
+            opt = Adam(method['learning_rate'], method[
+                       'b1'], method['b2'], method['e'])
+        else:
+            raise NotImplementedError(
+                "Optimization method not implemented. Choose one out of: {0}".format(
+                    allowed_methods))
+
+        self.log.info("Fit starts with epochs: {0}, batch size: {1}, method: {2}".format(
+            n_epochs, b_size, method))
+
+        opt.fit(self.x, self.y, x, y, b_size, cost, flat_params, n_epochs,
+                compute_error, self.get_call_back(save_every, fname, epoch0,
+                                                  log_likelihood_constant=x.shape[2]*0.5 * x.shape[1] *x.shape[0]
+                                                  np.log(2 * np.pi /
+                                                         np.sqrt(self.likelihood_precision))),
+                x_test=x_test, y_test=y_test,
+                chunk_size=chunk_size,
+                sample_axis=1)
+
+    def get_cost(self):
+        """Returns cost value to be optimized"""
+        cost = -1. / (self.x.shape[0] * self.x.shape[1]
+                      ) * get_log_likelihood(self.output_layer.output, self.y,
+                                                          self.likelihood_precision, True)
+
+        return cost
+
+    def generate_saving_string(self):
+        """Generate json representation of network parameters"""
+        output_string = "{\"network_properties\":"
+        output_string += json.dumps({"n_in": self.n_in, "n_out": self.n_out,
+                                     "rnn_hidden": self.rnn_hidden,
+                                     "rnn_activations": self.rnn_activations,
+                                     "likelihood_precision": self.likelihood_precision,
+                                     "rnn_type": self.rnn_type)
+        output_string += ",\"rnn\": "
+        output_string += self.rnn.generate_saving_string()
+        output_string += "}}"
+
+        return output_string
+
+    @classmethod
+    def init_from_file(cls, fname, log=None):
+        """Class method that loads network using information in json file fname
+
+        :type fname: string.
+        :param fname: filename (with path) containing network information.
+
+        :type log: logging instance, None.
+        :param log: logging instance to be used by the classifier.
+        """
+        with open(fname, 'r') as f:
+            network_description = json.load(f)
+
+        network_properties = network_description['network_properties']
+        loaded_classifier = cls(network_properties['n_in'],
+                                network_properties['n_out'],
+                                network_properties['likelihood_precision'],
+                                network_properties['rnn_hidden'],
+                                network_properties['rnn_activations'],
+                                network_properties['rnn_type'],
+                                log=log,
+                                weights=network_description['rnn']['layers'])
+
+        return loaded_classifier
+
 class callBack:
     """Call back class used for logging and debugging in the optimizer"""
 
