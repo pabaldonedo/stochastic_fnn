@@ -206,6 +206,14 @@ class GradientBased(Optimizer):
 
         while epoch < n_epochs:
             data_log_likelihood = 0
+            idx = np.random.permutation(self.n_train)
+            if sample_axis == 0:
+                x_train = x_train[idx]
+                y_train = y_train[idx]
+            else:
+                x_train = x_train[:, idx]
+                y_train = y_train[:, idx]
+
             for chunk in xrange(n_chunks):
                 train_set_x.set_value(x_train.take(xrange(chunk * chunk_size, min(
                     (chunk + 1) * chunk_size, x_train.shape[sample_axis])), axis=sample_axis))

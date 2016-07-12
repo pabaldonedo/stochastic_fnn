@@ -18,7 +18,7 @@ def main():
     recurrent = False
 
     # Only for NO recurrent
-    feet_learning = True
+    feet_learning = False
     feet_min = 50
     feet_max = 100
 
@@ -95,7 +95,7 @@ def main():
         n_in = x.shape[1]
         n_out = y.shape[1]
 
-    mlp_activation_names = ['sigmoid']  # , 'sigmoid']  # , 'linear']
+    mlp_activation_names = ['relu']  # , 'sigmoid']  # , 'linear']
     mlp_n_hidden = [150]  # , 100]  # , 50]
     likelihood_precision = 0.1
 
@@ -182,7 +182,7 @@ def main():
         opath, session_name=session_name if load_from_file else None)
 
     if feet_learning:
-        log.info("Using feet leraning.\nFeet min: {0}\nFeet max: {1}".format(
+        log.warning("Using feet learning.\nFeet min: {0}\nFeet max: {1}".format(
             feet_min, feet_max))
 
     if recurrent:

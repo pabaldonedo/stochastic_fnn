@@ -862,9 +862,8 @@ class MLPClassifier(object):
         else:
             seq_length = x.shape[0]
 
-        log_likelihood_constant = x.shape[sample_axis] * seq_length * 0.5 * self.n_out *
-            np.log(2 * np.pi /
-                   self.likelihood_precision)
+        log_likelihood_constant = x.shape[
+            sample_axis] * seq_length * 0.5 * self.n_out * np.log(2 * np.pi / self.likelihood_precision)
 
         allowed_methods = ['SGD', "RMSProp", "AdaDelta", "AdaGrad", "Adam"]
 
