@@ -71,7 +71,6 @@ def main():
     stdx[stdx == 0] = 1.
 
     if feet_learning:
-
         x = x[feet_idx, :]
 
     x = (x - mux) * 1. / stdx

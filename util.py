@@ -138,7 +138,7 @@ def log_init(path, session_name=None):
 
     logging.basicConfig(level=logging.INFO, filename="{0}/logs/{1}.log".format(
                         path, session_name),
-                        format="%(asctime)s %(message)s",
+                        format="[%(levelname)s] %(asctime)s %(message)s",
                         datefmt="%m/%d/%Y %H:%M:%S")
     log = logging.getLogger(session_name)
     return log, session_name
