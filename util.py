@@ -1,5 +1,6 @@
 import theano
 import theano.tensor as T
+import theano.ifelse
 import numpy as np
 import os
 import petname

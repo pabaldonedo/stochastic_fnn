@@ -11,6 +11,13 @@ from classifiers import Classifier
 
 def main():
 
+    load_means_from_file = True
+    #mean and std files:
+    x_info = numpy.genfromtxt('mux_stdx_n_16_n_impulse_2000_5.csv', delimiter=',')
+    y_info = numpy.genfromtxt('muy_stdy_n_16_n_impulse_2000_5.csv', delimiter=',')
+
+    assert not (load_means_from_file and x_info is None and y_info is None)
+
     # Number of datasets
     n = 13
     n_impulse_2000 = 5
@@ -32,8 +39,13 @@ def main():
     if n_impulse_2000 > 0:
         y_impulse = load_files(n_impulse_2000, 'controls_impulse_2000')
         y = np.vstack((y, y_impulse))
-    muy = np.mean(y, axis=0)
-    stdy = np.std(y, axis=0)
+
+    if load_means_from_file:
+        muy = y_info[0]
+        stdy = y_info[1]
+    else:
+        muy = np.mean(y, axis=0)
+        stdy = np.std(y, axis=0)
     stdy[stdy == 0] = 1.
 
     if feet_learning:
@@ -66,10 +78,14 @@ def main():
         x_impulse = load_files(n_impulse_2000, 'states_impulse_2000')
         x = np.vstack((x, x_impulse))
 
-    mux = np.mean(x, axis=0)
-    stdx = np.std(x, axis=0)
-    stdx[stdx == 0] = 1.
+    if load_means_from_file:
+        mux = x_info[0]
+        stdx = x_info[1]
+    else:
+        mux = np.mean(x, axis=0)
+        stdx = np.std(x, axis=0)
 
+    stdx[stdx == 0] = 1.
     if feet_learning:
         x = x[feet_idx, :]
 

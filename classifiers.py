@@ -709,7 +709,6 @@ class RNNClassifier(object):
         self.parse_inputs(n_in, n_out, likelihood_precision,
                           rnn_hidden, rnn_activations, rnn_type,  log, noise_type)
 
-
         rnn_properties = {'n_in': lbn_properties['n_out'],
                           'n_out': self.n_out,
                           'n_hidden': self.rnn_hidden,
@@ -742,7 +741,7 @@ class RNNClassifier(object):
 
         # self.set_up_predict_one()
         self.log.info("Network created with n_in: {0}, n_out: {1}, rnn_hidden: {2}, rnn_activations: {3}".format(
-                          self.n_in, self.n_out, self.rnn_hidden, self.rnn_activations))
+            self.n_in, self.n_out, self.rnn_hidden, self.rnn_activations))
 
     def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
             y_test=None, chunk_size=None):
@@ -757,9 +756,8 @@ class RNNClassifier(object):
         cost = self.get_cost()
         compute_error = theano.function(inputs=[self.x, self.y], outputs=cost)
 
-        log_likelihood_constant = y.shape[2]*0.5 * x.shape[1] *x.shape[0]
-                                                  np.log(2 * np.pi /
-                                                         self.likelihood_precision)
+        log_likelihood_constant = y.shape[2] * 0.5 * x.shape[1] * x.shape[0] * np.log(2 * np.pi /
+                                                                                      self.likelihood_precision)
         allowed_methods = ['SGD', "RMSProp", "AdaDelta", "AdaGrad", "Adam"]
 
         if method['type'] == allowed_methods[0]:
@@ -795,7 +793,7 @@ class RNNClassifier(object):
         """Returns cost value to be optimized"""
         cost = -1. / (self.x.shape[0] * self.x.shape[1]
                       ) * get_log_likelihood(self.output_layer.output, self.y,
-                                                          self.likelihood_precision, True)
+                                             self.likelihood_precision, True)
 
         return cost
 
@@ -806,7 +804,7 @@ class RNNClassifier(object):
                                      "rnn_hidden": self.rnn_hidden,
                                      "rnn_activations": self.rnn_activations,
                                      "likelihood_precision": self.likelihood_precision,
-                                     "rnn_type": self.rnn_type)
+                                     "rnn_type": self.rnn_type})
         output_string += ",\"rnn\": "
         output_string += self.rnn.generate_saving_string()
         output_string += "}}"
@@ -837,6 +835,7 @@ class RNNClassifier(object):
                                 weights=network_description['rnn']['layers'])
 
         return loaded_classifier
+
 
 class callBack:
     """Call back class used for logging and debugging in the optimizer"""
