@@ -227,14 +227,14 @@ def get_no_stochastic_log_likelihood(output, y, precision, timeseries):
 
     if not timeseries:
         exp_value = -0.5 * \
-            T.sum((output - y.dimshuffle('x', 0, 1))**2, axis=1) * precision
+            T.sum((output - y)**2, axis=1) * precision
 
         log_likelihood = T.sum(exp_value)  # -\
         #       self.y.shape[0]*(T.log(self.m)+self.y.shape[1]/2.*T.log(2*np.pi))
 
     else:
         exp_value = -0.5 * \
-            T.sum((output - y.dimshuffle(0, 'x', 1, 2))**2, axis=2) * precision
+            T.sum((output - y)**2, axis=2) * precision
         log_likelihood = T.sum(exp_value)
     return log_likelihood
 

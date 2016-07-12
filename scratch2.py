@@ -212,7 +212,6 @@ def main():
 
     else:
         loaded_opath = opath
-
     # LOGGING
     log, session_name = log_init(
         opath, session_name=session_name if load_from_file else None)

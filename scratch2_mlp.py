@@ -13,16 +13,16 @@ from classifiers import RecurrentMLP
 def main():
 
     load_means_from_file = True
-    #mean and std files:
-    x_info = np.asarray(np.genfromtxt('mux_stdx_n_16_n_impulse_2000_5.csv', delimiter=','), dtype=theano.config.floatX)
-    y_info = np.asarray(np.genfromtxt('muy_stdy_n_16_n_impulse_2000_5.csv', delimiter=','), dtype=theano.config.floatX)
+    # mean and std files:
+    x_info = np.asarray(np.genfromtxt(
+        'mux_stdx_n_16_n_impulse_2000_5.csv', delimiter=','), dtype=theano.config.floatX)
+    y_info = np.asarray(np.genfromtxt(
+        'muy_stdy_n_16_n_impulse_2000_5.csv', delimiter=','), dtype=theano.config.floatX)
 
     assert not (load_means_from_file and x_info is None and y_info is None)
     # Number of datasets
-    n = 16
+    n = 1
     n_impulse_2000 = 0
-
-
 
     # RNN on top of MLP
     recurrent = False
@@ -114,8 +114,8 @@ def main():
         n_in = x.shape[1]
         n_out = y.shape[1]
 
-    mlp_activation_names = ['relu']  # , 'sigmoid']  # , 'linear']
-    mlp_n_hidden = [150]  # , 100]  # , 50]
+    mlp_activation_names = ['sigmoid']  # , 'sigmoid']  # , 'linear']
+    mlp_n_hidden = [30]  # , 100]  # , 50]
     likelihood_precision = 0.1
 
     # RNN definiton + LBN n_out if RNN is the final layer
@@ -127,18 +127,17 @@ def main():
     # Fit options
     b_size = 100
     epoch0 = 1
-    n_epochs = 1000
+    n_epochs = 2
     lr = .1
     save_every = 10  # Log saving
-    chunk_size = 5000  # Memory chunks
+    chunk_size = None  # Memory chunks
     batch_normalization = False  # TODO
-    assert not batch_normalization, "BATCH NORMALIZATION NOT IMPLEMENTED"
 
     # Optimizer
     opt_type = 'SGD'
     method = {'type': opt_type, 'lr_decay_schedule': 'constant',
               'lr_decay_parameters': [lr],
-              'momentum_type': 'nesterov', 'momentum': 0.01, 'b1': 0.9,
+              'momentum_type': 'nesterov', 'momentum': 0.1, 'b1': 0.9,
               'b2': 0.999, 'epsilon': 1e-8, 'rho': 0.95, 'e': 1e-8,
               'learning_rate': lr}
 
@@ -178,7 +177,7 @@ def main():
         os.makedirs(opath)
     fname = '{0}/{1}_n_hidden_[{2}]'.format(
         opath, 'recurrent_mlp' if recurrent else 'mlp', ','.join(str(e) for e in mlp_n_hidden))
-    network_fname = '{0}/networks/{1}_n_hidden_[{2}]'.format(
+    loaded_network_fname = '{0}/networks/{1}_n_hidden_[{2}]'.format(
         opath,  'recurrent_mlp' if recurrent else 'mlp', ','.join(str(e) for e in mlp_n_hidden))
 
     if load_different_file:
@@ -207,24 +206,26 @@ def main():
     if recurrent:
         if load_from_file:
             c = RecurrentMLP.init_from_file(
-                '{0}_epoch_{1}.json'.format(network_fname, epoch0 - 1),
+                '{0}_epoch_{1}.json'.format(loaded_network_fname, epoch0 - 1),
                 log=log)
         else:
             c = RecurrentMLP(n_in, n_out, mlp_n_hidden, mlp_activation_names,
                              rnn_hidden, rnn_activations, rnn_type,
-                             likelihood_precision=likelihood_precision)
+                             likelihood_precision=likelihood_precision,
+                             batch_normalization=batch_normalization)
 
     else:
         if load_from_file:
 
             c = MLPClassifier.init_from_file(
-                '{0}_epoch_{1}.json'.format(network_fname,  epoch0 - 1),
+                '{0}_epoch_{1}.json'.format(loaded_network_fname,  epoch0 - 1),
                 log=log)
 
         else:
             c = MLPClassifier(n_in, n_out, mlp_n_hidden,
                               mlp_activation_names, log=log,
-                              likelihood_precision=likelihood_precision)
+                              likelihood_precision=likelihood_precision,
+                              batch_normalization=batch_normalization)
 
     # Training
     c.fit(x_train, y_train, n_epochs, b_size, method, fname=fname,
