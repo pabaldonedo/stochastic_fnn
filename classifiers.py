@@ -341,8 +341,8 @@ class Classifier(object):
         else:
             seq_length = x.shape[0]
 
-        log_likelihood_constant = x.shape[sample_axis] * seq_length * np.log(
-            m) + self.n_out * 0.5 * np.log(2 * np.pi * 1. / self.likelihood_precision)
+        log_likelihood_constant = x.shape[sample_axis] * seq_length * (np.log(
+            m) + self.n_out * 0.5 * np.log(2 * np.pi * 1. / self.likelihood_precision))
 
         allowed_methods = ['SGD', "RMSProp", "AdaDelta", "AdaGrad", "Adam"]
 
@@ -366,9 +366,6 @@ class Classifier(object):
 
         self.log.info("Fit starts with epochs: {0}, batch size: {1}, method: {2}".format(
             n_epochs, b_size, method))
-
-        log_likelihood_constant = x.shape[sample_axis] * seq_length * np.log(
-            m) + self.n_out * 0.5 * np.log(2 * np.pi * 1. / self.likelihood_precision)
 
         opt.fit(self.x, self.y, x, y, b_size, cost, flat_params, n_epochs,
                 compute_error, self.get_call_back(
@@ -848,17 +845,26 @@ class MLPClassifier(object):
         return c.cback
 
     def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
-            y_test=None, chunk_size=None):
+            y_test=None, chunk_size=None, sample_axis=0):
 
         self.log.info("Number of training samples: {0}.".format(
-            x.shape[0]))
+            x.shape[sample_axis]))
         if x_test is not None:
             self.log.info("Number of test samples: {0}.".format(
-                x_test.shape[0]))
+                x_test.shape[sample_axis]))
 
         flat_params = flatten(self.params)
         cost = self.get_cost()
         compute_error = theano.function(inputs=[self.x, self.y], outputs=cost)
+
+        if sample_axis == 0:
+            seq_length = 1
+        else:
+            seq_length = x.shape[0]
+
+        log_likelihood_constant = x.shape[sample_axis] * seq_length * 0.5 * self.n_out *
+            np.log(2 * np.pi /
+                   self.likelihood_precision)
 
         allowed_methods = ['SGD', "RMSProp", "AdaDelta", "AdaGrad", "Adam"]
 
@@ -886,17 +892,14 @@ class MLPClassifier(object):
 
         opt.fit(self.x, self.y, x, y, b_size, cost, flat_params, n_epochs,
                 compute_error, self.get_call_back(save_every, fname, epoch0,
-                                                  log_likelihood_constant=x.shape[
-                                                      0] * 0.5 * x.shape[1] *
-                                                  np.log(2 * np.pi /
-                                                         np.sqrt(self.likelihood_precision))),
+                                                  log_likelihood_constant=log_likelihood_constant),
                 x_test=x_test, y_test=y_test,
                 chunk_size=chunk_size,
-                sample_axis=0)
+                sample_axis=sample_axis)
 
     def get_cost(self):
         """Returns cost value to be optimized"""
-        cost = -1. / self.x.shape[0] * get_log_likelihood(self.output_layer.output, self.y,
+        cost = -1. / self.x.shape[0] * get_log_likelihood(self.output, self.y,
                                                           self.likelihood_precision, False)
         return cost
 
