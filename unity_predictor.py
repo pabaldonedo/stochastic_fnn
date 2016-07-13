@@ -2,6 +2,7 @@ from classifiers import RecurrentClassifier
 from classifiers import Classifier
 from classifiers import MLPClassifier
 from classifiers import RecurrentMLP
+from classifiers import RNNClassifier
 import theano
 import numpy
 import warnings
@@ -269,7 +270,7 @@ class RNNPredictor(Predictor):
         :type stdy: numpy.array.
         :param stdy: standar deveiation to scale the output array.
         """
-        self.classifier = MLPClassifier.init_from_file(fname)
+        self.classifier = RNNClassifier.init_from_file(fname)
         self.set_up_means(mux, stdx, muy, stdy)
 
     def predict(self, x, n_out=34):
@@ -292,7 +293,7 @@ class RNNPredictor(Predictor):
         x_norm.reshape(1,1, -1)
 
         if n_out < 34:
-            return numpy.hstack((self.classifier.predict(x_norm) * self.stdy[:n_out] + self.muy[:n_out],  1000*numpy.ones((1,34-n_out))))
+            return numpy.hstack((self.classifier.predict_one(x_norm) * self.stdy[:n_out] + self.muy[:n_out],  1000*numpy.ones((1,34-n_out))))
         else:
             return self.classifier.predict_one(x_norm) * self.stdy + self.muy
     
@@ -330,7 +331,7 @@ class UnityMessenger(object):
         context = zmq.Context()
         self.socket = context.socket(zmq.REP)
         self.socket.bind("tcp://*:{0}".format(port))
-        classifier_types = ['Recurrent', 'Classifier', 'MLP', 'RecurrentMLP']
+        classifier_types = ['Recurrent', 'Classifier', 'MLP', 'RecurrentMLP', 'RNN']
 
         self.n_out = n_out
         
@@ -346,6 +347,9 @@ class UnityMessenger(object):
             self.recurrent = False
         elif classifier_type == classifier_types[3]:
             self.predictor = RecurrentMLPPredictor(fname, mux, stdx, muy, stdy)
+            self.recurrent = True
+        elif classifier_type == classifier_types[4]:
+            self.predictor = RNNPredictor(fname, mux, stdx, muy, stdy)
             self.recurrent = True
         else:
             raise NotImplementedError
@@ -373,9 +377,9 @@ class UnityMessenger(object):
 
 if __name__ == '__main__':
     port = 5555
-    fname = 'network_output/mlp_n_hidden_[150]_epoch_1000.json'
+    fname = 'network_output/LSTM_rnn_hidden_[100,30]_epoch_530.json'
     n_out = 30
-    classifier_type = 'MLP'
+    classifier_type = 'RNN'
 
 #    x_info = numpy.genfromtxt('mux_stdx_n_13_n_impulse_2000_5.csv', delimiter=',')
 #    y_info = numpy.genfromtxt('muy_stdy_n_13_n_impulse_2000_5.csv', delimiter=',')
