@@ -311,10 +311,10 @@ class Classifier(object):
 
         return output_string
 
-    def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0):
+    def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0, test_log_likelihood_constant=None):
         """Returns callback function to be sent to optimer for debugging and log purposes"""
         c = callBack(self, save_every, fname, epoch0,
-                     log_likelihood_constant=log_likelihood_constant)
+                     log_likelihood_constant=log_likelihood_constant, test_log_likelihood_constant=test_log_likelihood_constant)
         return c.cback
 
     def get_cost(self):
@@ -344,6 +344,12 @@ class Classifier(object):
         log_likelihood_constant = x.shape[sample_axis] * seq_length * (np.log(
             m) + self.n_out * 0.5 * np.log(2 * np.pi * 1. / self.likelihood_precision))
 
+        test_log_likelihood_constant = None
+        if x_test is not None:
+
+            test_log_likelihood_constant = x_test.shape[sample_axis] * seq_length * (np.log(
+                m) + self.n_out * 0.5 * np.log(2 * np.pi * 1. / self.likelihood_precision))
+
         allowed_methods = ['SGD', "RMSProp", "AdaDelta", "AdaGrad", "Adam"]
 
         if method['type'] == allowed_methods[0]:
@@ -369,7 +375,8 @@ class Classifier(object):
 
         opt.fit(self.x, self.y, x, y, b_size, cost, flat_params, n_epochs,
                 compute_error, self.get_call_back(
-                    save_every, fname, epoch0, log_likelihood_constant=log_likelihood_constant),
+                    save_every, fname, epoch0, log_likelihood_constant=log_likelihood_constant,
+                    test_log_likelihood_constant=test_log_likelihood_constant),
                 extra_train_givens={self.m: m},
                 x_test=x_test, y_test=y_test,
                 chunk_size=chunk_size,
@@ -792,6 +799,12 @@ class RNNClassifier(object):
 
         log_likelihood_constant = self.n_out * 0.5 * x.shape[sample_axis] * seq_length * np.log(2 * np.pi /
                                                                                                 self.likelihood_precision)
+
+        test_log_likelihood_constant = None
+        if x_test is not None:
+            test_log_likelihood_constant = self.n_out * 0.5 * x_test.shape[sample_axis] * seq_length * np.log(2 * np.pi /
+                                                                                                              self.likelihood_precision)
+
         allowed_methods = ['SGD', "RMSProp", "AdaDelta", "AdaGrad", "Adam"]
 
         if method['type'] == allowed_methods[0]:
@@ -818,7 +831,8 @@ class RNNClassifier(object):
 
         opt.fit(self.x, self.y, x, y, b_size, cost, flat_params, n_epochs,
                 compute_error, self.get_call_back(save_every, fname, epoch0,
-                                                  log_likelihood_constant=log_likelihood_constant),
+                                                  log_likelihood_constant=log_likelihood_constant,
+                                                  test_log_likelihood_constant=test_log_likelihood_constant),
                 x_test=x_test, y_test=y_test,
                 chunk_size=chunk_size,
                 sample_axis=1)
@@ -831,10 +845,10 @@ class RNNClassifier(object):
 
         return cost
 
-    def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0):
+    def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0, test_log_likelihood_constant=None):
         """Returns callback function to be sent to optimer for debugging and log purposes"""
         c = callBack(self, save_every, fname, epoch0,
-                     log_likelihood_constant=log_likelihood_constant)
+                     log_likelihood_constant=log_likelihood_constant, test_log_likelihood_constant=test_log_likelihood_constant)
         return c.cback
 
     def generate_saving_string(self):
@@ -888,7 +902,7 @@ class RNNClassifier(object):
 class callBack:
     """Call back class used for logging and debugging in the optimizer"""
 
-    def __init__(self, classifier, save_every, fname, epoch0, log_likelihood_constant=0):
+    def __init__(self, classifier, save_every, fname, epoch0, log_likelihood_constant=0, test_log_likelihood_constant=None):
         """
         :type classifier: classifier instance.
         :param classifier: network being used.
@@ -913,6 +927,7 @@ class callBack:
         self.epochs = []
         self.classifier = classifier
         self.log_likelihood_constant = log_likelihood_constant
+        self.test_log_likelihood_constant = test_log_likelihood_constant
 
         opath = os.path.dirname(fname)
         file_name = os.path.basename(fname)
@@ -991,7 +1006,8 @@ class callBack:
                                                             train_log_likelihood, opt_parameters))
 
         else:
-            test_log_likelihood -= self.log_likelihood_constant
+            assert self.test_log_likelihood_constant is not None
+            test_log_likelihood -= self.test_log_likelihood_constant
             test_error = -test_log_likelihood / n_test
             self.classifier.log.info("epoch: {0} train_error: {1}, test_error: {2} "
                                      "log_likelihood: {3}, test_log_likelihood: {4}, "
@@ -1069,10 +1085,10 @@ class MLPClassifier(object):
         self.output = self.output_layer.output
         self.predict = theano.function(inputs=[self.x], outputs=self.output)
 
-    def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0):
+    def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0, test_log_likelihood_constant=None):
         """Returns callback function to be sent to optimer for debugging and log purposes"""
         c = callBack(self, save_every, fname, epoch0,
-                     log_likelihood_constant=log_likelihood_constant)
+                     log_likelihood_constant=log_likelihood_constant, test_log_likelihood_constant=test_log_likelihood_constant)
         return c.cback
 
     def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
@@ -1095,6 +1111,11 @@ class MLPClassifier(object):
 
         log_likelihood_constant = x.shape[
             sample_axis] * seq_length * 0.5 * self.n_out * np.log(2 * np.pi / self.likelihood_precision)
+
+        test_log_likelihood_constant = None
+        if x_test is not None:
+            test_log_likelihood_constant = x_test.shape[
+                sample_axis] * seq_length * 0.5 * self.n_out * np.log(2 * np.pi / self.likelihood_precision)
 
         allowed_methods = ['SGD', "RMSProp", "AdaDelta", "AdaGrad", "Adam"]
 
@@ -1122,7 +1143,8 @@ class MLPClassifier(object):
 
         opt.fit(self.x, self.y, x, y, b_size, cost, flat_params, n_epochs,
                 compute_error, self.get_call_back(save_every, fname, epoch0,
-                                                  log_likelihood_constant=log_likelihood_constant),
+                                                  log_likelihood_constant=log_likelihood_constant,
+                                                  test_log_likelihood_constant=test_log_likelihood_constant),
                 x_test=x_test, y_test=y_test,
                 chunk_size=chunk_size,
                 sample_axis=sample_axis)
@@ -1269,10 +1291,10 @@ class RecurrentMLP(object):
         self.predict_one = theano.function(
             inputs=[self.x], outputs=self.output[-1], updates=predict_upd)
 
-    def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0):
+    def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0, test_log_likelihood_constant=None):
         """Returns callback function to be sent to optimer for debugging and log purposes"""
         c = callBack(self, save_every, fname, epoch0,
-                     log_likelihood_constant=log_likelihood_constant)
+                     log_likelihood_constant=log_likelihood_constant, test_log_likelihood_constant=test_log_likelihood_constant)
         return c.cback
 
     def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
@@ -1290,6 +1312,11 @@ class RecurrentMLP(object):
 
         log_likelihood_constant = x.shape[
             0] * x.shape[1] * 0.5 * x.shape[2] * np.log(2 * np.pi * 1. / np.sqrt(self.likelihood_precision))
+
+        test_log_likelihood_constant = None
+        if x_test is not None:
+            test_log_likelihood_constant = x_test.shape[
+                0] * x_test.shape[1] * 0.5 * x_test.shape[2] * np.log(2 * np.pi * 1. / np.sqrt(self.likelihood_precision))
 
         allowed_methods = ['SGD', "RMSProp", "AdaDelta", "AdaGrad", "Adam"]
 
@@ -1317,7 +1344,8 @@ class RecurrentMLP(object):
 
         opt.fit(self.x, self.y, x, y, b_size, cost, flat_params, n_epochs,
                 compute_error, self.get_call_back(
-                    save_every, fname, epoch0, log_likelihood_constant=log_likelihood_constant),
+                    save_every, fname, epoch0, log_likelihood_constant=log_likelihood_constant,
+                    test_log_likelihood_constant=test_log_likelihood_constant),
                 x_test=x_test, y_test=y_test,
                 chunk_size=chunk_size,
                 sample_axis=1)

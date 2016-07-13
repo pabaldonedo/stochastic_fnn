@@ -273,12 +273,12 @@ class GradientBased(Optimizer):
                 test_log_likelihood_evolution.append(
                     (epoch, test_log_likelihood))
 
-                call_back(epoch, self.n_train*seq_len, train_log_likelihood=data_log_likelihood,
+                call_back(epoch, self.n_train * seq_len, train_log_likelihood=data_log_likelihood,
                           opt_parameters=self.opt_parameters,
                           test_log_likelihood=test_log_likelihood,
-                          n_test=self.n_test)
+                          n_test=self.n_test * seq_len)
             else:
-                call_back(epoch, self.n_train*seq_len, train_log_likelihood=data_log_likelihood,
+                call_back(epoch, self.n_train * seq_len, train_log_likelihood=data_log_likelihood,
                           opt_parameters=self.opt_parameters)
             epoch = epoch + 1
 
