@@ -1193,7 +1193,7 @@ class MLPClassifier(object):
                                 network_properties['likelihood_precision'],
                                 log=log,
                                 layers_info=network_description,
-                                batch_normalization=network_properties['batch_normalization'])
+                                batch_normalization=False if 'batch_normalization' not in network_properties.keys() else network_properties['batch_normalization'])
 
         return loaded_classifier
 

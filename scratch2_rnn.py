@@ -20,7 +20,7 @@ def main():
 
     assert not (load_means_from_file and x_info is None and y_info is None)
     # Number of datasets
-    n = 1
+    n = 16
     n_impulse_2000 = 0
 
     # Only for NO recurrent
@@ -64,7 +64,6 @@ def main():
     y_train = y[:, :train_bucket]
     y_test = y[:, train_bucket:]
 
-
     x = load_states(n)
     if n_impulse_2000 > 0:
         x_impulse = load_files(n_impulse_2000, 'states_impulse_2000')
@@ -95,7 +94,7 @@ def main():
 
     # RNN definiton + LBN n_out if RNN is the final layer
     rnn_type = "LSTM"
-    rnn_hidden = [30]
+    rnn_hidden = [150]
     rnn_activations = [['sigmoid', 'tanh', 'sigmoid',
                         'sigmoid', 'tanh'], 'linear']  # ['sigmoid', 'linear']
 
@@ -104,9 +103,9 @@ def main():
     # Fit options
     b_size = 100
     epoch0 = 1
-    n_epochs = 1000
+    n_epochs = 50000
     lr = 10.
-    save_every = 1  # Log saving
+    save_every = 10  # Log saving
     chunk_size = None  # Memory chunks
 
     # Optimizer
@@ -134,7 +133,6 @@ def main():
                    ','.join(str(e) for e in rnn_hidden),
                    ','.join(str(e) for e in rnn_activations),
                    b_size, method['type'])
-
 
     opath = "network_output/{0}".format(network_name)
     if not os.path.exists(opath):
@@ -173,9 +171,7 @@ def main():
             log=log)
     else:
         c = RNNClassifier(n_in, n_out, likelihood_precision,
-                         rnn_hidden, rnn_activations, rnn_type)
-
-    
+                          rnn_hidden, rnn_activations, rnn_type)
 
     # Training
     c.fit(x_train, y_train, n_epochs, b_size, method, fname=fname,

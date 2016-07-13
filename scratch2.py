@@ -13,9 +13,11 @@ from classifiers import Classifier
 def main():
 
     load_means_from_file = True
-    #mean and std files:
-    x_info = np.asarray(np.genfromtxt('mux_stdx_n_16_n_impulse_2000_5.csv', delimiter=','), dtype=theano.config.floatX)
-    y_info = np.asarray(np.genfromtxt('muy_stdy_n_16_n_impulse_2000_5.csv', delimiter=','), dtype=theano.config.floatX)
+    # mean and std files:
+    x_info = np.asarray(np.genfromtxt(
+        'mux_stdx_n_16_n_impulse_2000_5.csv', delimiter=','), dtype=theano.config.floatX)
+    y_info = np.asarray(np.genfromtxt(
+        'muy_stdy_n_16_n_impulse_2000_5.csv', delimiter=','), dtype=theano.config.floatX)
 
     assert not (load_means_from_file and x_info is None and y_info is None)
 
@@ -151,8 +153,8 @@ def main():
 
     # Load from file?
     load_from_file = True
-    session_name = None
-    load_different_file = True
+    session_name = 'hope'
+    load_different_file = False
 
     assert not (load_different_file and not load_from_file), "You have set load different_file to True but you are not loading any network!"
 

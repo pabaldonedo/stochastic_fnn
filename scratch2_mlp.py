@@ -21,7 +21,7 @@ def main():
 
     assert not (load_means_from_file and x_info is None and y_info is None)
     # Number of datasets
-    n = 1
+    n = 16
     n_impulse_2000 = 0
 
     # RNN on top of MLP
@@ -114,8 +114,8 @@ def main():
         n_in = x.shape[1]
         n_out = y.shape[1]
 
-    mlp_activation_names = ['sigmoid']  # , 'sigmoid']  # , 'linear']
-    mlp_n_hidden = [30]  # , 100]  # , 50]
+    mlp_activation_names = ['sigmoid', 'sigmoid', 'sigmoid']
+    mlp_n_hidden = [150, 100, 50]
     likelihood_precision = 0.1
 
     # RNN definiton + LBN n_out if RNN is the final layer
@@ -126,8 +126,8 @@ def main():
 
     # Fit options
     b_size = 100
-    epoch0 = 1
-    n_epochs = 2
+    epoch0 = 291
+    n_epochs = 1000
     lr = .1
     save_every = 10  # Log saving
     chunk_size = None  # Memory chunks
@@ -183,12 +183,24 @@ def main():
     if load_different_file:
         warnings.warn(
             "CAUTION: loading log and network from different path than the saving path")
-        loaded_network_folder = ""
-        loaded_opath = "network_output/{0}".fromat(loaded_network_folder)
+        loaded_network_folder = "mlp_classifier_n_{0}_n_impulse_2000_{1}_mlp_n_hidden_[{2}]_mlp_activation_[{3}]_bsize_{4}_method_{5}".format(n, n_impulse_2000,
+                                                                                                                                              ','.join(
+                                                                                                                                                  str(e) for e in mlp_n_hidden),
+                                                                                                                                              ','.join(
+                                                                                                                                                  str(e) for e in mlp_activation_names),
+                                                                                                                                              b_size,  method['type'])
+
+        loaded_opath = "network_output/{0}".format(loaded_network_folder)
         assert os.path.exists(
             loaded_opath), "Trying to load a network from a non existing path; {0}".format(loaded_opath)
 
-        loaded_network_name = "mlp_n_hidden_[150]"
+        loaded_network_name = "mlp_classifier_n_{0}_n_impulse_2000_{1}_mlp_n_hidden_[{2}]_mlp_activation_[{3}]_bsize_{4}_method_{5}".format(n, n_impulse_2000,
+                                                                                                                                            ','.join(
+                                                                                                                                                str(e) for e in mlp_n_hidden),
+                                                                                                                                            ','.join(
+                                                                                                                                                str(e) for e in mlp_activation_names),
+                                                                                                                                            b_size,  method['type'])
+
         loaded_network_fname = "{0}/networks/{1}".format(
             loaded_opath, loaded_network_name)
 
