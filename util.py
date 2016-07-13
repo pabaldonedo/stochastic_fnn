@@ -1,5 +1,6 @@
 import theano
 import theano.tensor as T
+import theano.ifelse
 import numpy as np
 import os
 import petname
@@ -138,7 +139,7 @@ def log_init(path, session_name=None):
 
     logging.basicConfig(level=logging.INFO, filename="{0}/logs/{1}.log".format(
                         path, session_name),
-                        format="%(asctime)s %(message)s",
+                        format="[%(levelname)s] %(asctime)s %(message)s",
                         datefmt="%m/%d/%Y %H:%M:%S")
     log = logging.getLogger(session_name)
     return log, session_name
@@ -226,14 +227,14 @@ def get_no_stochastic_log_likelihood(output, y, precision, timeseries):
 
     if not timeseries:
         exp_value = -0.5 * \
-            T.sum((output - y.dimshuffle('x', 0, 1))**2, axis=1) * precision
+            T.sum((output - y)**2, axis=1) * precision
 
         log_likelihood = T.sum(exp_value)  # -\
         #       self.y.shape[0]*(T.log(self.m)+self.y.shape[1]/2.*T.log(2*np.pi))
 
     else:
         exp_value = -0.5 * \
-            T.sum((output - y.dimshuffle(0, 'x', 1, 2))**2, axis=2) * precision
+            T.sum((output - y)**2, axis=2) * precision
         log_likelihood = T.sum(exp_value)
     return log_likelihood
 
@@ -347,3 +348,16 @@ def get_bias_init_values(n, b0=None, b_values=None):
     else:
         b_values = np.asarray(np.array(b_values), dtype=theano.config.floatX)
     return b_values
+
+
+def init_bn(layer, n_in, gamma_values=None, beta_values=None):
+    if gamma_values is None:
+        gamma_values = np.ones(n_in, dtype=theano.config.floatX)
+
+    if beta_values is None:
+        beta_values = np.zeros(n_in, dtype=theano.config.floatX)
+
+    layer.gamma = theano.shared(
+        value=np.asarray(gamma_values, dtype=theano.config.floatX), name='gamma', borrow=True)
+    layer.beta = theano.shared(
+        value=np.asarray(beta_values, dtype=theano.config.floatX), name='beta', borrow=True)

@@ -206,6 +206,14 @@ class GradientBased(Optimizer):
 
         while epoch < n_epochs:
             data_log_likelihood = 0
+            idx = np.random.permutation(self.n_train)
+            if sample_axis == 0:
+                x_train = x_train[idx]
+                y_train = y_train[idx]
+            else:
+                x_train = x_train[:, idx]
+                y_train = y_train[:, idx]
+
             for chunk in xrange(n_chunks):
                 train_set_x.set_value(x_train.take(xrange(chunk * chunk_size, min(
                     (chunk + 1) * chunk_size, x_train.shape[sample_axis])), axis=sample_axis))
@@ -224,12 +232,14 @@ class GradientBased(Optimizer):
                     else:
                         minibatch_avg_cost, this_batch_size = train_model(
                             minibatch_idx, this_chunk_size)
+
                     data_log_likelihood -= minibatch_avg_cost * this_batch_size * seq_len
                 # if chunk < n_chunks - 1:
                     #train_set_x.set_value(x_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_train.shape[0])])
                  #   train_set_x.set_value(x_train.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, x_train.shape[sample_axis])), axis=sample_axis))
                     #train_set_y.set_value(y_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, y_train.shape[0])])
                 #    train_set_y.set_value(y_train.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, y_train.shape[sample_axis])), axis=sample_axis))
+
             print "EPOCH"
             train_log_likelihood_evolution.append((epoch, data_log_likelihood))
 
@@ -263,12 +273,12 @@ class GradientBased(Optimizer):
                 test_log_likelihood_evolution.append(
                     (epoch, test_log_likelihood))
 
-                call_back(epoch, self.n_train, train_log_likelihood=data_log_likelihood,
+                call_back(epoch, self.n_train*seq_len, train_log_likelihood=data_log_likelihood,
                           opt_parameters=self.opt_parameters,
                           test_log_likelihood=test_log_likelihood,
                           n_test=self.n_test)
             else:
-                call_back(epoch, self.n_train, train_log_likelihood=data_log_likelihood,
+                call_back(epoch, self.n_train*seq_len, train_log_likelihood=data_log_likelihood,
                           opt_parameters=self.opt_parameters)
             epoch = epoch + 1
 
