@@ -711,28 +711,37 @@ class RNNClassifier(object):
         self.parse_inputs(n_in, n_out, likelihood_precision,
                           rnn_hidden, rnn_activations, rnn_type,  log)
 
-
         if self.rnn_type == 'rnn':
             self.rnn = VanillaRNN(self.n_in, self.rnn_hidden, self.n_out,
                                   self.rnn_activations,
                                   input_var=self.x,
-                                  layers_info=None if layers_info is None else layers_info['rnn']['layers'],
+                                  layers_info=None if layers_info is None else layers_info[
+                                      'rnn']['layers'],
                                   stochastic_samples=False)
         elif self.rnn_type == 'LSTM':
             self.rnn = LSTM(self.n_in, self.rnn_hidden, self.n_out,
                             self.rnn_activations,
                             input_var=self.x,
-                            layers_info=None if layers_info is None else layers_info['rnn']['layers'],
+                            layers_info=None if layers_info is None else layers_info[
+                                'rnn']['layers'],
                             stochastic_samples=False)
         else:
             raise NotImplementedError
-
 
         self.y = T.tensor3('y', dtype=theano.config.floatX)
 
         self.params = []
         self.params.append(self.rnn.params)
-                
+
+        # Will be used for restarting the predictions
+        self.rnn0 = []
+        self.rnn0.append([l.h0.get_value(borrow=False)
+                          for l in self.rnn.hidden_layers])
+
+        if self.rnn_type == 'LSTM':
+            self.rnn0.append([l.c0.get_value(borrow=False)
+                              for l in self.rnn.hidden_layers])
+
         self.log = log
         if self.log is None:
             logging.basicConfig(level=logging.INFO)
@@ -741,14 +750,27 @@ class RNNClassifier(object):
         self.predict_sequence = theano.function(
             inputs=[self.x], outputs=self.output)
 
-        exp_value = -0.5 * \
-            T.sum((self.output - self.y)**2, axis=2) * self.likelihood_precision
-
-        self.tmp = theano.function(inputs=[self.x, self.y], outputs=exp_value)
-
-        # self.set_up_predict_one()
+        self.set_up_predict_one()
         self.log.info("Network created with n_in: {0}, n_out: {1}, rnn_hidden: {2}, rnn_activations: {3}".format(
             self.n_in, self.n_out, self.rnn_hidden, self.rnn_activations))
+
+    def restart_prediction(self):
+        for i, l in enumerate(self.rnn.hidden_layers):
+            l.h0.set_value(self.rnn0[0][i], borrow=False)
+            if self.rnn_type == 'LSTM':
+                l.c0.set_value(self.rnn0[1][i], borrow=False)
+
+    def set_up_predict_one(self):
+
+        predict_upd = [(l.h0, l.output[-1].flatten())
+                       for l in self.rnn.hidden_layers]
+
+        if self.rnn_type is "LSTM":
+            predict_upd += [(l.c0, l.c_t[-1].flatten())
+                            for l in self.rnn.hidden_layers]
+
+        self.predict_one = theano.function(
+            inputs=[self.x], outputs=self.output[-1], updates=predict_upd)
 
     def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
             y_test=None, chunk_size=None, sample_axis=1):
@@ -769,7 +791,7 @@ class RNNClassifier(object):
             seq_length = x.shape[0]
 
         log_likelihood_constant = self.n_out * 0.5 * x.shape[sample_axis] * seq_length * np.log(2 * np.pi /
-                                                                                      self.likelihood_precision)
+                                                                                                self.likelihood_precision)
         allowed_methods = ['SGD', "RMSProp", "AdaDelta", "AdaGrad", "Adam"]
 
         if method['type'] == allowed_methods[0]:
@@ -805,7 +827,7 @@ class RNNClassifier(object):
         """Returns cost value to be optimized"""
         cost = -1. / (self.x.shape[0] * self.x.shape[1]
                       ) * get_no_stochastic_log_likelihood(self.output, self.y,
-                                             self.likelihood_precision, True)
+                                                           self.likelihood_precision, True)
 
         return cost
 
@@ -1015,11 +1037,12 @@ class MLPClassifier(object):
         self.mlp = MLPLayer(self.n_in, self.mlp_n_hidden, self.mlp_activation_names,
                             timeseries_network=False,
                             input_var=self.x,
-                            layers_info=None if layers_info is None else layers_info['mlp'],
+                            layers_info=None if layers_info is None else layers_info[
+                                'mlp'],
                             batch_normalization=self.batch_normalization)
 
         linear_activation = get_activation_function('linear')
-        
+
         self.params.append(self.mlp.params)
         self.output_layer = mlp.HiddenLayer(self.mlp.output, self.mlp.hidden_layers[-1].n_out,
                                             self.n_out, 'linear', linear_activation,
@@ -1030,9 +1053,11 @@ class MLPClassifier(object):
                                             timeseries_layer=None,
                                             batch_normalization=self.batch_normalization,
                                             gamma_values=None if layers_info is None or
-                                                    'gamma_values' not in layers_info['output_layer'].keys() else layers_info['output_layer']['gamma_values'],
-                                            beta_values=None if layers_info is None or 'beta_values' not in layers_info['output_layer'].keys() else layers_info['output_layer']['beta_values'],
-                                            epsilon=1e-12 if layers_info is None or 'epsilon' not in layers_info['output_layer'].keys() else layers_info['output_layer']['epsilon'],
+                                            'gamma_values' not in layers_info['output_layer'].keys() else layers_info['output_layer']['gamma_values'],
+                                            beta_values=None if layers_info is None or 'beta_values' not in layers_info[
+                                                'output_layer'].keys() else layers_info['output_layer']['beta_values'],
+                                            epsilon=1e-12 if layers_info is None or 'epsilon' not in layers_info[
+                                                'output_layer'].keys() else layers_info['output_layer']['epsilon'],
                                             fixed_means=False)
 
         self.params.append(self.output_layer.params)
@@ -1043,12 +1068,6 @@ class MLPClassifier(object):
 
         self.output = self.output_layer.output
         self.predict = theano.function(inputs=[self.x], outputs=self.output)
-
-        exp_value = -0.5 * \
-            T.sum((self.output - self.y)**2, axis=1) * self.likelihood_precision
-
-        self.tmp = theano.function(inputs=[self.x, self.y], outputs=exp_value)
-
 
     def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0):
         """Returns callback function to be sent to optimer for debugging and log purposes"""
@@ -1111,7 +1130,7 @@ class MLPClassifier(object):
     def get_cost(self):
         """Returns cost value to be optimized"""
         cost = -1. / self.x.shape[0] * get_no_stochastic_log_likelihood(self.output, self.y,
-                                                          self.likelihood_precision, False)
+                                                                        self.likelihood_precision, False)
         return cost
 
     def generate_saving_string(self):
@@ -1133,8 +1152,10 @@ class MLPClassifier(object):
                        "timeseries": self.output_layer.timeseries}
 
         if self.batch_normalization:
-            buffer_dict['gamma_values'] = self.output_layer.gamma.get_value().tolist()
-            buffer_dict['beta_values'] = self.output_layer.beta.get_value().tolist()
+            buffer_dict[
+                'gamma_values'] = self.output_layer.gamma.get_value().tolist()
+            buffer_dict[
+                'beta_values'] = self.output_layer.beta.get_value().tolist()
             buffer_dict['epsilon'] = self.output_layer.epsilon
 
         output_string += json.dumps(buffer_dict)
