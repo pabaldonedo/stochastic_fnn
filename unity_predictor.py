@@ -107,7 +107,7 @@ class RNNPredictor(Predictor):
 class FNNPredictor(Predictor):
     """Predictor using LBN (defined sa Classifier in classifiers.py). """
 
-    def __init__(self, fname, mux, stdx, muy, stdy):
+    def __init__(self, fname, mux, stdx, muy, stdy, gmm_prediction=False):
         """
         :type fname: string.
         :param fname: Filename (with path) containing the classifier definition.
@@ -126,7 +126,8 @@ class FNNPredictor(Predictor):
         """
         self.classifier = Classifier.init_from_file(fname)
         self.set_up_means(mux, stdx, muy, stdy)
-
+        self.gmm_prediction = gmm_prediction
+        
     def predict(self, x, n_out=34):
         """
         :type x: numpy.array
@@ -147,10 +148,15 @@ class FNNPredictor(Predictor):
         x_norm.reshape(1, -1)
 
         if n_out < 34:
-            return numpy.hstack((self.classifier.predict(x_norm, 1)[0] * self.stdy[:n_out] + self.muy[:n_out], 100*numpy.ones((1,34-n_out)))) 
+            if self.gmm_prediction:
+                return numpy.hstack((self.classifier.predict_gmm(x_norm, 1) * self.stdy[:n_out] + self.muy[:n_out], 100*numpy.ones((1,34-n_out)))) 
+            else:
+                return numpy.hstack((self.classifier.predict(x_norm, 1)[0] * self.stdy[:n_out] + self.muy[:n_out], 100*numpy.ones((1,34-n_out)))) 
         else:
-            return self.classifier.predict_gmm(x_norm, 10)[0] * self.stdy + self.muy
-
+            if self.gmm_prediction:
+                return self.classifier.predict_gmm(x_norm, 1) * self.stdy + self.muy
+            else:
+                return self.classifier.predict(x_norm, 1)[0] * self.stdy + self.muy
 
 class MLPPredictor(Predictor):
     """ Predictor using only a classical MLP network
@@ -303,7 +309,7 @@ class UnityMessenger(object):
     Opens a ZMQ socket to communicate with c++ Unity program
     """
 
-    def __init__(self, fname, mux, stdx, muy, stdy, classifier_type, port=5555, n_out=34):
+    def __init__(self, fname, mux, stdx, muy, stdy, classifier_type, port=5555, n_out=34, gmm_prediction=False):
         """
         :type fname: string.
         :param fname: Filename (with path) containing the classifier definition.
@@ -334,21 +340,25 @@ class UnityMessenger(object):
         classifier_types = ['Recurrent', 'Classifier', 'MLP', 'RecurrentMLP', 'RNN']
 
         self.n_out = n_out
-        
+        self.gmm_prediction = gmm_prediction
         # Sets up predictor
         if classifier_type == classifier_types[0]:
+            assert not self.gmm_prediction, "GMM prediction not available in this mode"
             self.predictor = RNNPredictor(fname, mux, stdx, muy, stdy)
             self.recurrent = True
         elif classifier_type == classifier_types[1]:
-            self.predictor = FNNPredictor(fname, mux, stdx, muy, stdy)
+            self.predictor = FNNPredictor(fname, mux, stdx, muy, stdy, gmm_prediction=self.gmm_prediction)
             self.recurrent = False
         elif classifier_type == classifier_types[2]:
+            assert not self.gmm_prediction, "GMM prediction not available in this mode"
             self.predictor = MLPPredictor(fname, mux, stdx, muy, stdy)
             self.recurrent = False
         elif classifier_type == classifier_types[3]:
+            assert not self.gmm_prediction, "GMM prediction not available in this mode"
             self.predictor = RecurrentMLPPredictor(fname, mux, stdx, muy, stdy)
             self.recurrent = True
         elif classifier_type == classifier_types[4]:
+            assert not self.gmm_prediction, "GMM prediction not available in this mode"
             self.predictor = RNNPredictor(fname, mux, stdx, muy, stdy)
             self.recurrent = True
         else:
@@ -377,20 +387,23 @@ class UnityMessenger(object):
 
 if __name__ == '__main__':
     port = 5555
-    fname = 'network_output/LSTM_rnn_hidden_[100,30]_epoch_530.json'
-    n_out = 30
-    classifier_type = 'RNN'
+    fname = "network_output/classifier_n_16_2.json"
+    n_out = 34
+    classifier_type = 'Classifier'
 
+    x_info = numpy.genfromtxt('mux_stdx_n_16_n_impulse_2000_5.csv', delimiter=',')
+    y_info = numpy.genfromtxt('muy_stdy_n_16_n_impulse_2000_5.csv', delimiter=',')
 #    x_info = numpy.genfromtxt('mux_stdx_n_13_n_impulse_2000_5.csv', delimiter=',')
 #    y_info = numpy.genfromtxt('muy_stdy_n_13_n_impulse_2000_5.csv', delimiter=',')
-    x_info = numpy.genfromtxt('mux_stdx_n_13.csv', delimiter=',')
-    y_info = numpy.genfromtxt('muy_stdy_n_13.csv', delimiter=',')[:,:-4]
+#    x_info = numpy.genfromtxt('mux_stdx_n_13.csv', delimiter=',')
+#    y_info = numpy.genfromtxt('muy_stdy_n_13.csv', delimiter=',')
 
+    gmm_prediction = True
     mux = x_info[0]
     stdx = x_info[1]
 
     muy = y_info[0]
     stdy = y_info[1]
     messenger = UnityMessenger(
-        fname, mux, stdx, muy, stdy, classifier_type, port=port, n_out=n_out)
+        fname, mux, stdx, muy, stdy, classifier_type, port=port, n_out=n_out, gmm_prediction=gmm_prediction)
     messenger.listen()

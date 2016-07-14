@@ -170,6 +170,16 @@ class Classifier(object):
                                     batch_normalization=batch_normalization)
             self.bone_representations[i] = bone_mlp
 
+
+    def gmm(self, means, x):
+        return T.sum(T.exp(-0.5*self.likelihood_precision*T.sum((x-means)**2, axis=2)), axis=0)
+
+    def sample_from_distribution(self, input_x):
+        warnings.warn('ONLY CHECKING CURRENT MEANS')
+
+        output, _ = theano.scan(lambda xi: self.gmm(input_x, xi), sequences=input_x)
+        return input_x[T.argmax(output, axis=0), T.arange(input_x.shape[1])]
+
     def __init__(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                  det_activations, stoch_activations, stoch_n_hidden=[-1], log=None, weights=None,
                  likelihood_precision=1, noise_type='multiplicative', batch_normalization=False):
@@ -252,6 +262,9 @@ class Classifier(object):
             self.frozen_weights = False
         self.predict = theano.function(
             inputs=[self.x, self.lbn.m], outputs=self.lbn.output)
+
+        self.gmm_output = self.sample_from_distribution(self.lbn.output)
+        self.predict_gmm = theano.function(inputs=[self.x, self.lbn.m], outputs=self.gmm_output)
         self.log.info("Network created with n_in: {0}, mlp_n_hidden: {1}, "
                       "mlp_activation_names: {2}, lbn_n_hidden: {3}, det_activations: {4}, "
                       "stoch_activations: {5}, n_out: {6}".format(
