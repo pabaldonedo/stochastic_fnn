@@ -22,8 +22,8 @@ def main():
     assert not (load_means_from_file and x_info is None and y_info is None)
 
     # Number of datasets
-    n = 13
-    n_impulse_2000 = 0
+    n = 16
+    n_impulse_2000 = 5
     # RNN on top of LBN
     recurrent = False
 
@@ -71,7 +71,7 @@ def main():
 
     else:
         idx = np.random.permutation(y.shape[0])
-        y = y[idx, :-4]
+        y = y[idx]
         train_bucket = int(np.ceil(y.shape[0] * train_size))
         y_train = y[:train_bucket]
         y_test = y[train_bucket:]
@@ -136,11 +136,11 @@ def main():
 
     # Fit options
     b_size = 100
-    epoch0 = 1001
-    n_epochs = 300
-    lr = .1
+    epoch0 = 1
+    n_epochs = 1000
+    lr = .01
     save_every = 10  # Log saving
-    chunk_size = None  # Memory chunks
+    chunk_size = 5000  # Memory chunks
     batch_normalization = False  # TODO FOR RECURRENT CLASSIFIER!
 
     # Optimizer
@@ -152,8 +152,8 @@ def main():
               'learning_rate': lr}
 
     # Load from file?
-    load_from_file = True
-    session_name = 'hope'
+    load_from_file = False
+    session_name = None
     load_different_file = False
 
     assert not (load_different_file and not load_from_file), "You have set load different_file to True but you are not loading any network!"
@@ -189,10 +189,10 @@ def main():
         warnings.warn(
             "CAUTION: loading log and network from different path than the saving path")
 
-        loaded_network_folder = "{0}_n_{1}_n_impulse_2000_0_mlp_hidden_[{3}]_mlp_activation_[{4}]"\
+        loaded_network_folder = "{0}_n_13_n_impulse_2000_0_mlp_hidden_[{3}]_mlp_activation_[{4}]"\
             "_lbn_n_hidden_[{5}]_det_activations_[{6}]_stoch"\
             "_activations_[{7}]_m_{8}_noise_type_{9}_bsize_{10}"\
-            "_method_SGD_bn_False".\
+            "_method_{11}_bn_{12}".\
             format(
                 'recurrentclassifier_{0}'.format(rnn_type) if recurrent
                 else 'classifier',
@@ -207,7 +207,20 @@ def main():
         assert os.path.exists(
             loaded_opath), "Trying to load a network for non existing path: {0}".format(loaded_opath)
 
-        loaded_network_name = "classifier_lbn_n_hidden_[150]"
+        loaded_network_name =  "{0}_n_{1}_n_impulse_2000_{2}_mlp_hidden_[{3}]_mlp_activation_[{4}]"\
+            "_lbn_n_hidden_[{5}]_det_activations_[{6}]_stoch"\
+            "_activations_[{7}]_m_{8}_noise_type_{9}_bsize_{10}"\
+            "_method_{11}".\
+            format(
+                'recurrentclassifier_{0}'.format(rnn_type) if recurrent
+                else 'classifier',
+                n, n_impulse_2000,
+                ','.join(str(e) for e in mlp_n_hidden),
+                ','.join(str(e) for e in mlp_activation_names),
+                ','.join(str(e) for e in lbn_n_hidden),
+                ','.join(str(e) for e in det_activations),
+                ','.join(str(e) for e in stoch_activations),
+                m, noise_type, b_size, method['type'], batch_normalization)  # "classifier_lbn_n_hidden_[150]"
 
         loaded_network_fname = '{0}/networks/{1}'.format(
             loaded_opath, loaded_network_name)

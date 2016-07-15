@@ -15,7 +15,7 @@ class HiddenLayer(object):
     def __init__(self, input_var, n_in, n_out, activation_name, activation, rng=None,
                  W_values=None, b_values=None, timeseries_layer=False,
                  batch_normalization=False, gamma_values=None, beta_values=None, epsilon=1e-12,
-                 fixed_means=False, stdb=None, mub=None):
+                 fixed_means=False, stdb=None, mub=None, dropout=False, training=None):
         """
         Hidden layer: Weight matrix W is of shape (n_out,n_in)
         and the bias vector b is of shape (n_out,).
@@ -61,7 +61,9 @@ class HiddenLayer(object):
                 n_out, mub.shape)
 
         self.input = input_var
-
+        self.dropout = dropout
+        if self.dropout:
+            assert training is not None
         self.n_in = n_in
         self.n_out = n_out
         self.activation_name = activation_name
@@ -94,6 +96,10 @@ class HiddenLayer(object):
             self.timeseries_layer()
         else:
             self.feedforward_layer()
+
+        trng = theano.tensor.shared_randomstreams.RandomStreams(1234)
+        self.ouptut = theano.ifelse.ifelse(training, 0.5 * self.output, T.switch(
+            trng.binomial(size=self.output.shape, p=0.5), self.output, 0))
 
     def feedforward_layer(self):
         self.a = T.dot(self.input, self.W.T) + self.b
@@ -140,7 +146,8 @@ class MLPLayer(object):
     def __init__(self, n_in, n_hidden, activation_names, timeseries_network=False,
                  input_var=None,
                  layers_info=None,
-                 batch_normalization=False):
+                 batch_normalization=False,
+                 dropout=False, training=None):
         """
         MLP network used as a layer in a bigger network.
 
@@ -175,14 +182,15 @@ class MLPLayer(object):
         else:
             self.x = input_var
 
+        self.training = training
         self.timeseries_network = timeseries_network
         self.rng = np.random.RandomState()
         self.parse_properties(
-            n_in, n_hidden, activation_names, batch_normalization)
+            n_in, n_hidden, activation_names, batch_normalization, dropout)
 
         self.define_network(layers_info=layers_info)
 
-    def parse_properties(self, n_in, n_hidden, activation_names, batch_normalization):
+    def parse_properties(self, n_in, n_hidden, activation_names, batch_normalization, dropout):
         """
         :type n_in: integer.
         :param n_in: input dimensionality.
@@ -200,11 +208,18 @@ class MLPLayer(object):
             n_hidden)
         assert type(activation_names) is ListType, "activation_names must be a list: {0!r}".format(
             activation_names)
-        assert len(n_hidden) == len(activation_names), "len(n_hidden) must be =="\
+        assert len(n_hidden) == len(
+            activation_names), "len(n_hidden) must be =="\
             " len(det_activations). n_hidden: {0!r} and det_activations: {1!r}".format(n_hidden,
                                                                                        activation_names)
         assert type(batch_normalization) is bool, "batch_normalization must be bool. Given: {0!r}".format(
             batch_normalization)
+        assert type(dropout) is bool
+
+        self.dropout = dropout
+
+        if self.dropout == False and self.training is None:
+            self.training = T.scalar('scalar')
 
         self.n_in = n_in
         self.n_hidden = np.array(n_hidden)
@@ -224,57 +239,58 @@ class MLPLayer(object):
             if i == 0:
                 self.hidden_layers[i] = HiddenLayer(self.x, self.n_in, h, self.activation_names[i],
                                                     self.activation[
-                                                        i], rng=self.rng,
-                                                    W_values=None if layers_info is None else
-                                                    np.array(
-                                                    layers_info['layers'][
-                                                        i]['HiddenLayer']
-                                                    ['W']),
-                                                    b_values=None if layers_info is None else
-                                                    np.array(
-                                                    layers_info['layers'][
-                                                        i]['HiddenLayer']
-                                                    ['b']),
-                                                    timeseries_layer=self.timeseries_network,
-                                                    batch_normalization=self.batch_normalization,
-                                                    gamma_values=None if layers_info is None or
-                                                    'gamma_values' not in layers_info[
-                                                        'layers'][i]['HiddenLayer'].keys() else layers_info['layers'][i]['HiddenLayer']['gamma_values'],
-                                                    beta_values=None if layers_info is None or 'beta_values' not in layers_info[
-                                                        'layers'][i]['HiddenLayer'].keys() else layers_info['layers'][i]['HiddenLayer']['beta_values'],
-                                                    epsilon=1e-12 if layers_info is None or 'epsilon' not in layers_info[
-                                                        'layers'][i]['HiddenLayer'].keys() else layers_info['layers'][i]['HiddenLayer']['epsilon'],
-                                                    fixed_means=False)
+                    i], rng=self.rng,
+                    W_values=None if layers_info is None else
+                    np.array(
+                    layers_info['layers'][
+                        i]['HiddenLayer']
+                    ['W']),
+                    b_values=None if layers_info is None else
+                    np.array(
+                    layers_info['layers'][
+                        i]['HiddenLayer']
+                    ['b']),
+                    timeseries_layer=self.timeseries_network,
+                    batch_normalization=self.batch_normalization,
+                    gamma_values=None if layers_info is None or
+                    'gamma_values' not in layers_info[
+                    'layers'][i]['HiddenLayer'].keys() else layers_info['layers'][i]['HiddenLayer']['gamma_values'],
+                    beta_values=None if layers_info is None or 'beta_values' not in layers_info[
+                    'layers'][i]['HiddenLayer'].keys() else layers_info['layers'][i]['HiddenLayer']['beta_values'],
+                    epsilon=1e-12 if layers_info is None or 'epsilon' not in layers_info[
+                    'layers'][i]['HiddenLayer'].keys() else layers_info['layers'][i]['HiddenLayer']['epsilon'],
+                    fixed_means=False, training=self.training, dropout=self.dropout)
             else:
                 self.hidden_layers[i] = HiddenLayer(self.hidden_layers[i - 1].output,
                                                     self.n_hidden[
-                                                        i - 1], h, self.activation_names[i],
-                                                    self.activation[
-                                                        i], rng=self.rng,
-                                                    W_values=None if layers_info is None else
-                                                    np.array(
-                                                    layers_info['layers'][
-                                                        i]['HiddenLayer']
-                                                    ['W']),
-                                                    b_values=None if layers_info is None else
-                                                    np.array(
-                                                    layers_info['layers'][
-                                                        i]['HiddenLayer']
-                                                    ['b']),
-                                                    timeseries_layer=self.timeseries_network,
-                                                    batch_normalization=self.batch_normalization,
-                                                    gamma_values=None if layers_info is None or 'gamma_values' not in layers_info[
-                                                        'layers'][i]['HiddenLayer'].keys() else layers_info['layers'][i]['HiddenLayer']['gamma_values'],
-                                                    beta_values=None if layers_info is None or 'beta_values' not in layers_info[
-                                                        'layers'][i]['HiddenLayer'].keys() else layers_info['layers'][i]['HiddenLayer']['beta_values'],
-                                                    epsilon=1e-12 if layers_info is None or 'epsilon' not in layers_info[
-                                                        'layers'][i]['HiddenLayer'].keys() else layers_info['layers'][i]['HiddenLayer']['epsilon'],
-                                                    fixed_means=False)
+                    i - 1], h, self.activation_names[i],
+                    self.activation[
+                    i], rng=self.rng,
+                    W_values=None if layers_info is None else
+                    np.array(
+                    layers_info['layers'][
+                        i]['HiddenLayer']
+                    ['W']),
+                    b_values=None if layers_info is None else
+                    np.array(
+                    layers_info['layers'][
+                        i]['HiddenLayer']
+                    ['b']),
+                    timeseries_layer=self.timeseries_network,
+                    batch_normalization=self.batch_normalization,
+                    gamma_values=None if layers_info is None or 'gamma_values' not in layers_info[
+                    'layers'][i]['HiddenLayer'].keys() else layers_info['layers'][i]['HiddenLayer']['gamma_values'],
+                    beta_values=None if layers_info is None or 'beta_values' not in layers_info[
+                    'layers'][i]['HiddenLayer'].keys() else layers_info['layers'][i]['HiddenLayer']['beta_values'],
+                    epsilon=1e-12 if layers_info is None or 'epsilon' not in layers_info[
+                    'layers'][i]['HiddenLayer'].keys() else layers_info['layers'][i]['HiddenLayer']['epsilon'],
+                    fixed_means=False, training=self.training, dropout=self.dropout)
 
             self.params.append(self.hidden_layers[i].params)
 
         self.output = self.hidden_layers[-1].output
-        self.predict = theano.function(inputs=[self.x], outputs=self.output)
+        self.predict = theano.function(
+            inputs=[self.x], outputs=self.output, givens={self.training: 0})
         self.regulizer_L2 = T.zeros(1)
         self.regulizer_L1 = T.zeros(1)
         for l in self.params:
@@ -288,7 +304,8 @@ class MLPLayer(object):
         output_string += json.dumps({"n_in": self.n_in, "n_hidden": list(self.n_hidden),
                                      "activation": self.activation_names,
                                      "timeseries": self.timeseries_network,
-                                     "batch_normalization": self.batch_normalization})
+                                     "batch_normalization": self.batch_normalization,
+                                     "dropout": self.dropout})
 
         output_string += ", \"layers\":["
         for j, layer in enumerate(self.hidden_layers):

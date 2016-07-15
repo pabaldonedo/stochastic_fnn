@@ -13,15 +13,19 @@ from classifiers import RecurrentMLP
 def main():
 
     load_means_from_file = True
+    sampled_clipped = False
+    if sampled_clipped:
+        print "WARNING USING CLIPPED"
+
     # mean and std files:
     x_info = np.asarray(np.genfromtxt(
-        'mux_stdx_n_16_n_impulse_2000_5.csv', delimiter=','), dtype=theano.config.floatX)
+        'sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv', delimiter=','), dtype=theano.config.floatX)
     y_info = np.asarray(np.genfromtxt(
-        'muy_stdy_n_16_n_impulse_2000_5.csv', delimiter=','), dtype=theano.config.floatX)
+        'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv', delimiter=','), dtype=theano.config.floatX)
 
     assert not (load_means_from_file and x_info is None and y_info is None)
     # Number of datasets
-    n = 16
+    n = 1
     n_impulse_2000 = 0
 
     # RNN on top of MLP
@@ -38,10 +42,14 @@ def main():
     # Load data
     seq_len = 61
 
-    y = load_controls(n)
-    if n_impulse_2000 > 0:
-        y_impulse = load_files(n_impulse_2000, 'controls_impulse_2000')
-        y = np.vstack((y, y_impulse))
+    if sampled_clipped:
+        y = np.genfromtxt(
+            'data/sample_clipped_controls_n_16_n_impulse_2000_5.txt', delimiter=',', dtype=theano.config.floatX)
+    else:
+        y = load_controls(n)
+        if n_impulse_2000 > 0:
+            y_impulse = load_files(n_impulse_2000, 'controls_impulse_2000')
+            y = np.vstack((y, y_impulse))
 
     if load_means_from_file:
         muy = y_info[0]
@@ -76,10 +84,15 @@ def main():
         y_train = y[:train_bucket]
         y_test = y[train_bucket:]
 
-    x = load_states(n)
-    if n_impulse_2000 > 0:
-        x_impulse = load_files(n_impulse_2000, 'states_impulse_2000')
-        x = np.vstack((x, x_impulse))
+    if sampled_clipped:
+        x = np.genfromtxt(
+            'data/sample_clipped_states_n_16_n_impulse_2000_5.txt', delimiter=',', dtype=theano.config.floatX)
+    else:
+        x = load_states(n)
+        if n_impulse_2000 > 0:
+            x_impulse = load_files(n_impulse_2000, 'states_impulse_2000')
+            x = np.vstack((x, x_impulse))
+
     if load_means_from_file:
         mux = x_info[0]
         stdx = x_info[1]
@@ -114,8 +127,8 @@ def main():
         n_in = x.shape[1]
         n_out = y.shape[1]
 
-    mlp_activation_names = ['sigmoid', 'sigmoid', 'sigmoid']
-    mlp_n_hidden = [150, 100, 50]
+    mlp_activation_names = ['sigmoid']  # , 'sigmoid', 'sigmoid']
+    mlp_n_hidden = [150]  # , 100, 50]
     likelihood_precision = 0.1
 
     # RNN definiton + LBN n_out if RNN is the final layer
@@ -126,20 +139,21 @@ def main():
 
     # Fit options
     b_size = 100
-    epoch0 = 291
+    epoch0 = 1
     n_epochs = 1000
     lr = .1
     save_every = 10  # Log saving
     chunk_size = None  # Memory chunks
     batch_normalization = False  # TODO
+    dropout = True
 
     # Optimizer
     opt_type = 'SGD'
     method = {'type': opt_type, 'lr_decay_schedule': 'constant',
               'lr_decay_parameters': [lr],
-              'momentum_type': 'nesterov', 'momentum': 0.1, 'b1': 0.9,
+              'momentum_type': 'nesterov', 'momentum': 0.01, 'b1': 0.9,
               'b2': 0.999, 'epsilon': 1e-8, 'rho': 0.95, 'e': 1e-8,
-              'learning_rate': lr}
+              'learning_rate': lr, 'dropout': dropout}
 
     # Load from file?
     load_from_file = False
@@ -152,7 +166,7 @@ def main():
     if recurrent:
 
         network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
-            "rnn_hidden_[{5}]_rnn_activations_[{6}]_bsize_{7}_method_{8}_bn_{9}".\
+            "rnn_hidden_[{5}]_rnn_activations_[{6}]_bsize_{7}_method_{8}_bn_{9}_dropout_{10}".\
             format(
                        'recurrent_mlp_classifier',
                        n, n_impulse_2000,
@@ -160,17 +174,19 @@ def main():
                        ','.join(str(e) for e in mlp_activation_names),
                        ','.join(str(e) for e in rnn_hidden),
                        ','.join(str(e) for e in rnn_activations),
-                       b_size, method['type'], batch_normalization)
+                       b_size, method['type'], batch_normalization, dropout)
 
     else:
         network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
-            "_bsize_{5}_method_{6}_bn_{7}".\
+            "_bsize_{5}_method_{6}_bn_{7}_dropout_{8}{9}".\
             format(
                        'mlp_classifier',
                        n, n_impulse_2000,
                        ','.join(str(e) for e in mlp_n_hidden),
                        ','.join(str(e) for e in mlp_activation_names),
-                       b_size,  method['type'], batch_normalization)
+                       b_size,  method['type'], batch_normalization,
+                       dropout,
+                       '_sampled_clipped' if sampled_clipped else '')
 
     opath = "network_output/{0}".format(network_name)
     if not os.path.exists(opath):
@@ -183,12 +199,12 @@ def main():
     if load_different_file:
         warnings.warn(
             "CAUTION: loading log and network from different path than the saving path")
-        loaded_network_folder = "mlp_classifier_n_{0}_n_impulse_2000_{1}_mlp_n_hidden_[{2}]_mlp_activation_[{3}]_bsize_{4}_method_{5}".format(n, n_impulse_2000,
-                                                                                                                                              ','.join(
-                                                                                                                                                  str(e) for e in mlp_n_hidden),
-                                                                                                                                              ','.join(
-                                                                                                                                                  str(e) for e in mlp_activation_names),
-                                                                                                                                              b_size,  method['type'])
+        loaded_network_folder = "mlp_classifier_n_{0}_n_impulse_2000_{1}_mlp_n_hidden_[{2}]_mlp_activation_[{3}]_bsize_{4}_method_{5}_bn_False".format(n, n_impulse_2000,
+                                                                                                                                                       ','.join(
+                                                                                                                                                           str(e) for e in mlp_n_hidden),
+                                                                                                                                                       ','.join(
+                                                                                                                                                           str(e) for e in mlp_activation_names),
+                                                                                                                                                       b_size,  method['type'])
 
         loaded_opath = "network_output/{0}".format(loaded_network_folder)
         assert os.path.exists(
@@ -224,7 +240,8 @@ def main():
             c = RecurrentMLP(n_in, n_out, mlp_n_hidden, mlp_activation_names,
                              rnn_hidden, rnn_activations, rnn_type,
                              likelihood_precision=likelihood_precision,
-                             batch_normalization=batch_normalization)
+                             batch_normalization=batch_normalization,
+                             dropout=dropout)
 
     else:
         if load_from_file:
@@ -237,7 +254,8 @@ def main():
             c = MLPClassifier(n_in, n_out, mlp_n_hidden,
                               mlp_activation_names, log=log,
                               likelihood_precision=likelihood_precision,
-                              batch_normalization=batch_normalization)
+                              batch_normalization=batch_normalization,
+                              dropout=dropout)
 
     # Training
     c.fit(x_train, y_train, n_epochs, b_size, method, fname=fname,
