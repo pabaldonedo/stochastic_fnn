@@ -3,6 +3,7 @@ from classifiers import Classifier
 from classifiers import MLPClassifier
 from classifiers import RecurrentMLP
 from classifiers import RNNClassifier
+from classifiers import ResidualMLPClassifier
 import theano
 import numpy
 import warnings
@@ -302,7 +303,58 @@ class RNNPredictor(Predictor):
             return numpy.hstack((self.classifier.predict_one(x_norm) * self.stdy[:n_out] + self.muy[:n_out],  1000*numpy.ones((1,34-n_out))))
         else:
             return self.classifier.predict_one(x_norm) * self.stdy + self.muy
-    
+
+
+class ResidualPredictor(Predictor):
+    """ Predictor using only a classical MLP network
+    (defined as MLPClassifier in classifiers.py)
+    """
+
+    def __init__(self, fname, mux, stdx, muy, stdy):
+        """
+        :type fname: string.
+        :param fname: Filename (with path) containing the classifier definition.
+
+        :type: mux: numpy.array.
+        :param mux: mean to be subtracted from the input array.
+
+        :type stdx: numpy.array.
+        :param stdx: standard deviation to scale the input array.
+
+        :type muy: numpy.array.
+        :param muy: mean to be added to the output array.
+
+        :type stdy: numpy.array.
+        :param stdy: standar deveiation to scale the output array.
+        """
+        self.classifier = ResidualMLPClassifier.init_from_file(fname)
+        self.set_up_means(mux, stdx, muy, stdy)
+
+    def predict(self, x, n_out=34):
+        """
+        :type x: numpy.array
+        :param x: input data of shape (1, 197)
+
+        :return (1,30) numpy.array containing the system controls (except the last 4)
+        """
+        assert type(
+            x) is numpy.ndarray, "Input must be a numpy array. Given type: {0!r}".format(type(x))
+
+        if x.dtype is not theano.config.floatX:
+            x = numpy.asarray(x, dtype=theano.config.floatX)
+
+        cols = [1] + list(range(3, x.shape[1]))
+
+        x = x[:, cols]
+        x_norm = (x - self.mux) * 1. / self.stdx
+        x_norm.reshape(1, -1)
+
+        if n_out < 34:
+            return numpy.hstack((self.classifier.predict(x_norm) * self.stdy[:n_out] + self.muy[:n_out],  1000*numpy.ones((1,34-n_out))))
+        else:
+            return self.classifier.predict(x_norm) * self.stdy + self.muy
+
+        
     
 class UnityMessenger(object):
     """
@@ -337,7 +389,7 @@ class UnityMessenger(object):
         context = zmq.Context()
         self.socket = context.socket(zmq.REP)
         self.socket.bind("tcp://*:{0}".format(port))
-        classifier_types = ['Recurrent', 'Classifier', 'MLP', 'RecurrentMLP', 'RNN']
+        classifier_types = ['Recurrent', 'Classifier', 'MLP', 'RecurrentMLP', 'RNN', 'Residual']
 
         self.n_out = n_out
         self.gmm_prediction = gmm_prediction
@@ -361,6 +413,10 @@ class UnityMessenger(object):
             assert not self.gmm_prediction, "GMM prediction not available in this mode"
             self.predictor = RNNPredictor(fname, mux, stdx, muy, stdy)
             self.recurrent = True
+        elif classifier_type == classifier_types[5]:
+            assert not self.gmm_prediction, "GMM prediction not avaiable in this mode"
+            self.recurrent = False
+            self.predictor = ResidualPredictor(fname, mux, stdx, muy, stdy)
         else:
             raise NotImplementedError
 
@@ -387,9 +443,9 @@ class UnityMessenger(object):
 
 if __name__ == '__main__':
     port = 5555
-    fname = "network_output/classifier_n_16_2.json"
-    n_out = 34
-    classifier_type = 'Classifier'
+    fname = "network_output/residual_mlp_classifier_n_hidden_[150,100]_sigmoid_relu_epoch_340.json"
+    n_out = 30
+    classifier_type = 'Residual'
 
     x_info = numpy.genfromtxt('mux_stdx_n_16_n_impulse_2000_5.csv', delimiter=',')
     y_info = numpy.genfromtxt('muy_stdy_n_16_n_impulse_2000_5.csv', delimiter=',')
@@ -398,7 +454,7 @@ if __name__ == '__main__':
 #    x_info = numpy.genfromtxt('mux_stdx_n_13.csv', delimiter=',')
 #    y_info = numpy.genfromtxt('muy_stdy_n_13.csv', delimiter=',')
 
-    gmm_prediction = True
+    gmm_prediction = False
     mux = x_info[0]
     stdx = x_info[1]
 
