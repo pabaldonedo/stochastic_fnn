@@ -60,8 +60,6 @@ class LBNOutputLayer(object):
 
         V = theano.shared(value=V_values, name='V', borrow=True)
 
-        if self.dropout:
-            assert training is not None
         self.n_in = n_in
         self.n_out = n_out
         self.W = V
@@ -148,7 +146,7 @@ class DetHiddenLayer(object):
     def __init__(self, rng, input_var, n_in, n_out, activation, activation_name, m=None,
                  W_values=None, b_values=None, no_bias=False, timeseries_layer=False,
                  batch_normalization=False, gamma_values=None, beta_values=None, epsilon=1e-12,
-                 fixed_means=False, stdb=None, mub=None, dropout=False, training=None):
+                 fixed_means=False, stdb=None, mub=None):
         """
         Deterministic hidden layer: Weight matrix W is of shape (n_out,n_in)
         and the bias vector b is of shape (n_out,).
@@ -197,10 +195,6 @@ class DetHiddenLayer(object):
             assert mub.size == n_out, "Minibatch mean must be of size n_out ({0}). Given shape: {1}".format(
                 n_out, mub.shape)
 
-        self.dropout = dropout
-        if self.dropout:
-            assert training is not None
-
         self.input = input_var
         self.no_bias = no_bias
         self.n_in = n_in
@@ -226,10 +220,6 @@ class DetHiddenLayer(object):
         self.timeseries = timeseries_layer
 
         self.batch_normalization = batch_normalization
-
-        trng = theano.tensor.shared_randomstreams.RandomStreams(1234)
-        self.ouptut = theano.ifelse.ifelse(training, 0.5 * self.output, T.switch(
-            trng.binomial(size=self.output.shape, p=0.5), self.output, 0))
 
         if self.batch_normalization:
             init_bn(self, n_out, gamma_values=gamma_values,
@@ -330,7 +320,7 @@ class StochHiddenLayerInterface(object):
     def __init__(self, rng, trng, input_var, n_in, n_hidden, n_out, activations, activation_names,
                  mlp_info=None,
                  timeseries_layer=False,
-                 batch_normalization=False, batch_normalization_info=None, dropout=False, training=None):
+                 batch_normalization=False, batch_normalization_info=None):
         """
         :type rng: numpy.random.RandomState.
         :param rng: a random number generator used to initialize weights.
@@ -361,7 +351,6 @@ class StochHiddenLayerInterface(object):
                         LBN.save_network().
         """
 
-        self.dropout = dropout
         self.input = input_var
         self.n_in = n_in
         self.n_hidden = n_hidden
@@ -394,7 +383,7 @@ class StochHiddenLayerInterface(object):
                                                            'detLayer']['beta_values'],
                                                        epsilon=1e-12 if batch_normalization_info is None else batch_normalization_info[i][
                                                            'detLayer']['epsilon'],
-                                                       fixed_means=False, dropout=self.dropout, training=training)
+                                                       fixed_means=False)
             else:
                 self.hidden_layers[i] = DetHiddenLayer(rng, self.hidden_layers[i - 1].output,
                                                        self.n_hidden[i - 1], h,
@@ -414,7 +403,7 @@ class StochHiddenLayerInterface(object):
                                                            'detLayer']['beta_values'],
                                                        epsilon=1e-12 if batch_normalization_info is None else batch_normalization_info[i][
                                                            'detLayer']['epsilon'],
-                                                       fixed_means=False, dropout=self.dropout, training=training)
+                                                       fixed_means=False)
             self.params += self.hidden_layers[i].params
             # self.params[2 * i] = self.hidden_layers[i].W
             # self.params[2 * i + 1] = self.hidden_layers[i].b
@@ -437,7 +426,7 @@ class StochHiddenLayerInterface(object):
             'detLayer']['beta_values'],
             epsilon=1e-12 if batch_normalization_info is None else batch_normalization_info[-1][
             'detLayer']['epsilon'],
-            fixed_means=False, dropout=self.dropout, training=training)
+            fixed_means=False)
         # self.params[-2] = self.hidden_layers[-1].W
         # self.params[-1] = self.hidden_layers[-1].b
         self.params += self.hidden_layers[-1].params
@@ -484,7 +473,7 @@ class HiddenLayerInterface(object):
                  det_activation_name=None, stoch_activation_names=None, m=None,
                  det_W=None, det_b=None, stoch_mlp_info=None,
                  timeseries_layer=False,
-                 batch_normalization=False, batch_normalization_info=None, dropout=False, training=None):
+                 batch_normalization=False, batch_normalization_info=None):
         """
         :type rng: numpy.random.RandomState
         :param rng: a random number generator used to initialize weights.
@@ -538,7 +527,6 @@ class HiddenLayerInterface(object):
         self.m = m
         self.timeseries_layer = timeseries_layer
         self.batch_normalization = batch_normalization
-        self.dropout = dropout
 
         self.det_layer = DetHiddenLayer(rng, input_var, n_in, n_out, det_activation,
                                         det_activation_name, m=m, no_bias=self.no_bias,
@@ -551,7 +539,7 @@ class HiddenLayerInterface(object):
                                             'detLayer']['beta_values'],
                                         epsilon=1e-12 if batch_normalization_info is None else batch_normalization_info[
                                             'detLayer']['epsilon'],
-                                        fixed_means=False, dropout=self.dropout, training=training)
+                                        fixed_means=False)
 
         # If -1, same hidden units
         stoch_n_hidden = np.array(
@@ -563,8 +551,7 @@ class HiddenLayerInterface(object):
                                                         timeseries_layer=self.timeseries_layer,
                                                         batch_normalization=self.batch_normalization,
                                                         batch_normalization_info=None if batch_normalization_info is None else
-                                                        batch_normalization_info['stochLayer'], dropout=self.dropout, training=training)
-
+                                                        batch_normalization_info['stochLayer']),
         # self.output = self.stoch_layer.output*self.det_layer.output
         self.define_output()
         self.params = self.det_layer.params + self.stoch_layer.params
@@ -577,7 +564,7 @@ class LBNHiddenLayer(HiddenLayerInterface):
                  det_activation_name=None, stoch_activation_names=None, m=None,
                  det_W=None, det_b=None, stoch_mlp_info=None,
                  timeseries_layer=False,
-                 batch_normalization=False, batch_normalization_info=None, dropout=False, training=None):
+                 batch_normalization=False, batch_normalization_info=None):
 
         self.stoch_hidden_layer_type = StochHiddenLayerBernoulli
         self.no_bias = True
@@ -590,9 +577,7 @@ class LBNHiddenLayer(HiddenLayerInterface):
                                              stoch_mlp_info=stoch_mlp_info,
                                              timeseries_layer=timeseries_layer,
                                              batch_normalization=batch_normalization,
-                                             batch_normalization_info=batch_normalization_info,
-                                             dropout=dropout,
-                                             training=training)
+                                             batch_normalization_info=batch_normalization_info)
 
     def define_output(self):
         self.output = self.stoch_layer.output * self.det_layer.output
@@ -605,7 +590,7 @@ class NoisyMLPHiddenLayer(HiddenLayerInterface):
                  det_activation_name=None, stoch_activation_names=None, m=None,
                  det_W=None, det_b=None, stoch_mlp_info=None,
                  timeseries_layer=False,
-                 batch_normalization=False, batch_normalization_info=None, dropout=False, training=None):
+                 batch_normalization=False, batch_normalization_info=None):
 
         self.stoch_hidden_layer_type = StochHiddenLayerGaussian
         self.no_bias = False
@@ -618,9 +603,7 @@ class NoisyMLPHiddenLayer(HiddenLayerInterface):
                                                   stoch_mlp_info=stoch_mlp_info,
                                                   timeseries_layer=timeseries_layer,
                                                   batch_normalization=batch_normalization,
-                                                  batch_normalization_info=batch_normalization_info,
-                                                  dropout=dropout,
-                                                  training=training)
+                                                  batch_normalization_info=batch_normalization_info)
 
     def define_output(self):
         self.output = self.stoch_layer.output + self.det_layer.output
@@ -640,8 +623,7 @@ class StochasticInterface(object):
                  log=None,
                  input_var=None,
                  likelihood_precision=1.,
-                 batch_normalization=False,
-                 dropout=False, training=None):
+                 batch_normalization=False):
         """
         :type n_in: int.
         :param n_in: input dimensionality of the network.
@@ -688,7 +670,6 @@ class StochasticInterface(object):
             else:
                 self.y = T.matrix('y', dtype=theano.config.floatX)
 
-        self.training = training
 
         self.timeseries_network = timeseries_network
         self.trng = T.shared_randomstreams.RandomStreams()
@@ -698,7 +679,7 @@ class StochasticInterface(object):
         if self.log is None:
             self.log = logging.getLogger()
         self.parse_properties(n_in, n_hidden, n_out, det_activations, stoch_activations,
-                              stoch_n_hidden, likelihood_precision, batch_normalization, dropout)
+                              stoch_n_hidden, likelihood_precision, batch_normalization)
         self.log.info('LBN Network created with n_in: {0}, n_hidden: {1}, n_out: {2}, '
                       'det_activations: {3}, stoch_activations: {4}, stoch_n_hidden: {5}'.format(
                           self.n_in, self.n_hidden, self.n_out, self.det_activation_names,
@@ -707,7 +688,7 @@ class StochasticInterface(object):
         self.define_network(layers_info=layers_info)
 
     def parse_properties(self, n_in, n_hidden, n_out, det_activations, stoch_activations,
-                         stoch_n_hidden, likelihood_precision, batch_normalization, dropout):
+                         stoch_n_hidden, likelihood_precision, batch_normalization):
 
         assert type(
             n_in) is IntType, "n_in must be an integer: {0!r}".format(n_in)
@@ -733,13 +714,6 @@ class StochasticInterface(object):
 
         assert type(batch_normalization) is bool, "Batch normalization must be boolean. Provided: {0!r}".format(
             batch_normalization)
-
-        assert type(dropout) is bool
-
-        self.dropout = dropout
-
-        if self.dropout and self.training is None:
-            self.training = theano.tensor.scalar('training')
 
         self.n_hidden = np.array(n_hidden)
         self.n_out = n_out
@@ -786,8 +760,8 @@ class StochasticInterface(object):
                                                                timeseries_layer=self.timeseries_network,
                                                                batch_normalization=self.batch_normalization,
                                                                batch_normalization_info=None if layers_info is None or 'batch_normalization' not in layers_info[
-                                                                   'hidden_layers'][i]['LBNlayer'].keys() else layers_info['hidden_layers'][i]['LBNlayer']['batch_normalization'],
-                                                               dropout=self.dropout, training=self.training)
+                                                                   'hidden_layers'][i]['LBNlayer'].keys() else layers_info['hidden_layers'][i]['LBNlayer']['batch_normalization'])
+                                                               
             else:
                 self.hidden_layers[i] = self.hidden_layer_type(self.rng, self.trng,
                                                                self.hidden_layers[
@@ -810,8 +784,8 @@ class StochasticInterface(object):
                                                                timeseries_layer=self.timeseries_network,
                                                                batch_normalization=self.batch_normalization,
                                                                batch_normalization_info=None if layers_info is None or 'batch_normalization' not in layers_info[
-                                                                   'hidden_layers'][i]['LBNlayer'].keys() else layers_info['hidden_layers'][i]['LBNlayer']['batch_normalization'],
-                                                               dropout=self.dropout, training=self.training)
+                                                                   'hidden_layers'][i]['LBNlayer'].keys() else layers_info['hidden_layers'][i]['LBNlayer']['batch_normalization'])
+                                                               
 
             self.params.append(self.hidden_layers[i].params)
         if not self.timeseries_network:

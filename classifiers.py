@@ -35,7 +35,7 @@ class Classifier(object):
                      mlp_activation_names, lbn_n_hidden,
                      det_activations, stoch_activations, stoch_n_hidden,
                      log, likelihood_precision,
-                     noise_type, batch_normalization, dropout):
+                     noise_type, batch_normalization):
         """Checks the type of the inputs and initializes instance variables.
 
         :type n_in: int.
@@ -108,13 +108,6 @@ class Classifier(object):
         assert type(batch_normalization) is bool, "batch_normalization must be bool. Given: {0!r}".format(
             batch_normalization)
 
-        assert type(dropout) is bool
-
-        self.dropout = dropout
-        self.training = None
-        if self.dropout:
-            self.training = theano.tensor.scalar('training')
-
         allowed_noise = ['multiplicative', 'additive']
         assert noise_type in allowed_noise, "noise_type must be one of {0!r}. Provided: {1!r}".format(
             allowed_noise, noise_type)
@@ -130,7 +123,7 @@ class Classifier(object):
         self.n_out = n_out
 
     def set_up_mlp(self, mlp_n_hidden, mlp_activation_names, mlp_n_in, weights=None, timeseries_layer=False,
-                   batch_normalization=False, dropout=False):
+                   batch_normalization=False):
         """Defines the MLP networks for the 15 bones.
 
         :type mlp_n_hidden: list of ints.
@@ -163,8 +156,8 @@ class Classifier(object):
                                     layers_info=None if weights is
                                     None else weights['bone_mlps'][i]['MLPLayer'],
                                     timeseries_network=timeseries_layer,
-                                    batch_normalization=batch_normalization,
-                                    dropout=dropout, training=self.training)
+                                    batch_normalization=batch_normalization)
+                                    
             else:
                 bone_mlp = MLPLayer(mlp_n_in, self.mlp_n_hidden, self.mlp_activation_names,
                                     input_var=self.x[
@@ -175,8 +168,7 @@ class Classifier(object):
                                     layers_info=None if weights is None else
                                     weights['bone_mlps'][i]['MLPLayer'],
                                     timeseries_network=timeseries_layer,
-                                    batch_normalization=batch_normalization,
-                                    dropout=dropout, training=self.training)
+                                    batch_normalization=batch_normalization)
             self.bone_representations[i] = bone_mlp
 
     def gmm(self, means, x):
@@ -191,8 +183,7 @@ class Classifier(object):
 
     def __init__(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                  det_activations, stoch_activations, stoch_n_hidden=[-1], log=None, weights=None,
-                 likelihood_precision=1, noise_type='multiplicative', batch_normalization=False,
-                 dropout=False):
+                 likelihood_precision=1, noise_type='multiplicative', batch_normalization=False):
         """
         :type n_in: int.
         :param n_in: network input dimensionality.
@@ -243,7 +234,7 @@ class Classifier(object):
         self.x = T.matrix('x', dtype=theano.config.floatX)
         self.parse_inputs(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                           det_activations, stoch_activations, stoch_n_hidden, log, likelihood_precision,
-                          noise_type, batch_normalization, dropout)
+                          noise_type, batch_normalization)
 
         self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in,
                         weights=weights, batch_normalization=self.batch_normalization)
@@ -259,24 +250,23 @@ class Classifier(object):
                        layers_info=None if weights is None else
                        weights['lbn']['layers'],
                        likelihood_precision=self.likelihood_precision,
-                       batch_normalization=self.batch_normalization,
-                       dropout=self.dropout, training=self.training)
+                       batch_normalization=self.batch_normalization)
 
         self.y = self.lbn.y
         self.m = self.lbn.m
         self.get_log_likelihood = theano.function(inputs=[self.x, self.lbn.y, self.lbn.m],
-                                                  outputs=self.lbn.log_likelihood, givens={self.training: False})
+                                                  outputs=self.lbn.log_likelihood)
 
         mlp_params = [mlp_i.params for mlp_i in self.bone_representations]
         self.params = [mlp_params, self.lbn.params]
         if self.batch_normalization:
             self.frozen_weights = False
         self.predict = theano.function(
-            inputs=[self.x, self.lbn.m], outputs=self.lbn.output, givens={self.training: False})
+            inputs=[self.x, self.lbn.m], outputs=self.lbn.output)
 
         self.gmm_output = self.sample_from_distribution(self.lbn.output)
         self.predict_gmm = theano.function(
-            inputs=[self.x, self.lbn.m], outputs=self.gmm_output, givens={self.training: False})
+            inputs=[self.x, self.lbn.m], outputs=self.gmm_output)
         self.log.info("Network created with n_in: {0}, mlp_n_hidden: {1}, "
                       "mlp_activation_names: {2}, lbn_n_hidden: {3}, det_activations: {4}, "
                       "stoch_activations: {5}, n_out: {6}".format(
@@ -321,8 +311,7 @@ class Classifier(object):
                                      "stoch_activations": self.stoch_activations,
                                      "likelihood_precision": self.likelihood_precision,
                                      "noise_type": self.noise_type,
-                                     "batch_normalization": self.batch_normalization,
-                                     "dropout": self.dropout})
+                                     "batch_normalization": self.batch_normalization})
         output_string += ",\"layers\": {\"bone_mlps\":["
         for i, bone in enumerate(self.bone_representations):
             if i > 0:
@@ -403,7 +392,7 @@ class Classifier(object):
                 compute_error, self.get_call_back(
                     save_every, fname, epoch0, log_likelihood_constant=log_likelihood_constant,
                     test_log_likelihood_constant=test_log_likelihood_constant),
-                extra_train_givens={self.m: m, self.training: True},
+                extra_train_givens={self.m: m},
                 x_test=x_test, y_test=y_test,
                 chunk_size=chunk_size,
                 sample_axis=sample_axis)
@@ -502,8 +491,7 @@ class Classifier(object):
                                 noise_type=network_properties['noise_type'],
                                 batch_normalization=False if 'batch_normalization'
                                 not in network_properties.keys() else
-                                network_properties['batch_normalization'],
-                                dropout=network_description['dropout'] if 'dropout' in network_properties.keys() else False)
+                                network_properties['batch_normalization'])
 
         return loaded_classifier
 
@@ -1079,7 +1067,7 @@ class MLPClassifier(object):
         self.batch_normalization = batch_normalization
         self.dropout = dropout
 
-        self.training = False
+        self.training = None
         if self.dropout:
             self.training = theano.tensor.scalar('training')
 
@@ -1116,9 +1104,14 @@ class MLPClassifier(object):
             logging.basicConfig(level=logging.INFO)
             self.log = logging.getLogger()
 
+        if self.dropout:
+            self.givens_dict = {self.training: np.float64(0).astype(theano.config.floatX)}
+        else:
+            self.givens_dict = {}
         self.output = self.output_layer.output
         self.predict = theano.function(
-            inputs=[self.x], outputs=self.output, givens={self.training: False})
+            inputs=[self.x], outputs=self.output,
+            givens=self.givens_dict)
 
     def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0, test_log_likelihood_constant=None):
         """Returns callback function to be sent to optimer for debugging and log purposes"""
@@ -1137,7 +1130,7 @@ class MLPClassifier(object):
 
         flat_params = flatten(self.params)
         cost = self.get_cost()
-        compute_error = theano.function(inputs=[self.x, self.y], outputs=cost)
+        compute_error = theano.function(inputs=[self.x, self.y], outputs=cost, givens=self.givens_dict)
 
         if sample_axis == 0:
             seq_length = 1
@@ -1180,7 +1173,7 @@ class MLPClassifier(object):
                 compute_error, self.get_call_back(save_every, fname, epoch0,
                                                   log_likelihood_constant=log_likelihood_constant,
                                                   test_log_likelihood_constant=test_log_likelihood_constant),
-                extra_train_givens={self.training: True},
+                extra_train_givens=self.givens_dict,
                 x_test=x_test, y_test=y_test,
                 chunk_size=chunk_size,
                 sample_axis=sample_axis)
@@ -1257,6 +1250,215 @@ class MLPClassifier(object):
             dropout=network_properties['dropout'] if 'dropout' in network_properties.keys() else False)
 
         return loaded_classifier
+
+
+class ResidualMLPClassifier(object):
+
+    def __init__(self, n_in, n_out, mlp_n_hidden, mlp_activation_names,
+                 likelihood_precision=1, layers_info=None, log=None,
+                 batch_normalization=False, dropout=False):
+
+        warnings.warn("ARCHITECTURE IS MANUALLY FIXED!!!! DISREGARDING HIDDEN LAYERS INFORMATION")
+        self.mlp_n_hidden = [150, 50]
+        print "150 50 STRUCTURE!!!"
+        self.n_in = n_in
+        self.n_out = n_out
+        #self.mlp_n_hidden = mlp_n_hidden
+        self.mlp_activation_names = mlp_activation_names
+        self.log = log
+        self.likelihood_precision = likelihood_precision
+        self.x = T.matrix('x', dtype=theano.config.floatX)
+        self.y = T.matrix('y', dtype=theano.config.floatX)
+        self.params = []
+        self.batch_normalization = batch_normalization
+        self.dropout = dropout
+
+        self.training = None
+        if self.dropout:
+            self.training = theano.tensor.scalar('training')
+
+        self.mlp = MLPLayer(self.n_in, self.mlp_n_hidden, self.mlp_activation_names,
+                            timeseries_network=False,
+                            input_var=self.x,
+                            layers_info=None if layers_info is None else layers_info[
+                                'mlp'],
+                            batch_normalization=self.batch_normalization,
+                            dropout=self.dropout, training=self.training)
+
+        self.mlp.output = self.mlp.hidden_layers[1].activation(self.x[:,:self.mlp_n_hidden[1]] + self.mlp.hidden_layers[1].a)
+
+        linear_activation = get_activation_function('linear')
+
+        self.params.append(self.mlp.params)
+        self.output_layer = mlp.HiddenLayer(self.mlp.output, self.mlp.hidden_layers[-1].n_out,
+                                            self.n_out, 'linear', linear_activation,
+                                            W_values=None if layers_info is None else layers_info[
+                                                'output_layer']['W'],
+                                            b_values=None if layers_info is None else layers_info[
+                                                'output_layer']['b'],
+                                            timeseries_layer=None,
+                                            batch_normalization=self.batch_normalization,
+                                            gamma_values=None if layers_info is None or
+                                            'gamma_values' not in layers_info['output_layer'].keys() else layers_info['output_layer']['gamma_values'],
+                                            beta_values=None if layers_info is None or 'beta_values' not in layers_info[
+                                                'output_layer'].keys() else layers_info['output_layer']['beta_values'],
+                                            epsilon=1e-12 if layers_info is None or 'epsilon' not in layers_info[
+                                                'output_layer'].keys() else layers_info['output_layer']['epsilon'],
+                                            fixed_means=False, dropout=False)
+
+        self.params.append(self.output_layer.params)
+        self.log = log
+        if self.log is None:
+            logging.basicConfig(level=logging.INFO)
+            self.log = logging.getLogger()
+
+        if self.dropout:
+            self.givens_dict = {self.training: np.float64(0).astype(theano.config.floatX)}
+        else:
+            self.givens_dict = {}
+        self.output = self.output_layer.output
+        self.predict = theano.function(
+            inputs=[self.x], outputs=self.output,
+            givens=self.givens_dict)
+
+    def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0, test_log_likelihood_constant=None):
+        """Returns callback function to be sent to optimer for debugging and log purposes"""
+        c = callBack(self, save_every, fname, epoch0,
+                     log_likelihood_constant=log_likelihood_constant, test_log_likelihood_constant=test_log_likelihood_constant)
+        return c.cback
+
+    def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
+            y_test=None, chunk_size=None, sample_axis=0):
+
+        self.log.info("Number of training samples: {0}.".format(
+            x.shape[sample_axis]))
+        if x_test is not None:
+            self.log.info("Number of test samples: {0}.".format(
+                x_test.shape[sample_axis]))
+
+        flat_params = flatten(self.params)
+        cost = self.get_cost()
+        compute_error = theano.function(inputs=[self.x, self.y], outputs=cost, givens=self.givens_dict)
+
+        if sample_axis == 0:
+            seq_length = 1
+        else:
+            seq_length = x.shape[0]
+
+        log_likelihood_constant = x.shape[
+            sample_axis] * seq_length * 0.5 * self.n_out * np.log(2 * np.pi / self.likelihood_precision)
+
+        test_log_likelihood_constant = None
+        if x_test is not None:
+            test_log_likelihood_constant = x_test.shape[
+                sample_axis] * seq_length * 0.5 * self.n_out * np.log(2 * np.pi / self.likelihood_precision)
+
+        allowed_methods = ['SGD', "RMSProp", "AdaDelta", "AdaGrad", "Adam"]
+
+        if method['type'] == allowed_methods[0]:
+            opt = SGD(method['lr_decay_schedule'], method['lr_decay_parameters'],
+                      method['momentum_type'], momentum=method['momentum'])
+        elif method['type'] == allowed_methods[1]:
+            opt = RMSProp(method['learning_rate'], method[
+                          'rho'], method['epsilon'])
+        elif method['type'] == allowed_methods[2]:
+            opt = AdaDelta(method['learning_rate'], method[
+                           'rho'], method['epsilon'])
+        elif method['type'] == allowed_methods[3]:
+            opt = AdaGrad(method['learning_rate'], method['epsilon'])
+        elif method['type'] == allowed_methods[4]:
+            opt = Adam(method['learning_rate'], method[
+                       'b1'], method['b2'], method['e'])
+        else:
+            raise NotImplementedError(
+                "Optimization method not implemented. Choose one out of: {0}".format(
+                    allowed_methods))
+
+        self.log.info("Fit starts with epochs: {0}, batch size: {1}, method: {2}".format(
+            n_epochs, b_size, method))
+
+        opt.fit(self.x, self.y, x, y, b_size, cost, flat_params, n_epochs,
+                compute_error, self.get_call_back(save_every, fname, epoch0,
+                                                  log_likelihood_constant=log_likelihood_constant,
+                                                  test_log_likelihood_constant=test_log_likelihood_constant),
+                extra_train_givens=self.givens_dict,
+                x_test=x_test, y_test=y_test,
+                chunk_size=chunk_size,
+                sample_axis=sample_axis)
+
+    def get_cost(self):
+        """Returns cost value to be optimized"""
+        cost = -1. / self.x.shape[0] * get_no_stochastic_log_likelihood(self.output, self.y,
+                                                                        self.likelihood_precision, False)
+        return cost
+
+    def generate_saving_string(self):
+        """Generate json representation of network parameters"""
+        output_string = "{\"network_properties\":"
+        output_string += json.dumps({"n_in": self.n_in, "n_out": self.n_out,
+                                     "mlp_n_hidden": self.mlp_n_hidden,
+                                     "mlp_activation_names": self.mlp_activation_names,
+                                     "likelihood_precision": self.likelihood_precision,
+                                     "batch_normalization": self.batch_normalization,
+                                     "dropout": self.dropout})
+
+        output_string += ",\"mlp\":"
+        output_string += self.mlp.generate_saving_string()
+        output_string += ",\"output_layer\":"
+        buffer_dict = {"n_in": self.output_layer.n_in, "n_out": self.output_layer.n_out,
+                       "activation": self.output_layer.activation_name,
+                       "W": self.output_layer.W.get_value().tolist(),
+                       "b": self.output_layer.b.get_value().tolist(),
+                       "timeseries": self.output_layer.timeseries}
+
+        if self.batch_normalization:
+            buffer_dict[
+                'gamma_values'] = self.output_layer.gamma.get_value().tolist()
+            buffer_dict[
+                'beta_values'] = self.output_layer.beta.get_value().tolist()
+            buffer_dict['epsilon'] = self.output_layer.epsilon
+
+        output_string += json.dumps(buffer_dict)
+
+        output_string += "}"
+
+        return output_string
+
+    def save_network(self, fname):
+        """Save network parameters in json format in fname"""
+
+        output_string = self.generate_saving_string()
+        with open(fname, 'w') as f:
+            f.write(output_string)
+        self.log.info("Network saved.")
+
+    @classmethod
+    def init_from_file(cls, fname, log=None):
+        """Class method that loads network using information in json file fname
+
+        :type fname: string.
+        :param fname: filename (with path) containing network information.
+
+        :type log: logging instance, None.
+        :param log: logging instance to be used by the classifier.
+        """
+        with open(fname, 'r') as f:
+            network_description = json.load(f)
+
+        network_properties = network_description['network_properties']
+        loaded_classifier = cls(network_properties['n_in'],
+                                network_properties['n_out'],
+                                network_properties['mlp_n_hidden'],
+                                network_properties['mlp_activation_names'],
+                                network_properties['likelihood_precision'],
+                                log=log,
+                                layers_info=network_description,
+                                batch_normalization=False if 'batch_normalization' not in network_properties.keys(
+        ) else network_properties['batch_normalization'],
+            dropout=network_properties['dropout'] if 'dropout' in network_properties.keys() else False)
+
+        return loaded_classifier
+
 
 
 class RecurrentMLP(object):
