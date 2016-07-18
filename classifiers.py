@@ -1258,9 +1258,8 @@ class ResidualMLPClassifier(object):
                  likelihood_precision=1, layers_info=None, log=None,
                  batch_normalization=False, dropout=False):
 
-        warnings.warn("ARCHITECTURE IS MANUALLY FIXED!!!! DISREGARDING HIDDEN LAYERS INFORMATION")
-        self.mlp_n_hidden = [150, 50]
-        print "150 50 STRUCTURE!!!"
+        self.mlp_n_hidden = mlp_activation_names
+        assert(self.mlp_n_hidden) == 2
         self.n_in = n_in
         self.n_out = n_out
         #self.mlp_n_hidden = mlp_n_hidden
@@ -1459,6 +1458,183 @@ class ResidualMLPClassifier(object):
 
         return loaded_classifier
 
+class BoneResidualMLPClassifier(ResidualMLPClassifier):
+    def set_up_mlp(self, mlp_n_hidden, mlp_activation_names, mlp_n_in, weights=None, timeseries_layer=False,
+               batch_normalization=False):
+        """Defines the MLP networks for the 15 bones.
+
+        :type mlp_n_hidden: list of ints.
+        :param mlp_n_hidden: dimensionalities of hidden layers in bone MLPs.
+
+        :type mlp_activation_names: list of strings.
+        :param mlp_activation_names: names of activation functions in bone MLPs.
+
+        :type mlp_n_in: int.
+        :param mlp_n_in: input dimensionality in bone MLPs.
+                         The first bone (hip bone) has mlp_n_in - 2 input dimensionality.
+
+        :type weights: dict, None.
+        :param weights: dictionary containing network information. Used for loading networks from file.
+                        If None, random weights used for initialization.
+
+        :type timeseries_layer: bool.
+        :param timeseries: tells if the network is recurrent (True) or feedforward (False).
+        """
+
+        self.mlp_n_hidden = mlp_n_hidden
+        self.bone_representations = [None] * 15
+        self.mlp_activation_names = mlp_activation_names
+        self.mlp_n_in = mlp_n_in
+        for i in xrange(len(self.bone_representations)):
+            if i == 0:
+                bone_mlp = MLPLayer(mlp_n_in - 2, self.mlp_n_hidden, self.mlp_activation_names,
+                                    input_var=self.x[:, :mlp_n_in - 2],
+                                    layers_info=None if weights is
+                                    None else weights['bone_mlps'][i]['MLPLayer'],
+                                    timeseries_network=False,
+                                    batch_normalization=self.batch_normalization,
+                                    dropout=self.dropout, training=self.training)
+                                    
+            else:
+                bone_mlp = MLPLayer(mlp_n_in, self.mlp_n_hidden, self.mlp_activation_names,
+                                    input_var=self.x[:, i * mlp_n_in -
+                                           2:(i + 1) * mlp_n_in - 2],
+                                    layers_info=None if weights is None else
+                                    weights['bone_mlps'][i]['MLPLayer'],
+                                    timeseries_network=False,
+                                    batch_normalization=self.batch_normalization,
+                                    dropout=self.dropout, training=self.training)
+            
+            bone_mlp.output = bone_mlp.hidden_layers[1].activation(bone_mlp.x[:, :self.mlp_n_hidden[1]] + bone_mlp.hidden_layers[1].a)
+
+            self.bone_representations[i] = bone_mlp
+
+
+    def __init__(self, n_in, n_out, mlp_n_hidden, mlp_activation_names,
+             bone_n_hidden, bone_activation_names,
+             likelihood_precision=1, layers_info=None, log=None,
+             batch_normalization=False, dropout=False):
+
+        warnings.warn("ARCHITECTURE IS MANUALLY FIXED!!!! DISREGARDING HIDDEN LAYERS INFORMATION")
+        self.mlp_n_hidden = mlp_activation_names
+        self.bone_n_hidden = bone_n_hidden
+        self.bone_activation_names = bone_activation_names
+        assert(len(self.bone_n_hidden)) == 2
+        self.n_in = n_in
+        self.n_out = n_out
+        #self.mlp_n_hidden = mlp_n_hidden
+        self.mlp_activation_names = mlp_activation_names
+        self.log = log
+        self.likelihood_precision = likelihood_precision
+        self.x = T.matrix('x', dtype=theano.config.floatX)
+        self.y = T.matrix('y', dtype=theano.config.floatX)
+
+        self.batch_normalization = batch_normalization
+        self.dropout = dropout
+        self.params = []
+
+        self.training = None
+        if self.dropout:
+            self.training = theano.tensor.scalar('training')
+
+        self.set_up_mlp(bone_n_hidden, bone_activation_names, 13, weights=layers_info)
+
+        self.ann_input = T.concatenate([bone.output for bone in self.bone_representations] +
+                                       [self.x[:, -2:]], axis=1)
+
+        mlp_params = [mlp_i.params for mlp_i in self.bone_representations]
+
+        self.params.append(mlp_params)
+        ann_input_n_in = len(self.bone_representations) * self.bone_n_hidden[-1] + 2
+        if len(self.mlp_n_hidden) >= 2:
+            self.mlp = MLPLayer(ann_input_n_in, self.mlp_n_hidden, self.mlp_activation_names,
+                            timeseries_network=False,
+                            input_var=self.ann_input,
+                            layers_info=None if layers_info is None else layers_info[
+                                'mlp'],
+                            batch_normalization=self.batch_normalization,
+                            dropout=self.dropout, training=self.training)
+           
+            self.mlp.output = self.mlp.hidden_layers[1].activation(self.x[:,:self.mlp_n_hidden[1]] + self.mlp.hidden_layers[1].a)
+            self.params.append(self.mlp.params)
+            self.output_layer_input = self.mlp.output
+            self.output_layer_n_in = self.mlp.hidden_layers[-1].n_out
+        else:
+            print "NO MLP"
+            self.output_layer_input = self.ann.input
+            self.output_layer_n_in = ann_input_n_in
+
+        linear_activation = get_activation_function('linear')
+        self.output_layer = mlp.HiddenLayer(self.output_layer_input, self.output_layer_n_in,
+                                            self.n_out, 'linear', linear_activation,
+                                            W_values=None if layers_info is None else layers_info[
+                                                'output_layer']['W'],
+                                            b_values=None if layers_info is None else layers_info[
+                                                'output_layer']['b'],
+                                            timeseries_layer=None,
+                                            batch_normalization=self.batch_normalization,
+                                            gamma_values=None if layers_info is None or
+                                            'gamma_values' not in layers_info['output_layer'].keys() else layers_info['output_layer']['gamma_values'],
+                                            beta_values=None if layers_info is None or 'beta_values' not in layers_info[
+                                                'output_layer'].keys() else layers_info['output_layer']['beta_values'],
+                                            epsilon=1e-12 if layers_info is None or 'epsilon' not in layers_info[
+                                                'output_layer'].keys() else layers_info['output_layer']['epsilon'],
+                                            fixed_means=False, dropout=False)
+
+        self.log = log
+        if self.log is None:
+            logging.basicConfig(level=logging.INFO)
+            self.log = logging.getLogger()
+
+        if self.dropout:
+            self.givens_dict = {self.training: np.float64(0).astype(theano.config.floatX)}
+        else:
+            self.givens_dict = {}
+        self.output = self.output_layer.output
+        self.predict = theano.function(
+            inputs=[self.x], outputs=self.output,
+            givens=self.givens_dict)
+    def generate_saving_string(self):
+        """Generate json representation of network parameters"""
+        output_string = "{\"network_properties\":"
+        output_string += json.dumps({"n_in": self.n_in, "n_out": self.n_out,
+                                     "mlp_n_hidden": self.mlp_n_hidden,
+                                     "mlp_activation_names": self.mlp_activation_names,
+                                     "bone_n_hidden": self.bone_n_hidden,
+                                     "bone_activation_names": self.bone_activation_names,
+                                     "likelihood_precision": self.likelihood_precision,
+                                     "batch_normalization": self.batch_normalization,
+                                     "dropout": self.dropout})
+        output_string += ",\"bone_mlps\":["
+        for i, bone in enumerate(self.bone_representations):
+            if i > 0:
+                output_string += ","
+            output_string += "{\"MLPLayer\":"
+            output_string += bone.generate_saving_string()
+            output_string += "}"
+        output_string += "]"
+        
+        output_string += ",\"mlp\":"
+        output_string += self.mlp.generate_saving_string()
+        output_string += ",\"output_layer\":"
+        buffer_dict = {"n_in": self.output_layer.n_in, "n_out": self.output_layer.n_out,
+                       "activation": self.output_layer.activation_name,
+                       "W": self.output_layer.W.get_value().tolist(),
+                       "b": self.output_layer.b.get_value().tolist(),
+                       "timeseries": self.output_layer.timeseries}
+
+        if self.batch_normalization:
+            buffer_dict[
+                'gamma_values'] = self.output_layer.gamma.get_value().tolist()
+            buffer_dict[
+                'beta_values'] = self.output_layer.beta.get_value().tolist()
+            buffer_dict['epsilon'] = self.output_layer.epsilon
+
+        output_string += json.dumps(buffer_dict)
+
+        output_string += "}"
+
+        return output_string
 
 
 class RecurrentMLP(object):

@@ -10,13 +10,13 @@ from util import load_files
 from classifiers import MLPClassifier
 from classifiers import RecurrentMLP
 from classifiers import ResidualMLPClassifier
-
+from classifiers import BoneResidualMLPClassifier
 
 def main():
 
-    network_type = 'residual'
+    network_type = 'bone_residual'
 
-    network_types = ['mlp', 'residual']
+    network_types = ['mlp', 'residual', 'bone_residual']
 
     assert network_type in network_types
 
@@ -140,9 +140,10 @@ def main():
 
     print "Data ready to go"
     mlp_activation_names = ['sigmoid', 'sigmoid']#, 'sigmoid']
-    mlp_n_hidden = [150, 100]#, 50]
+    mlp_n_hidden = []#, 50]
     likelihood_precision = 0.1
-
+    bone_n_hidden = [11, 11]
+    bone_activation_names = ['sigmoid', 'sigmoid']
     # RNN definiton + LBN n_out if RNN is the final layer
     rnn_type = "LSTM"
     rnn_hidden = [30]
@@ -151,10 +152,10 @@ def main():
 
     # Fit options
     b_size = 100
-    epoch0 = 51
+    epoch0 = 1
     n_epochs = 1000
-    lr = .001
-    save_every = 10  # Log saving
+    lr = .1
+    save_every = 1  # Log saving
     chunk_size = None  # Memory chunks
     batch_normalization = False  # TODO
     dropout = False
@@ -168,8 +169,8 @@ def main():
               'learning_rate': lr, 'dropout': dropout}
 
     # Load from file?
-    load_from_file = True
-    session_name = 'eloy'
+    load_from_file = False
+    session_name = None
     load_different_file = False
 
     assert not (load_different_file and not load_from_file), "You have set load different_file to True but you are not loading any network!"
@@ -192,7 +193,7 @@ def main():
         network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
             "_bsize_{5}_method_{6}_bn_{7}_dropout_{8}{9}".\
             format(
-                       'mlp_classifier' if network_type is network_types[0] else 'residual_mlp_classifier',
+                       'mlp_classifier' if network_type is network_types[0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier',
                        n, n_impulse_2000,
                        ','.join(str(e) for e in mlp_n_hidden),
                        ','.join(str(e) for e in mlp_activation_names),
@@ -205,9 +206,9 @@ def main():
         os.makedirs(opath)
     print "Paths created"
     fname = '{0}/{1}_n_hidden_[{2}]'.format(
-        opath, 'recurrent_mlp' if recurrent else 'mlp_classifier' if network_type is network_types[0] else 'residual_mlp_classifier', ','.join(str(e) for e in mlp_n_hidden))
+        opath, 'recurrent_mlp' if recurrent else 'mlp_classifier' if network_type is network_types[0]  else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier', ','.join(str(e) for e in mlp_n_hidden))
     loaded_network_fname = '{0}/networks/{1}_n_hidden_[{2}]'.format(
-        opath,  'recurrent_mlp' if recurrent else 'mlp_classifier' if network_type is network_types[0] else 'residual_mlp_classifier', ','.join(str(e) for e in mlp_n_hidden))
+        opath,  'recurrent_mlp' if recurrent else 'mlp_classifier' if network_type is network_types[0]  else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier', ','.join(str(e) for e in mlp_n_hidden))
 
     if load_different_file:
         warnings.warn(
@@ -271,6 +272,10 @@ def main():
                 c = ResidualMLPClassifier.init_from_file(
                 '{0}_epoch_{1}.json'.format(loaded_network_fname,  epoch0 - 1),
                 log=log)   
+            elif network_type is network_types[2]:
+                c = ResidualMLPClassifier.init_from_file(
+                '{0}_epoch_{1}.json'.format(loaded_network_fname,  epoch0 - 1),
+                log=log) 
         else:
             if network_type is network_types[0]:
                 c = MLPClassifier(n_in, n_out, mlp_n_hidden,
@@ -283,7 +288,15 @@ def main():
                               mlp_activation_names, log=log,
                               likelihood_precision=likelihood_precision,
                               batch_normalization=batch_normalization,
-                              dropout=dropout)          
+                              dropout=dropout)   
+            elif network_type is network_types[2]:
+                c = BoneResidualMLPClassifier(n_in, n_out, mlp_n_hidden,
+                              mlp_activation_names,
+                              bone_n_hidden, bone_activation_names,
+                              log=log,
+                              likelihood_precision=likelihood_precision,
+                              batch_normalization=batch_normalization,
+                              dropout=dropout)         
 
     print "model loaded"
     # Training
