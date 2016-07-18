@@ -98,8 +98,10 @@ class HiddenLayer(object):
             self.feedforward_layer()
 
         trng = theano.tensor.shared_randomstreams.RandomStreams(1234)
-        self.ouptut = theano.ifelse.ifelse(training, 0.5 * self.output, T.switch(
-            trng.binomial(size=self.output.shape, p=0.5), self.output, 0))
+
+        if self.dropout:
+            self.output = theano.ifelse.ifelse(training,  T.switch(
+            trng.binomial(size=self.output.shape, p=0.5), self.output, 0),  0.5 * self.output)
 
     def feedforward_layer(self):
         self.a = T.dot(self.input, self.W.T) + self.b
@@ -170,6 +172,14 @@ class MLPLayer(object):
 
         :type layers_info: dictionary or None.
         :param layers_info: network information.
+
+        :type dropout: bool.
+        :param dropout: sets the use of dropout or not in the network.
+
+        :type training: theano.tensor.scalar or None.
+        :param training: only available if dropout is True. A theano input variable that tells if the
+        networks is being used in training or predicting format. If None and dropout is True a
+        theano.tensor.scalar variable is created.
         """
 
         if input_var is None:
@@ -183,6 +193,7 @@ class MLPLayer(object):
             self.x = input_var
 
         self.training = training
+
         self.timeseries_network = timeseries_network
         self.rng = np.random.RandomState()
         self.parse_properties(
@@ -218,7 +229,7 @@ class MLPLayer(object):
 
         self.dropout = dropout
 
-        if self.dropout == False and self.training is None:
+        if self.dropout and self.training is None:
             self.training = T.scalar('scalar')
 
         self.n_in = n_in
@@ -289,8 +300,16 @@ class MLPLayer(object):
             self.params.append(self.hidden_layers[i].params)
 
         self.output = self.hidden_layers[-1].output
+
+        if self.dropout:
+            givens_dict = {self.training: np.float64(0).astype(theano.config.floatX)}
+        else:
+            givens_dict = {}
+            
         self.predict = theano.function(
-            inputs=[self.x], outputs=self.output, givens={self.training: 0})
+            inputs=[self.x], outputs=self.output,
+            givens=givens_dict)
+
         self.regulizer_L2 = T.zeros(1)
         self.regulizer_L1 = T.zeros(1)
         for l in self.params:

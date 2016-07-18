@@ -2,6 +2,7 @@ import theano
 import theano.tensor as T
 import theano.ifelse
 import numpy as np
+import pandas as pd
 import os
 import petname
 import logging
@@ -74,11 +75,11 @@ def load_states(n):
     :type n: int
     """
 
-    x = np.genfromtxt("data/states_1_len_61.txt",
-                      delimiter=',', dtype=theano.config.floatX)
+    x = np.asarray(pd.read_csv("data/states_1_len_61.txt",
+                      delimiter=',', header=None).values, dtype=theano.config.floatX)
     for i in xrange(2, n + 1):
-        tmp = np.genfromtxt(
-            "data/states_{0}_len_61.txt".format(i), delimiter=',',
+        tmp = np.asarray(pd.read_csv(
+            "data/states_{0}_len_61.txt".format(i), delimiter=',', header=None).values,
             dtype=theano.config.floatX)
         x = np.vstack((x, tmp))
     return x
@@ -90,11 +91,11 @@ def load_controls(n):
     :type n: int
     """
 
-    x = np.genfromtxt("data/controls_1_len_61.txt",
-                      delimiter=',', dtype=theano.config.floatX)
+    x = np.asarray(pd.read_csv("data/controls_1_len_61.txt",
+                      delimiter=',', header=None).values, dtype=theano.config.floatX)
     for i in xrange(2, n + 1):
-        tmp = np.genfromtxt(
-            "data/controls_{0}_len_61.txt".format(i), delimiter=',',
+        tmp = np.asarray(pd.read_csv(
+            "data/controls_{0}_len_61.txt".format(i), delimiter=',', header=None).values,
             dtype=theano.config.floatX)
         x = np.vstack((x, tmp))
     return x
@@ -106,11 +107,11 @@ def load_files(n, fname):
     :type n: int
     """
 
-    x = np.genfromtxt("data/{0}_1_len_61.txt".format(fname),
-                      delimiter=',', dtype=theano.config.floatX)
+    x = np.asarray(pd.read_csv("data/{0}_1_len_61.txt".format(fname),
+                      delimiter=',', header=None), dtype=theano.config.floatX)
     for i in xrange(2, n + 1):
-        tmp = np.genfromtxt(
-            "data/{0}_{1}_len_61.txt".format(fname, i), delimiter=',',
+        tmp = np.asarray(pd.read_csv(
+            "data/{0}_{1}_len_61.txt".format(fname, i), delimiter=',', header=None),
             dtype=theano.config.floatX)
         x = np.vstack((x, tmp))
     return x
