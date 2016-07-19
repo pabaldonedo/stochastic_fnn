@@ -1265,10 +1265,10 @@ class ResidualMLPClassifier(object):
                  batch_normalization=False, dropout=False):
 
         self.mlp_n_hidden = mlp_n_hidden
-        assert len(self.mlp_n_hidden) % 2  == 0
+
         self.n_in = n_in
         self.n_out = n_out
-        #self.mlp_n_hidden = mlp_n_hidden
+        # self.mlp_n_hidden = mlp_n_hidden
         self.mlp_activation_names = mlp_activation_names
         self.log = log
         self.likelihood_precision = likelihood_precision
@@ -1282,30 +1282,32 @@ class ResidualMLPClassifier(object):
         if self.dropout:
             self.training = theano.tensor.scalar('training')
 
-        self.mlp_layers = [None]*len(self.mlp_n_hidden)
+        self.mlp_layers = [None] * len(self.mlp_n_hidden)
 
         for i, layer in enumerate(self.mlp_n_hidden):
-
+            assert len(layer) > 1
             if i == 0:
                 layer_module = MLPLayer(self.n_in, layer, self.mlp_activation_names[i],
-                            timeseries_network=False,
-                            input_var=self.x,
-                            layers_info=None if layers_info is None else layers_info[
-                                'hidden_layers'][i],
-                            batch_normalization=self.batch_normalization,
-                            dropout=self.dropout, training=self.training)
+                                        timeseries_network=False,
+                                        input_var=self.x,
+                                        layers_info=None if layers_info is None else layers_info[
+                    'hidden_layers'][i],
+                    batch_normalization=self.batch_normalization,
+                    dropout=self.dropout, training=self.training)
 
             else:
-                layer_module = MLPLayer(self.mlp_n_hidden[i-1][-1], layer, self.mlp_activation_names[i],
-                            timeseries_network=False,
-                            input_var=self.mlp_layers[i-1].output,
-                            layers_info=None if layers_info is None else layers_info[
-                                'hidden_layers'][i],
-                            batch_normalization=self.batch_normalization,
-                            dropout=self.dropout, training=self.training)
+                layer_module = MLPLayer(self.mlp_n_hidden[i - 1][-1], layer, self.mlp_activation_names[i],
+                                        timeseries_network=False,
+                                        input_var=self.mlp_layers[
+                                            i - 1].output,
+                                        layers_info=None if layers_info is None else layers_info[
+                    'hidden_layers'][i],
+                    batch_normalization=self.batch_normalization,
+                    dropout=self.dropout, training=self.training)
 
             Weye = T.eye(layer_module.x.shape[1], layer_module.output.shape[1])
-            layer_module.output = layer_module.hidden_layers[-1].activation(T.dot(layer_module.x, Weye) + layer_module.output)
+            layer_module.output = layer_module.hidden_layers[-1].activation(
+                T.dot(layer_module.x, Weye) + layer_module.output)
 
             self.mlp_layers[i] = layer_module
             self.params.append(self.mlp_layers[i].params)
@@ -1315,18 +1317,18 @@ class ResidualMLPClassifier(object):
         self.output_layer = mlp.HiddenLayer(self.mlp_layers[-1].output, self.mlp_layers[-1].n_hidden[-1],
                                             self.n_out, 'linear', linear_activation,
                                             W_values=None if layers_info is None else layers_info[
-                                                'output_layer']['W'],
-                                            b_values=None if layers_info is None else layers_info[
-                                                'output_layer']['b'],
-                                            timeseries_layer=None,
-                                            batch_normalization=self.batch_normalization,
-                                            gamma_values=None if layers_info is None or
-                                            'gamma_values' not in layers_info['output_layer'].keys() else layers_info['output_layer']['gamma_values'],
-                                            beta_values=None if layers_info is None or 'beta_values' not in layers_info[
-                                                'output_layer'].keys() else layers_info['output_layer']['beta_values'],
-                                            epsilon=1e-12 if layers_info is None or 'epsilon' not in layers_info[
-                                                'output_layer'].keys() else layers_info['output_layer']['epsilon'],
-                                            fixed_means=False, dropout=False)
+            'output_layer']['W'],
+            b_values=None if layers_info is None else layers_info[
+            'output_layer']['b'],
+            timeseries_layer=None,
+            batch_normalization=self.batch_normalization,
+            gamma_values=None if layers_info is None or
+            'gamma_values' not in layers_info['output_layer'].keys() else layers_info['output_layer']['gamma_values'],
+            beta_values=None if layers_info is None or 'beta_values' not in layers_info[
+            'output_layer'].keys() else layers_info['output_layer']['beta_values'],
+            epsilon=1e-12 if layers_info is None or 'epsilon' not in layers_info[
+            'output_layer'].keys() else layers_info['output_layer']['epsilon'],
+            fixed_means=False, dropout=False)
 
         self.params.append(self.output_layer.params)
         self.log = log
@@ -1384,15 +1386,15 @@ class ResidualMLPClassifier(object):
                       method['momentum_type'], momentum=method['momentum'])
         elif method['type'] == allowed_methods[1]:
             opt = RMSProp(method['learning_rate'], method[
-                          'rho'], method['epsilon'])
+                'rho'], method['epsilon'])
         elif method['type'] == allowed_methods[2]:
             opt = AdaDelta(method['learning_rate'], method[
-                           'rho'], method['epsilon'])
+                'rho'], method['epsilon'])
         elif method['type'] == allowed_methods[3]:
             opt = AdaGrad(method['learning_rate'], method['epsilon'])
         elif method['type'] == allowed_methods[4]:
             opt = Adam(method['learning_rate'], method[
-                       'b1'], method['b2'], method['e'])
+                'b1'], method['b2'], method['e'])
         else:
             raise NotImplementedError(
                 "Optimization method not implemented. Choose one out of: {0}".format(
@@ -1429,7 +1431,7 @@ class ResidualMLPClassifier(object):
 
         output_string += ",\"hidden_layers\": ["
         for i, layer in enumerate(self.mlp_layers):
-            if i >0:
+            if i > 0:
                 output_string += ', '
             output_string += layer.generate_saving_string()
 
@@ -1556,7 +1558,7 @@ class BoneResidualMLPClassifier(ResidualMLPClassifier):
         assert(len(self.bone_n_hidden)) == 2
         self.n_in = n_in
         self.n_out = n_out
-        #self.mlp_n_hidden = mlp_n_hidden
+        # self.mlp_n_hidden = mlp_n_hidden
         self.mlp_activation_names = mlp_activation_names
         self.log = log
         self.likelihood_precision = likelihood_precision
