@@ -15,14 +15,14 @@ from classifiers import BoneResidualMLPClassifier
 
 def main():
 
-    network_type = 'bone_residual'
+    network_type = 'residual'
 
     network_types = ['mlp', 'residual', 'bone_residual']
 
     assert network_type in network_types
 
     load_means_from_file = True
-    sampled_clipped = True
+    sampled_clipped = False
     if sampled_clipped:
         print "WARNING USING CLIPPED"
 
@@ -144,8 +144,8 @@ def main():
         n_out = y.shape[1]
 
     print "Data ready to go"
-    mlp_activation_names = ['sigmoid', 'sigmoid']  # , 'sigmoid']
-    mlp_n_hidden = [150, 50]  # , 50]
+    mlp_activation_names = [['sigmoid', 'sigmoid'], ['sigmoid', 'sigmoid']]  # , 'sigmoid']
+    mlp_n_hidden = [[150, 100], [50, 50]] # , 50]
     likelihood_precision = 0.1
     bone_n_hidden = [11, 11]
     bone_activation_names = ['sigmoid', 'sigmoid']
@@ -157,10 +157,10 @@ def main():
 
     # Fit options
     b_size = 100
-    epoch0 = 261
+    epoch0 = 3
     n_epochs = 1000
-    lr = .01
-    save_every = 10  # Log saving
+    lr = .1
+    save_every = 1  # Log saving
     chunk_size = None  # Memory chunks
     batch_normalization = False  # TODO
     dropout = False
@@ -174,7 +174,7 @@ def main():
               'learning_rate': lr, 'dropout': dropout}
 
     # Load from file?
-    load_from_file = False
+    load_from_file = True
     session_name = None
     load_different_file = False
 
