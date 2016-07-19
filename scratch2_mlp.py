@@ -12,6 +12,7 @@ from classifiers import RecurrentMLP
 from classifiers import ResidualMLPClassifier
 from classifiers import BoneResidualMLPClassifier
 
+
 def main():
 
     network_type = 'bone_residual'
@@ -21,16 +22,20 @@ def main():
     assert network_type in network_types
 
     load_means_from_file = True
-    sampled_clipped = False
+    sampled_clipped = True
     if sampled_clipped:
         print "WARNING USING CLIPPED"
 
-    x_info_file = 'mux_stdx_n_16_n_impulse_2000_5.csv'#'sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv'
-    y_info_file = 'muy_stdy_n_16_n_impulse_2000_5.csv'#'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv'
+#    x_info_file = 'sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv'
+    x_info_file = 'mux_stdx_n_16_n_impulse_2000_5.csv'
+#    y_info_file = 'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv'
+    y_info_file = 'muy_stdy_n_16_n_impulse_2000_5.csv'
 
     # mean and std files:
-    x_info = np.asarray(np.genfromtxt(x_info_file, delimiter=','), dtype=theano.config.floatX)
-    y_info = np.asarray(np.genfromtxt(y_info_file, delimiter=','), dtype=theano.config.floatX)
+    x_info = np.asarray(np.genfromtxt(
+        x_info_file, delimiter=','), dtype=theano.config.floatX)
+    y_info = np.asarray(np.genfromtxt(
+        y_info_file, delimiter=','), dtype=theano.config.floatX)
     print "means loaded"
     assert not (load_means_from_file and x_info is None and y_info is None)
     # Number of datasets
@@ -139,8 +144,8 @@ def main():
         n_out = y.shape[1]
 
     print "Data ready to go"
-    mlp_activation_names = ['sigmoid', 'sigmoid']#, 'sigmoid']
-    mlp_n_hidden = []#, 50]
+    mlp_activation_names = ['sigmoid', 'sigmoid']  # , 'sigmoid']
+    mlp_n_hidden = [150, 50]  # , 50]
     likelihood_precision = 0.1
     bone_n_hidden = [11, 11]
     bone_activation_names = ['sigmoid', 'sigmoid']
@@ -152,10 +157,10 @@ def main():
 
     # Fit options
     b_size = 100
-    epoch0 = 1
+    epoch0 = 261
     n_epochs = 1000
-    lr = .1
-    save_every = 1  # Log saving
+    lr = .01
+    save_every = 10  # Log saving
     chunk_size = None  # Memory chunks
     batch_normalization = False  # TODO
     dropout = False
@@ -193,7 +198,8 @@ def main():
         network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
             "_bsize_{5}_method_{6}_bn_{7}_dropout_{8}{9}".\
             format(
-                       'mlp_classifier' if network_type is network_types[0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier',
+                       'mlp_classifier' if network_type is network_types[
+                           0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier',
                        n, n_impulse_2000,
                        ','.join(str(e) for e in mlp_n_hidden),
                        ','.join(str(e) for e in mlp_activation_names),
@@ -206,34 +212,35 @@ def main():
         os.makedirs(opath)
     print "Paths created"
     fname = '{0}/{1}_n_hidden_[{2}]'.format(
-        opath, 'recurrent_mlp' if recurrent else 'mlp_classifier' if network_type is network_types[0]  else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier', ','.join(str(e) for e in mlp_n_hidden))
+        opath, 'recurrent_mlp' if recurrent else 'mlp_classifier' if network_type is network_types[0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier', ','.join(str(e) for e in mlp_n_hidden))
     loaded_network_fname = '{0}/networks/{1}_n_hidden_[{2}]'.format(
-        opath,  'recurrent_mlp' if recurrent else 'mlp_classifier' if network_type is network_types[0]  else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier', ','.join(str(e) for e in mlp_n_hidden))
+        opath,  'recurrent_mlp' if recurrent else 'mlp_classifier' if network_type is network_types[0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier', ','.join(str(e) for e in mlp_n_hidden))
 
     if load_different_file:
         warnings.warn(
             "CAUTION: loading log and network from different path than the saving path")
-        loaded_network_folder = "residual_mlp_classifier_n_{0}_n_impulse_2000_{1}_mlp_n_hidden_[{2}]_mlp_activation_[{3}]_bsize_{4}_method_SGD_bn_False_dropout_False".format(n, n_impulse_2000,
-                                                                                                                                                       ','.join(
-                                                                                                                                                           str(e) for e in mlp_n_hidden),
-                                                                                                                                                       ','.join(
-                                                                                                                                                           str(e) for e in mlp_activation_names),
-                                                                                                                                                       b_size,  method['type'])
-
+#        loaded_network_folder = "residual_mlp_classifier_n_{0}_n_impulse_2000_{1}_mlp_n_hidden_[{2}]_mlp_activation_[{3}]_bsize_{4}_method_SGD_bn_False_dropout_False".format(n, n_impulse_2000,
+ #                                                                                                                                                                             ','.join(
+  #                                                                                                                                                                                str(e) for e in mlp_n_hidden),
+   #                                                                                                                                                                           ','.join(
+    #                                                                                                                                                                              str(e) for e in mlp_activation_names),
+     # b_size,  method['type'])
+        loaded_network_folder = ""
         loaded_opath = "network_output/{0}".format(loaded_network_folder)
         assert os.path.exists(
             loaded_opath), "Trying to load a network from a non existing path; {0}".format(loaded_opath)
 
-        loaded_network_name = "residual_mlp_classifier_n_hidden_[150,100]"#"mlp_classifier_n_{0}_n_impulse_2000_{1}_mlp_n_hidden_[{2}]_mlp_activation_[{3}]_bsize_{4}_method_{5}".format(n, n_impulse_2000,
-                              #                                                                                                              ','.join(
+        # "mlp_classifier_n_{0}_n_impulse_2000_{1}_mlp_n_hidden_[{2}]_mlp_activation_[{3}]_bsize_{4}_method_{5}".format(n, n_impulse_2000,
+        loaded_network_name = "residual_mlp_classifier_n_hidden_[150,100]"
+        #                                                                                                              ','.join(
 #                                                                                                                                                str(e) for e in mlp_n_hidden),
 #                                                                                                                                            ','.join(
 #                                                                                                                                                str(e) for e in mlp_activation_names),
-#                                                                                                                                            b_size,  method['type'])
+# b_size,  method['type'])
 
-        loaded_network_fname = "{0}/networks/{1}".format(
-            loaded_opath, loaded_network_name)
-
+#        loaded_network_fname = "{0}/networks/{1}".format(
+ #           loaded_opath, loaded_network_name)
+        loaded_network_fname = "network_output/residual_mlp_classifier_n_hidden_[150,100]"
     else:
         loaded_opath = opath
 
@@ -242,7 +249,8 @@ def main():
         opath, session_name=session_name if load_from_file else None)
     print "LOG generated"
     if load_means_from_file:
-        log.info('Loading means from x: {0}\ny: {1}'.format(x_info_file, y_info_file))
+        log.info('Loading means from x: {0}\ny: {1}'.format(
+            x_info_file, y_info_file))
     else:
         log.info('Means and stds from data')
 
@@ -266,44 +274,49 @@ def main():
         if load_from_file:
             if network_type is network_types[0]:
                 c = MLPClassifier.init_from_file(
-                '{0}_epoch_{1}.json'.format(loaded_network_fname,  epoch0 - 1),
-                log=log)
+                    '{0}_epoch_{1}.json'.format(
+                        loaded_network_fname,  epoch0 - 1),
+                    log=log)
             elif network_type is network_types[1]:
                 c = ResidualMLPClassifier.init_from_file(
-                '{0}_epoch_{1}.json'.format(loaded_network_fname,  epoch0 - 1),
-                log=log)   
+                    '{0}_epoch_{1}.json'.format(
+                        loaded_network_fname,  epoch0 - 1),
+                    log=log)
             elif network_type is network_types[2]:
                 c = ResidualMLPClassifier.init_from_file(
-                '{0}_epoch_{1}.json'.format(loaded_network_fname,  epoch0 - 1),
-                log=log) 
+                    '{0}_epoch_{1}.json'.format(
+                        loaded_network_fname,  epoch0 - 1),
+                    log=log)
         else:
             if network_type is network_types[0]:
                 c = MLPClassifier(n_in, n_out, mlp_n_hidden,
-                              mlp_activation_names, log=log,
-                              likelihood_precision=likelihood_precision,
-                              batch_normalization=batch_normalization,
-                              dropout=dropout)
+                                  mlp_activation_names, log=log,
+                                  likelihood_precision=likelihood_precision,
+                                  batch_normalization=batch_normalization,
+                                  dropout=dropout)
             elif network_type is network_types[1]:
                 c = ResidualMLPClassifier(n_in, n_out, mlp_n_hidden,
-                              mlp_activation_names, log=log,
-                              likelihood_precision=likelihood_precision,
-                              batch_normalization=batch_normalization,
-                              dropout=dropout)   
+                                          mlp_activation_names, log=log,
+                                          likelihood_precision=likelihood_precision,
+                                          batch_normalization=batch_normalization,
+                                          dropout=dropout)
             elif network_type is network_types[2]:
                 c = BoneResidualMLPClassifier(n_in, n_out, mlp_n_hidden,
-                              mlp_activation_names,
-                              bone_n_hidden, bone_activation_names,
-                              log=log,
-                              likelihood_precision=likelihood_precision,
-                              batch_normalization=batch_normalization,
-                              dropout=dropout)         
+                                              mlp_activation_names,
+                                              bone_n_hidden, bone_activation_names,
+                                              log=log,
+                                              likelihood_precision=likelihood_precision,
+                                              batch_normalization=batch_normalization,
+                                              dropout=dropout)
 
     print "model loaded"
+
     # Training
     c.fit(x_train, y_train, n_epochs, b_size, method, fname=fname,
-          x_test=x_test, y_test=y_test,
+          x_test=None, y_test=None,
           epoch0=epoch0, chunk_size=chunk_size,
-          save_every=save_every, sample_axis=1 if recurrent else 0)
+          save_every=save_every, sample_axis=1 if recurrent else 0,
+          batch_logger=None)
 
 
 if __name__ == '__main__':

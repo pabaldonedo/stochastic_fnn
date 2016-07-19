@@ -76,7 +76,7 @@ def load_states(n):
     """
 
     x = np.asarray(pd.read_csv("data/states_1_len_61.txt",
-                      delimiter=',', header=None).values, dtype=theano.config.floatX)
+                               delimiter=',', header=None).values, dtype=theano.config.floatX)
     for i in xrange(2, n + 1):
         tmp = np.asarray(pd.read_csv(
             "data/states_{0}_len_61.txt".format(i), delimiter=',', header=None).values,
@@ -92,7 +92,7 @@ def load_controls(n):
     """
 
     x = np.asarray(pd.read_csv("data/controls_1_len_61.txt",
-                      delimiter=',', header=None).values, dtype=theano.config.floatX)
+                               delimiter=',', header=None).values, dtype=theano.config.floatX)
     for i in xrange(2, n + 1):
         tmp = np.asarray(pd.read_csv(
             "data/controls_{0}_len_61.txt".format(i), delimiter=',', header=None).values,
@@ -108,7 +108,7 @@ def load_files(n, fname):
     """
 
     x = np.asarray(pd.read_csv("data/{0}_1_len_61.txt".format(fname),
-                      delimiter=',', header=None), dtype=theano.config.floatX)
+                               delimiter=',', header=None), dtype=theano.config.floatX)
     for i in xrange(2, n + 1):
         tmp = np.asarray(pd.read_csv(
             "data/{0}_{1}_len_61.txt".format(fname, i), delimiter=',', header=None),
@@ -117,7 +117,7 @@ def load_files(n, fname):
     return x
 
 
-def log_init(path, session_name=None):
+def log_init(path, session_name=None, level=logging.INFO):
     """Initializes logging module.
 
     :type path: string.

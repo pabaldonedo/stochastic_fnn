@@ -17,7 +17,7 @@ class Optimizer():
         :type batch_size: integer.
         :param batch_size: size of every batch.
 
-        :type train_set_x: theano.sharedvariable of shape 
+        :type train_set_x: theano.sharedvariable of shape
                             [sequences length, training samples, input dimensionality] or
                             [training samples, input dimensionality].
         :param train_set_x: train dataset used as input network variable for training.
@@ -69,7 +69,7 @@ class GradientBased(Optimizer):
     def fit(self, x, y, x_train, y_train, batch_size, cost, theta, n_epochs,
             compute_error, call_back, x_test=None, y_test=None,
             validate_every=1, extra_train_givens={}, chunk_size=None,
-            sample_axis=0):
+            sample_axis=0, batch_logger=None):
         """Performs the optimization using a Gradient Based algorithm.
 
         :type x: numpy.array of dimensionality:
@@ -163,7 +163,8 @@ class GradientBased(Optimizer):
         self.fiting_variables(batch_size, train_set_x, test_set_x=test_set_x,
                               sample_axis=sample_axis)
         self.n_train = x_train.shape[sample_axis]
-        self.n_test = x_test.shape[sample_axis]
+        if self.test_availavility:
+            self.n_test = x_test.shape[sample_axis]
         gtheta = [None] * len(theta)
         updates = []
         self.it = theano.shared(np.asarray(1., dtype=theano.config.floatX))
@@ -233,13 +234,18 @@ class GradientBased(Optimizer):
                         minibatch_avg_cost, this_batch_size = train_model(
                             minibatch_idx, this_chunk_size)
 
+                    if batch_logger is not None:
+                        batch_logger.info(
+                            'train minibatch error: {0}'.format(minibatch_avg_cost))
                     data_log_likelihood -= minibatch_avg_cost * this_batch_size * seq_len
                 # if chunk < n_chunks - 1:
-                    #train_set_x.set_value(x_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_train.shape[0])])
+                    # train_set_x.set_value(x_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_train.shape[0])])
                  #   train_set_x.set_value(x_train.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, x_train.shape[sample_axis])), axis=sample_axis))
-                    #train_set_y.set_value(y_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, y_train.shape[0])])
-                #    train_set_y.set_value(y_train.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, y_train.shape[sample_axis])), axis=sample_axis))
-
+                    # train_set_y.set_value(y_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, y_train.shape[0])])
+                # train_set_y.set_value(y_train.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size,
+                # y_train.shape[sample_axis])), axis=sample_axis))
+            if batch_logger is not None:
+                batch_logger.info('-------------------EPOCH-----------------')
             print "EPOCH"
             train_log_likelihood_evolution.append((epoch, data_log_likelihood))
 
@@ -266,10 +272,11 @@ class GradientBased(Optimizer):
                         test_log_likelihood -= batch_log_likelihood * this_batch_size * seq_len
 
                    # if chunk < test_n_chunks - 1:
-                        #test_set_x.set_value(x_test[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_test.shape[0])])
+                        # test_set_x.set_value(x_test[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_test.shape[0])])
                      #   test_set_x.set_value(x_test.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, x_test.shape[sample_axis])), axis=sample_axis))
-                        #test_set_y.set_value(y_test[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, y_test.shape[0])])
-                    #    test_set_y.set_value(y_test.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, y_test.shape[sample_axis])), axis=sample_axis))
+                        # test_set_y.set_value(y_test[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, y_test.shape[0])])
+                    # test_set_y.set_value(y_test.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size,
+                    # y_test.shape[sample_axis])), axis=sample_axis))
                 test_log_likelihood_evolution.append(
                     (epoch, test_log_likelihood))
 

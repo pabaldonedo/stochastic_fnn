@@ -157,7 +157,7 @@ class Classifier(object):
                                     None else weights['bone_mlps'][i]['MLPLayer'],
                                     timeseries_network=timeseries_layer,
                                     batch_normalization=batch_normalization)
-                                    
+
             else:
                 bone_mlp = MLPLayer(mlp_n_in, self.mlp_n_hidden, self.mlp_activation_names,
                                     input_var=self.x[
@@ -338,7 +338,7 @@ class Classifier(object):
         return cost
 
     def fit(self, x, y, m, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1,
-            x_test=None, y_test=None, chunk_size=None, sample_axis=0):
+            x_test=None, y_test=None, chunk_size=None, sample_axis=0, batch_logger=None):
 
         self.log.info("Number of training samples: {0}.".format(
             x.shape[sample_axis]))
@@ -395,7 +395,8 @@ class Classifier(object):
                 extra_train_givens={self.m: m},
                 x_test=x_test, y_test=y_test,
                 chunk_size=chunk_size,
-                sample_axis=sample_axis)
+                sample_axis=sample_axis,
+                batch_logger=batch_logger)
 
         """
         self.fiting_variables(b_size, train_set_x, train_set_y)
@@ -796,7 +797,7 @@ class RNNClassifier(object):
             inputs=[self.x], outputs=self.output[-1], updates=predict_upd)
 
     def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
-            y_test=None, chunk_size=None, sample_axis=1):
+            y_test=None, chunk_size=None, sample_axis=1, batch_logger=None):
 
         self.log.info("Number of training samples: {0}.".format(
             x.shape[sample_axis]))
@@ -851,7 +852,8 @@ class RNNClassifier(object):
                                                   test_log_likelihood_constant=test_log_likelihood_constant),
                 x_test=x_test, y_test=y_test,
                 chunk_size=chunk_size,
-                sample_axis=1)
+                sample_axis=1,
+                batch_logger=batch_logger)
 
     def get_cost(self):
         """Returns cost value to be optimized"""
@@ -1015,6 +1017,7 @@ class callBack:
 
         train_log_likelihood -= self.log_likelihood_constant
         train_error = -train_log_likelihood * 1. / n_samples
+        test_error = None
         if test_log_likelihood is None:
 
             self.classifier.log.info("epoch: {0} train_error: {1}, log_likelihood: {2} with"
@@ -1105,7 +1108,8 @@ class MLPClassifier(object):
             self.log = logging.getLogger()
 
         if self.dropout:
-            self.givens_dict = {self.training: np.float64(0).astype(theano.config.floatX)}
+            self.givens_dict = {self.training: np.float64(
+                0).astype(theano.config.floatX)}
         else:
             self.givens_dict = {}
         self.output = self.output_layer.output
@@ -1120,7 +1124,7 @@ class MLPClassifier(object):
         return c.cback
 
     def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
-            y_test=None, chunk_size=None, sample_axis=0):
+            y_test=None, chunk_size=None, sample_axis=0,  batch_logger=None):
 
         self.log.info("Number of training samples: {0}.".format(
             x.shape[sample_axis]))
@@ -1130,7 +1134,8 @@ class MLPClassifier(object):
 
         flat_params = flatten(self.params)
         cost = self.get_cost()
-        compute_error = theano.function(inputs=[self.x, self.y], outputs=cost, givens=self.givens_dict)
+        compute_error = theano.function(
+            inputs=[self.x, self.y], outputs=cost, givens=self.givens_dict)
 
         if sample_axis == 0:
             seq_length = 1
@@ -1176,7 +1181,8 @@ class MLPClassifier(object):
                 extra_train_givens=self.givens_dict,
                 x_test=x_test, y_test=y_test,
                 chunk_size=chunk_size,
-                sample_axis=sample_axis)
+                sample_axis=sample_axis,
+                batch_logger=batch_logger)
 
     def get_cost(self):
         """Returns cost value to be optimized"""
@@ -1258,8 +1264,8 @@ class ResidualMLPClassifier(object):
                  likelihood_precision=1, layers_info=None, log=None,
                  batch_normalization=False, dropout=False):
 
-        self.mlp_n_hidden = mlp_activation_names
-        assert(self.mlp_n_hidden) == 2
+        self.mlp_n_hidden = mlp_n_hidden
+        assert(len(self.mlp_n_hidden)) == 2
         self.n_in = n_in
         self.n_out = n_out
         #self.mlp_n_hidden = mlp_n_hidden
@@ -1284,7 +1290,8 @@ class ResidualMLPClassifier(object):
                             batch_normalization=self.batch_normalization,
                             dropout=self.dropout, training=self.training)
 
-        self.mlp.output = self.mlp.hidden_layers[1].activation(self.x[:,:self.mlp_n_hidden[1]] + self.mlp.hidden_layers[1].a)
+        self.mlp.output = self.mlp.hidden_layers[1].activation(
+            self.x[:, :self.mlp_n_hidden[1]] + self.mlp.hidden_layers[1].a)
 
         linear_activation = get_activation_function('linear')
 
@@ -1312,7 +1319,8 @@ class ResidualMLPClassifier(object):
             self.log = logging.getLogger()
 
         if self.dropout:
-            self.givens_dict = {self.training: np.float64(0).astype(theano.config.floatX)}
+            self.givens_dict = {self.training: np.float64(
+                0).astype(theano.config.floatX)}
         else:
             self.givens_dict = {}
         self.output = self.output_layer.output
@@ -1327,7 +1335,7 @@ class ResidualMLPClassifier(object):
         return c.cback
 
     def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
-            y_test=None, chunk_size=None, sample_axis=0):
+            y_test=None, chunk_size=None, sample_axis=0, batch_logger=None):
 
         self.log.info("Number of training samples: {0}.".format(
             x.shape[sample_axis]))
@@ -1337,7 +1345,8 @@ class ResidualMLPClassifier(object):
 
         flat_params = flatten(self.params)
         cost = self.get_cost()
-        compute_error = theano.function(inputs=[self.x, self.y], outputs=cost, givens=self.givens_dict)
+        compute_error = theano.function(
+            inputs=[self.x, self.y], outputs=cost, givens=self.givens_dict)
 
         if sample_axis == 0:
             seq_length = 1
@@ -1383,7 +1392,8 @@ class ResidualMLPClassifier(object):
                 extra_train_givens=self.givens_dict,
                 x_test=x_test, y_test=y_test,
                 chunk_size=chunk_size,
-                sample_axis=sample_axis)
+                sample_axis=sample_axis,
+                batch_logger=batch_logger)
 
     def get_cost(self):
         """Returns cost value to be optimized"""
@@ -1458,9 +1468,11 @@ class ResidualMLPClassifier(object):
 
         return loaded_classifier
 
+
 class BoneResidualMLPClassifier(ResidualMLPClassifier):
+
     def set_up_mlp(self, mlp_n_hidden, mlp_activation_names, mlp_n_in, weights=None, timeseries_layer=False,
-               batch_normalization=False):
+                   batch_normalization=False):
         """Defines the MLP networks for the 15 bones.
 
         :type mlp_n_hidden: list of ints.
@@ -1494,28 +1506,29 @@ class BoneResidualMLPClassifier(ResidualMLPClassifier):
                                     timeseries_network=False,
                                     batch_normalization=self.batch_normalization,
                                     dropout=self.dropout, training=self.training)
-                                    
+
             else:
                 bone_mlp = MLPLayer(mlp_n_in, self.mlp_n_hidden, self.mlp_activation_names,
                                     input_var=self.x[:, i * mlp_n_in -
-                                           2:(i + 1) * mlp_n_in - 2],
+                                                     2:(i + 1) * mlp_n_in - 2],
                                     layers_info=None if weights is None else
                                     weights['bone_mlps'][i]['MLPLayer'],
                                     timeseries_network=False,
                                     batch_normalization=self.batch_normalization,
                                     dropout=self.dropout, training=self.training)
-            
-            bone_mlp.output = bone_mlp.hidden_layers[1].activation(bone_mlp.x[:, :self.mlp_n_hidden[1]] + bone_mlp.hidden_layers[1].a)
+
+            bone_mlp.output = bone_mlp.hidden_layers[1].activation(
+                bone_mlp.x[:, :self.mlp_n_hidden[1]] + bone_mlp.hidden_layers[1].a)
 
             self.bone_representations[i] = bone_mlp
 
-
     def __init__(self, n_in, n_out, mlp_n_hidden, mlp_activation_names,
-             bone_n_hidden, bone_activation_names,
-             likelihood_precision=1, layers_info=None, log=None,
-             batch_normalization=False, dropout=False):
+                 bone_n_hidden, bone_activation_names,
+                 likelihood_precision=1, layers_info=None, log=None,
+                 batch_normalization=False, dropout=False):
 
-        warnings.warn("ARCHITECTURE IS MANUALLY FIXED!!!! DISREGARDING HIDDEN LAYERS INFORMATION")
+        warnings.warn(
+            "ARCHITECTURE IS MANUALLY FIXED!!!! DISREGARDING HIDDEN LAYERS INFORMATION")
         self.mlp_n_hidden = mlp_activation_names
         self.bone_n_hidden = bone_n_hidden
         self.bone_activation_names = bone_activation_names
@@ -1537,7 +1550,8 @@ class BoneResidualMLPClassifier(ResidualMLPClassifier):
         if self.dropout:
             self.training = theano.tensor.scalar('training')
 
-        self.set_up_mlp(bone_n_hidden, bone_activation_names, 13, weights=layers_info)
+        self.set_up_mlp(bone_n_hidden, bone_activation_names,
+                        13, weights=layers_info)
 
         self.ann_input = T.concatenate([bone.output for bone in self.bone_representations] +
                                        [self.x[:, -2:]], axis=1)
@@ -1545,17 +1559,19 @@ class BoneResidualMLPClassifier(ResidualMLPClassifier):
         mlp_params = [mlp_i.params for mlp_i in self.bone_representations]
 
         self.params.append(mlp_params)
-        ann_input_n_in = len(self.bone_representations) * self.bone_n_hidden[-1] + 2
+        ann_input_n_in = len(self.bone_representations) * \
+            self.bone_n_hidden[-1] + 2
         if len(self.mlp_n_hidden) >= 2:
             self.mlp = MLPLayer(ann_input_n_in, self.mlp_n_hidden, self.mlp_activation_names,
-                            timeseries_network=False,
-                            input_var=self.ann_input,
-                            layers_info=None if layers_info is None else layers_info[
-                                'mlp'],
-                            batch_normalization=self.batch_normalization,
-                            dropout=self.dropout, training=self.training)
-           
-            self.mlp.output = self.mlp.hidden_layers[1].activation(self.x[:,:self.mlp_n_hidden[1]] + self.mlp.hidden_layers[1].a)
+                                timeseries_network=False,
+                                input_var=self.ann_input,
+                                layers_info=None if layers_info is None else layers_info[
+                                    'mlp'],
+                                batch_normalization=self.batch_normalization,
+                                dropout=self.dropout, training=self.training)
+
+            self.mlp.output = self.mlp.hidden_layers[1].activation(
+                self.x[:, :self.mlp_n_hidden[1]] + self.mlp.hidden_layers[1].a)
             self.params.append(self.mlp.params)
             self.output_layer_input = self.mlp.output
             self.output_layer_n_in = self.mlp.hidden_layers[-1].n_out
@@ -1587,13 +1603,15 @@ class BoneResidualMLPClassifier(ResidualMLPClassifier):
             self.log = logging.getLogger()
 
         if self.dropout:
-            self.givens_dict = {self.training: np.float64(0).astype(theano.config.floatX)}
+            self.givens_dict = {self.training: np.float64(
+                0).astype(theano.config.floatX)}
         else:
             self.givens_dict = {}
         self.output = self.output_layer.output
         self.predict = theano.function(
             inputs=[self.x], outputs=self.output,
             givens=self.givens_dict)
+
     def generate_saving_string(self):
         """Generate json representation of network parameters"""
         output_string = "{\"network_properties\":"
@@ -1613,7 +1631,7 @@ class BoneResidualMLPClassifier(ResidualMLPClassifier):
             output_string += bone.generate_saving_string()
             output_string += "}"
         output_string += "]"
-        
+
         output_string += ",\"mlp\":"
         output_string += self.mlp.generate_saving_string()
         output_string += ",\"output_layer\":"
@@ -1715,7 +1733,7 @@ class RecurrentMLP(object):
         return c.cback
 
     def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
-            y_test=None, chunk_size=None):
+            y_test=None, chunk_size=None, batch_logger=None):
 
         self.log.info("Number of training samples: {0}.".format(
             x.shape[1]))
@@ -1765,7 +1783,7 @@ class RecurrentMLP(object):
                     test_log_likelihood_constant=test_log_likelihood_constant),
                 x_test=x_test, y_test=y_test,
                 chunk_size=chunk_size,
-                sample_axis=1)
+                sample_axis=1, batch_logger=batch_logger)
 
     def get_cost(self):
         """Returns cost value to be optimized"""
