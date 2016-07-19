@@ -23,11 +23,13 @@ def main():
 
     load_means_from_file = True
     sampled_clipped = False
+    lagged = True
     if sampled_clipped:
         print "WARNING USING CLIPPED"
 
+    x_info_file = 'mux_stdx_lagged_n_16.csv'
 #    x_info_file = 'sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv'
-    x_info_file = 'mux_stdx_n_16_n_impulse_2000_5.csv'
+    #x_info_file = 'mux_stdx_n_16_n_impulse_2000_5.csv'
 #    y_info_file = 'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv'
     y_info_file = 'muy_stdy_n_16_n_impulse_2000_5.csv'
 
@@ -82,7 +84,7 @@ def main():
 
     train_size = 0.8
 
-    print "controsl loaded"
+    print "controls loaded"
     y = (y - muy) * 1. / stdy
     if recurrent:
         y = y.reshape(seq_len, -1, y.shape[1])
@@ -103,6 +105,9 @@ def main():
     if sampled_clipped:
         x = np.asarray(pd.read_csv(
             'data/sample_clipped_states_n_16_n_impulse_2000_5.txt', delimiter=',', header=None).values, dtype=theano.config.floatX)
+    elif lagged:
+        x = load_files(n, 'lagged_states')
+        assert not n_impulse_2000 >0
     else:
         x = load_states(n)
         if n_impulse_2000 > 0:
@@ -124,8 +129,10 @@ def main():
     x = (x - mux) * 1. / stdx
     if recurrent:
         x = x.reshape(seq_len, -1, x.shape[1])
-
-        cols = [1] + list(range(3, x.shape[2]))
+        if lagged:
+            cols = [1] + list(range(3, 197)) + [198] + list(range(200, x.shape[2]))
+        else:
+            cols = [1] + list(range(3, x.shape[2]))
         x = x[:, :, cols]
         x = x[:, idx, :]
 
@@ -157,8 +164,8 @@ def main():
 
     # Fit options
     b_size = 100
-    epoch0 = 3
-    n_epochs = 1000
+    epoch0 = 1
+    n_epochs = 10000
     lr = .1
     save_every = 1  # Log saving
     chunk_size = None  # Memory chunks
@@ -174,7 +181,7 @@ def main():
               'learning_rate': lr, 'dropout': dropout}
 
     # Load from file?
-    load_from_file = True
+    load_from_file = False
     session_name = None
     load_different_file = False
 
@@ -184,7 +191,7 @@ def main():
     if recurrent:
 
         network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
-            "rnn_hidden_[{5}]_rnn_activations_[{6}]_bsize_{7}_method_{8}_bn_{9}_dropout_{10}".\
+            "rnn_hidden_[{5}]_rnn_activations_[{6}]_bsize_{7}_method_{8}_bn_{9}_dropout_{10}_lagged_{11}".\
             format(
                        'recurrent_mlp_classifier',
                        n, n_impulse_2000,
@@ -192,11 +199,12 @@ def main():
                        ','.join(str(e) for e in mlp_activation_names),
                        ','.join(str(e) for e in rnn_hidden),
                        ','.join(str(e) for e in rnn_activations),
-                       b_size, method['type'], batch_normalization, dropout)
+                       b_size, method['type'], batch_normalization, dropout,
+                       lagged)
 
     else:
         network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
-            "_bsize_{5}_method_{6}_bn_{7}_dropout_{8}{9}".\
+            "_bsize_{5}_method_{6}_bn_{7}_dropout_{8}{9}_lagged_{10}".\
             format(
                        'mlp_classifier' if network_type is network_types[
                            0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier',
@@ -205,7 +213,8 @@ def main():
                        ','.join(str(e) for e in mlp_activation_names),
                        b_size,  method['type'], batch_normalization,
                        dropout,
-                       '_sampled_clipped' if sampled_clipped else '')
+                       '_sampled_clipped' if sampled_clipped else '',
+                       lagged)
 
     opath = "network_output/{0}".format(network_name)
     if not os.path.exists(opath):
