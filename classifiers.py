@@ -1345,6 +1345,8 @@ class ResidualMLPClassifier(object):
         self.predict = theano.function(
             inputs=[self.x], outputs=self.output,
             givens=self.givens_dict)
+	self.compute_error = compute_error = theano.function(
+            inputs=[self.x, self.y], outputs=self.get_cost(), givens=self.givens_dict)
 
     def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0, test_log_likelihood_constant=None):
         """Returns callback function to be sent to optimer for debugging and log purposes"""
@@ -1363,8 +1365,7 @@ class ResidualMLPClassifier(object):
 
         flat_params = flatten(self.params)
         cost = self.get_cost()
-        compute_error = theano.function(
-            inputs=[self.x, self.y], outputs=cost, givens=self.givens_dict)
+        
 
         if sample_axis == 0:
             seq_length = 1
@@ -1404,7 +1405,7 @@ class ResidualMLPClassifier(object):
             n_epochs, b_size, method))
 
         opt.fit(self.x, self.y, x, y, b_size, cost, flat_params, n_epochs,
-                compute_error, self.get_call_back(save_every, fname, epoch0,
+                self.compute_error, self.get_call_back(save_every, fname, epoch0,
                                                   log_likelihood_constant=log_likelihood_constant,
                                                   test_log_likelihood_constant=test_log_likelihood_constant),
                 extra_train_givens=self.givens_dict,

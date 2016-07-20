@@ -16,13 +16,17 @@ from classifiers import BoneResidualMLPClassifier
 def main():
 
     network_type = 'residual'
+    load_idx = False
+    idx_train_file = None
+    idx_test_file = None
+    assert not (load_idx and idx_file is None)
 
     network_types = ['mlp', 'residual', 'bone_residual']
 
     assert network_type in network_types
 
     load_means_from_file = True
-    sampled_clipped = False
+    sampled_clipped = True
     lagged = False
     if sampled_clipped:
         print "WARNING USING CLIPPED"
@@ -88,19 +92,31 @@ def main():
     y = (y - muy) * 1. / stdy
     if recurrent:
         y = y.reshape(seq_len, -1, y.shape[1])
-        idx = np.random.permutation(y.shape[1])
+        if not load_idx:
+            idx = np.random.permutation(y.shape[1])
 
-        y = y[:, idx, :-4]
-        train_bucket = int(np.ceil(y.shape[1] * train_size))
-        y_train = y[:, :train_bucket]
-        y_test = y[:, train_bucket:]
+            y = y[:, idx, :-4]
+            train_bucket = int(np.ceil(y.shape[1] * train_size))
+            y_train = y[:, :train_bucket]
+            y_test = y[:, train_bucket:]
+        else:
+            idx_train = genfromtxt(idx_train_file, delimiter=',')
+            idx_test = genfromtxt(idx_test_file, delimiter=',')
+            y_train = y[:, idx_train]
+            y_test = y[:, idx_test]
 
     else:
-        idx = np.random.permutation(y.shape[0])
-        y = y[idx, :-4]
-        train_bucket = int(np.ceil(y.shape[0] * train_size))
-        y_train = y[:train_bucket]
-        y_test = y[train_bucket:]
+        if not load_idx:
+            idx = np.random.permutation(y.shape[0])
+            y = y[idx, :-4]
+            train_bucket = int(np.ceil(y.shape[0] * train_size))
+            y_train = y[:train_bucket]
+            y_test = y[train_bucket:]
+        else:
+            idx_train = genfromtxt(idx_train_file, delimiter=',')
+            idx_test = genfromtxt(idx_test_file, delimiter=',')
+            y_train = y[idx_train]
+            y_test = y[idx_test]
 
     if sampled_clipped:
         x = np.asarray(pd.read_csv(
@@ -134,11 +150,18 @@ def main():
                 list(range(200, x.shape[2]))
         else:
             cols = [1] + list(range(3, x.shape[2]))
-        x = x[:, :, cols]
-        x = x[:, idx, :]
 
-        x_train = x[:, :train_bucket]
-        x_test = x[:, train_bucket:]
+        x = x[:, :, cols]
+        if not load_idx:
+
+            x = x[:, idx, :]
+
+            x_train = x[:, :train_bucket]
+            x_test = x[:, train_bucket:]
+        else:
+            x_train = x[:, idx[0]]
+            x_test = x[:, idx[1]]
+
         n_in = x.shape[2]
         n_out = y.shape[2]
     else:
@@ -150,15 +173,22 @@ def main():
             cols = [1] + list(range(3, x.shape[1]))
 
         x = x[:, cols]
-        x = x[idx]
-        x_train = x[:train_bucket]
-        x_test = x[train_bucket:]
+
+        if not load_idx:
+            x = x[idx]
+            x_train = x[:train_bucket]
+            x_test = x[train_bucket:]
+
+        else:
+            x_train = x[idx_train]
+            x_test = x[idx_test]
+
         n_in = x.shape[1]
         n_out = y.shape[1]
 
     print "Data ready to go"
-    mlp_activation_names = [['sigmoid', 'sigmoid']] * 4  # , 'sigmoid']
-    mlp_n_hidden = [[150, 150], [100, 100], [80, 80], [50, 50]]  # , 50]
+    mlp_activation_names = [['sigmoid', 'sigmoid']] * 2  # , 'sigmoid']
+    mlp_n_hidden = [[150, 100], [50, 50]]  # , [80, 80], [50, 50]]  # , 50]
     likelihood_precision = 0.1
     bone_n_hidden = [11, 11]
     bone_activation_names = ['sigmoid', 'sigmoid']
@@ -170,9 +200,9 @@ def main():
 
     # Fit options
     b_size = 100
-    epoch0 = 631
+    epoch0 = 1
     n_epochs = 10000
-    lr = .01
+    lr = .1
     save_every = 10  # Log saving
     chunk_size = None  # Memory chunks
     batch_normalization = False  # TODO
@@ -187,9 +217,9 @@ def main():
               'learning_rate': lr, 'dropout': dropout}
 
     # Load from file?
-    load_from_file = True
+    load_from_file = False
     session_name = None
-    load_different_file = True
+    load_different_file = False
 
     assert not (load_different_file and not load_from_file), "You have set load different_file to True but you are not loading any network!"
 
@@ -209,18 +239,18 @@ def main():
                        lagged)
 
     else:
-        network_name = "Testr"  # "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
-        #  "_bsize_{5}_method_{6}_bn_{7}_dropout_{8}{9}".\
-        #   format(
-        #        'mlp_classifier' if network_type is network_types[
-       #             0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier',
-      #          n, n_impulse_2000,
-     #           ','.join(str(e) for e in mlp_n_hidden),
-    #            ','.join(str(e) for e in mlp_activation_names),
-   #             b_size,  method['type'], batch_normalization,
-  #              dropout,
- #               '_sampled_clipped' if sampled_clipped else '',
-#                lagged)
+        network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
+            "_bsize_{5}_method_{6}_bn_{7}_dropout_{8}{9}".\
+            format(
+                'mlp_classifier' if network_type is network_types[
+                    0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier',
+                n, n_impulse_2000,
+                ','.join(str(e) for e in mlp_n_hidden),
+                ','.join(str(e) for e in mlp_activation_names),
+                b_size,  method['type'], batch_normalization,
+                dropout,
+                '_sampled_clipped' if sampled_clipped else '',
+                lagged)
 
     opath = "network_output/{0}".format(network_name)
     if not os.path.exists(opath):
@@ -336,6 +366,11 @@ def main():
                                               dropout=dropout)
 
     print "model loaded"
+
+    np.savetxt('{0}/idx_train.txt'.format(opath),
+               np.asarray(idx[:train_bucket], dtype=int), fmt='%i')
+    np.savetxt('{0}/idx_test.txt'.format(opath),
+               np.asarray(idx[train_bucket:], dtype=int), fmt='%i')
 
     # Training
     c.fit(x_train, y_train, n_epochs, b_size, method, fname=fname,
