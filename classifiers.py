@@ -1307,7 +1307,7 @@ class ResidualMLPClassifier(object):
 
             Weye = T.eye(layer_module.x.shape[1], layer_module.output.shape[1])
             layer_module.output = layer_module.hidden_layers[-1].activation(
-                T.dot(layer_module.x, Weye) + layer_module.output)
+                T.dot(layer_module.x, Weye) + layer_module.hidden_layers[-1].a)
 
             self.mlp_layers[i] = layer_module
             self.params.append(self.mlp_layers[i].params)

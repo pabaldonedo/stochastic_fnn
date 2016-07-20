@@ -23,13 +23,13 @@ def main():
 
     load_means_from_file = True
     sampled_clipped = False
-    lagged = True
+    lagged = False
     if sampled_clipped:
         print "WARNING USING CLIPPED"
 
-    x_info_file = 'mux_stdx_lagged_n_16.csv'
+#    x_info_file = 'mux_stdx_lagged_n_16.csv'
 #    x_info_file = 'sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv'
-    #x_info_file = 'mux_stdx_n_16_n_impulse_2000_5.csv'
+    x_info_file = 'mux_stdx_n_16_n_impulse_2000_5.csv'
 #    y_info_file = 'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv'
     y_info_file = 'muy_stdy_n_16_n_impulse_2000_5.csv'
 
@@ -107,7 +107,7 @@ def main():
             'data/sample_clipped_states_n_16_n_impulse_2000_5.txt', delimiter=',', header=None).values, dtype=theano.config.floatX)
     elif lagged:
         x = load_files(n, 'lagged_states')
-        assert not n_impulse_2000 >0
+        assert not n_impulse_2000 > 0
     else:
         x = load_states(n)
         if n_impulse_2000 > 0:
@@ -130,7 +130,8 @@ def main():
     if recurrent:
         x = x.reshape(seq_len, -1, x.shape[1])
         if lagged:
-            cols = [1] + list(range(3, 197)) + [198] + list(range(200, x.shape[2]))
+            cols = [1] + list(range(3, 197)) + [198] + \
+                list(range(200, x.shape[2]))
         else:
             cols = [1] + list(range(3, x.shape[2]))
         x = x[:, :, cols]
@@ -142,7 +143,12 @@ def main():
         n_out = y.shape[2]
     else:
 
-        cols = [1] + list(range(3, x.shape[1]))
+        if lagged:
+            cols = [1] + list(range(3, 197)) + [198] + \
+                list(range(200, x.shape[1]))
+        else:
+            cols = [1] + list(range(3, x.shape[1]))
+
         x = x[:, cols]
         x = x[idx]
         x_train = x[:train_bucket]
@@ -151,8 +157,8 @@ def main():
         n_out = y.shape[1]
 
     print "Data ready to go"
-    mlp_activation_names = [['sigmoid', 'sigmoid'], ['sigmoid', 'sigmoid']]  # , 'sigmoid']
-    mlp_n_hidden = [[150, 100], [50, 50]] # , 50]
+    mlp_activation_names = [['sigmoid', 'sigmoid']] * 4  # , 'sigmoid']
+    mlp_n_hidden = [[150, 150], [100, 100], [80, 80], [50, 50]]  # , 50]
     likelihood_precision = 0.1
     bone_n_hidden = [11, 11]
     bone_activation_names = ['sigmoid', 'sigmoid']
@@ -164,10 +170,10 @@ def main():
 
     # Fit options
     b_size = 100
-    epoch0 = 1
+    epoch0 = 631
     n_epochs = 10000
-    lr = .1
-    save_every = 1  # Log saving
+    lr = .01
+    save_every = 10  # Log saving
     chunk_size = None  # Memory chunks
     batch_normalization = False  # TODO
     dropout = False
@@ -181,9 +187,9 @@ def main():
               'learning_rate': lr, 'dropout': dropout}
 
     # Load from file?
-    load_from_file = False
+    load_from_file = True
     session_name = None
-    load_different_file = False
+    load_different_file = True
 
     assert not (load_different_file and not load_from_file), "You have set load different_file to True but you are not loading any network!"
 
@@ -203,18 +209,18 @@ def main():
                        lagged)
 
     else:
-        network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
-            "_bsize_{5}_method_{6}_bn_{7}_dropout_{8}{9}_lagged_{10}".\
-            format(
-                       'mlp_classifier' if network_type is network_types[
-                           0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier',
-                       n, n_impulse_2000,
-                       ','.join(str(e) for e in mlp_n_hidden),
-                       ','.join(str(e) for e in mlp_activation_names),
-                       b_size,  method['type'], batch_normalization,
-                       dropout,
-                       '_sampled_clipped' if sampled_clipped else '',
-                       lagged)
+        network_name = "Testr"  # "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
+        #  "_bsize_{5}_method_{6}_bn_{7}_dropout_{8}{9}".\
+        #   format(
+        #        'mlp_classifier' if network_type is network_types[
+       #             0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier',
+      #          n, n_impulse_2000,
+     #           ','.join(str(e) for e in mlp_n_hidden),
+    #            ','.join(str(e) for e in mlp_activation_names),
+   #             b_size,  method['type'], batch_normalization,
+  #              dropout,
+ #               '_sampled_clipped' if sampled_clipped else '',
+#                lagged)
 
     opath = "network_output/{0}".format(network_name)
     if not os.path.exists(opath):
@@ -234,22 +240,33 @@ def main():
    #                                                                                                                                                                           ','.join(
     #                                                                                                                                                                              str(e) for e in mlp_activation_names),
      # b_size,  method['type'])
-        loaded_network_folder = ""
+        loaded_network_folder = "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
+            "_bsize_{5}_method_{6}_bn_{7}_dropout_{8}{9}".\
+            format(
+                'mlp_classifier' if network_type is network_types[
+                    0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier',
+                n, n_impulse_2000,
+                ','.join(str(e) for e in mlp_n_hidden),
+                ','.join(str(e) for e in mlp_activation_names),
+                b_size,  method['type'], batch_normalization,
+                dropout,
+                '_sampled_clipped' if sampled_clipped else '',
+                lagged)
         loaded_opath = "network_output/{0}".format(loaded_network_folder)
         assert os.path.exists(
             loaded_opath), "Trying to load a network from a non existing path; {0}".format(loaded_opath)
 
         # "mlp_classifier_n_{0}_n_impulse_2000_{1}_mlp_n_hidden_[{2}]_mlp_activation_[{3}]_bsize_{4}_method_{5}".format(n, n_impulse_2000,
-        loaded_network_name = "residual_mlp_classifier_n_hidden_[150,100]"
+        loaded_network_name = "residual_mlp_classifier_n_hidden_[[150, 150],[100, 100],[80, 80],[50, 50]]"
         #                                                                                                              ','.join(
 #                                                                                                                                                str(e) for e in mlp_n_hidden),
 #                                                                                                                                            ','.join(
 #                                                                                                                                                str(e) for e in mlp_activation_names),
 # b_size,  method['type'])
 
-#        loaded_network_fname = "{0}/networks/{1}".format(
- #           loaded_opath, loaded_network_name)
-        loaded_network_fname = "network_output/residual_mlp_classifier_n_hidden_[150,100]"
+        loaded_network_fname = "{0}/networks/{1}".format(
+            loaded_opath, loaded_network_name)
+
     else:
         loaded_opath = opath
 
