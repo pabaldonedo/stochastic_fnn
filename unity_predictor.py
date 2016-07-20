@@ -61,6 +61,19 @@ class Predictor(object):
         self.stdy = stdy
 
 
+    def set_up_lagged(self, lagged):
+        self.lagged = lagged
+        if self.lagged:
+            self.x_t_1 = numpy.zeros((1,195), dtype=theano.config.floatX)
+
+    def get_x(self, x_t):
+
+        if not self.lagged:
+            return x_t
+        x = numpy.hstack((self.x_t_1, x_t))
+        self.x_t_1 = x_t
+        return x
+        
 class RNNPredictor(Predictor):
     """ Predictor using LBN + RNN (defined as RecurrentClassifier in classifiers.py)"""
 
@@ -85,6 +98,7 @@ class RNNPredictor(Predictor):
         self.classifier = RecurrentClassifier.init_from_file(fname)
         self.set_up_means(mux, stdx, muy, stdy)
 
+        
     def predict(self, x):
         """
         :type x: numpy.array
@@ -108,7 +122,7 @@ class RNNPredictor(Predictor):
 class FNNPredictor(Predictor):
     """Predictor using LBN (defined sa Classifier in classifiers.py). """
 
-    def __init__(self, fname, mux, stdx, muy, stdy, gmm_prediction=False):
+    def __init__(self, fname, mux, stdx, muy, stdy, gmm_prediction=False, lagged=False):
         """
         :type fname: string.
         :param fname: Filename (with path) containing the classifier definition.
@@ -128,6 +142,7 @@ class FNNPredictor(Predictor):
         self.classifier = Classifier.init_from_file(fname)
         self.set_up_means(mux, stdx, muy, stdy)
         self.gmm_prediction = gmm_prediction
+        self.set_up_lagged(lagged)
         
     def predict(self, x, n_out=34):
         """
@@ -145,9 +160,11 @@ class FNNPredictor(Predictor):
         cols = [1] + list(range(3, x.shape[1]))
 
         x = x[:, cols]
-        x_norm = (x - self.mux) * 1. / self.stdx
-        x_norm.reshape(1, -1)
+        x_t_norm = (x - self.mux) * 1. / self.stdx
+        x_t_norm.reshape(1, -1)
 
+        x_norm = self.get_x(x_t_norm)
+        
         if n_out < 34:
             if self.gmm_prediction:
                 return numpy.hstack((self.classifier.predict_gmm(x_norm, 1) * self.stdy[:n_out] + self.muy[:n_out], 100*numpy.ones((1,34-n_out)))) 
@@ -164,7 +181,7 @@ class MLPPredictor(Predictor):
     (defined as MLPClassifier in classifiers.py)
     """
 
-    def __init__(self, fname, mux, stdx, muy, stdy):
+    def __init__(self, fname, mux, stdx, muy, stdy, lagged=False):
         """
         :type fname: string.
         :param fname: Filename (with path) containing the classifier definition.
@@ -183,7 +200,8 @@ class MLPPredictor(Predictor):
         """
         self.classifier = MLPClassifier.init_from_file(fname)
         self.set_up_means(mux, stdx, muy, stdy)
-
+        self.set_up_lagged(lagged)
+        
     def predict(self, x, n_out=34):
         """
         :type x: numpy.array
@@ -200,9 +218,11 @@ class MLPPredictor(Predictor):
         cols = [1] + list(range(3, x.shape[1]))
 
         x = x[:, cols]
-        x_norm = (x - self.mux) * 1. / self.stdx
-        x_norm.reshape(1, -1)
+        x_t_norm = (x - self.mux) * 1. / self.stdx
+        x_t_norm.reshape(1, -1)
 
+        x_norm = self.get_x(x_t_norm)
+        
         if n_out < 34:
             return numpy.hstack((self.classifier.predict(x_norm) * self.stdy[:n_out] + self.muy[:n_out],  1000*numpy.ones((1,34-n_out))))
         else:
@@ -213,7 +233,7 @@ class RecurrentMLPPredictor(Predictor):
     (defined as MLPClassifier in classifiers.py)
     """
 
-    def __init__(self, fname, mux, stdx, muy, stdy):
+    def __init__(self, fname, mux, stdx, muy, stdy, lagged=False):
         """
         :type fname: string.
         :param fname: Filename (with path) containing the classifier definition.
@@ -232,6 +252,7 @@ class RecurrentMLPPredictor(Predictor):
         """
         self.classifier = RecurrentMLP.init_from_file(fname)
         self.set_up_means(mux, stdx, muy, stdy)
+        self.set_up_lagged(lagged)
 
     def predict(self, x):
         """
@@ -279,7 +300,8 @@ class RNNPredictor(Predictor):
         """
         self.classifier = RNNClassifier.init_from_file(fname)
         self.set_up_means(mux, stdx, muy, stdy)
-
+        self.set_up_lagged(lagged)
+        
     def predict(self, x, n_out=34):
         """
         :type x: numpy.array
@@ -296,9 +318,11 @@ class RNNPredictor(Predictor):
         cols = [1] + list(range(3, x.shape[1]))
 
         x = x[:,:, cols]
-        x_norm = (x - self.mux) * 1. / self.stdx
-        x_norm.reshape(1,1, -1)
+        x_t_norm = (x - self.mux) * 1. / self.stdx
+        x_t_norm.reshape(1,1, -1)
 
+        x_norm = self.get_x(x_t_norm)
+        
         if n_out < 34:
             return numpy.hstack((self.classifier.predict_one(x_norm) * self.stdy[:n_out] + self.muy[:n_out],  1000*numpy.ones((1,34-n_out))))
         else:
@@ -310,7 +334,7 @@ class ResidualPredictor(Predictor):
     (defined as MLPClassifier in classifiers.py)
     """
 
-    def __init__(self, fname, mux, stdx, muy, stdy):
+    def __init__(self, fname, mux, stdx, muy, stdy, lagged=False):
         """
         :type fname: string.
         :param fname: Filename (with path) containing the classifier definition.
@@ -329,6 +353,7 @@ class ResidualPredictor(Predictor):
         """
         self.classifier = ResidualMLPClassifier.init_from_file(fname)
         self.set_up_means(mux, stdx, muy, stdy)
+        self.set_up_lagged(lagged)
 
     def predict(self, x, n_out=34):
         """
@@ -344,11 +369,13 @@ class ResidualPredictor(Predictor):
             x = numpy.asarray(x, dtype=theano.config.floatX)
 
         cols = [1] + list(range(3, x.shape[1]))
-
+        
         x = x[:, cols]
-        x_norm = (x - self.mux) * 1. / self.stdx
-        x_norm.reshape(1, -1)
+        x_t_norm = (x - self.mux) * 1. / self.stdx
+        x_t_norm.reshape(1, -1)
 
+        x_norm = self.get_x(x_t_norm)
+        
         if n_out < 34:
             return numpy.hstack((self.classifier.predict(x_norm) * self.stdy[:n_out] + self.muy[:n_out],  1000*numpy.ones((1,34-n_out))))
         else:
@@ -361,7 +388,7 @@ class UnityMessenger(object):
     Opens a ZMQ socket to communicate with c++ Unity program
     """
 
-    def __init__(self, fname, mux, stdx, muy, stdy, classifier_type, port=5555, n_out=34, gmm_prediction=False):
+    def __init__(self, fname, mux, stdx, muy, stdy, classifier_type, port=5555, n_out=34, gmm_prediction=False, lagged=False):
         """
         :type fname: string.
         :param fname: Filename (with path) containing the classifier definition.
@@ -399,11 +426,11 @@ class UnityMessenger(object):
             self.predictor = RNNPredictor(fname, mux, stdx, muy, stdy)
             self.recurrent = True
         elif classifier_type == classifier_types[1]:
-            self.predictor = FNNPredictor(fname, mux, stdx, muy, stdy, gmm_prediction=self.gmm_prediction)
+            self.predictor = FNNPredictor(fname, mux, stdx, muy, stdy, gmm_prediction=self.gmm_prediction, lagged=lagged)
             self.recurrent = False
         elif classifier_type == classifier_types[2]:
             assert not self.gmm_prediction, "GMM prediction not available in this mode"
-            self.predictor = MLPPredictor(fname, mux, stdx, muy, stdy)
+            self.predictor = MLPPredictor(fname, mux, stdx, muy, stdy, lagged=lagged)
             self.recurrent = False
         elif classifier_type == classifier_types[3]:
             assert not self.gmm_prediction, "GMM prediction not available in this mode"
@@ -416,7 +443,7 @@ class UnityMessenger(object):
         elif classifier_type == classifier_types[5]:
             assert not self.gmm_prediction, "GMM prediction not avaiable in this mode"
             self.recurrent = False
-            self.predictor = ResidualPredictor(fname, mux, stdx, muy, stdy)
+            self.predictor = ResidualPredictor(fname, mux, stdx, muy, stdy, lagged=lagged)
         else:
             raise NotImplementedError
 
@@ -443,17 +470,19 @@ class UnityMessenger(object):
 
 if __name__ == '__main__':
     port = 5555
-    fname = "network_output/residual_mlp_classifier_n_hidden_[150,100]_sigmoid_relu_epoch_340.json"
+    fname = "network_output/residual_mlp_classifier_n_hidden_[[150, 150],[100, 100],[80, 80],[50, 50]]_epoch_1570.json"
     n_out = 30
-    classifier_type = 'Residual'
+    classifier_type = 'Residual'  
 
+#    x_info = numpy.genfromtxt('sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv',delimiter=',')
+#    y_info = numpy.genfromtxt('sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv', delimiter=',')
     x_info = numpy.genfromtxt('mux_stdx_n_16_n_impulse_2000_5.csv', delimiter=',')
     y_info = numpy.genfromtxt('muy_stdy_n_16_n_impulse_2000_5.csv', delimiter=',')
 #    x_info = numpy.genfromtxt('mux_stdx_n_13_n_impulse_2000_5.csv', delimiter=',')
 #    y_info = numpy.genfromtxt('muy_stdy_n_13_n_impulse_2000_5.csv', delimiter=',')
-#    x_info = numpy.genfromtxt('mux_stdx_n_13.csv', delimiter=',')
-#    y_info = numpy.genfromtxt('muy_stdy_n_13.csv', delimiter=',')
-
+    #x_info = numpy.genfromtxt('mux_stdx_n_13.csv', delimiter=',')
+    #y_info = numpy.genfromtxt('muy_stdy_n_13.csv', delimiter=',')
+    lagged = False
     gmm_prediction = False
     mux = x_info[0]
     stdx = x_info[1]
@@ -461,5 +490,5 @@ if __name__ == '__main__':
     muy = y_info[0]
     stdy = y_info[1]
     messenger = UnityMessenger(
-        fname, mux, stdx, muy, stdy, classifier_type, port=port, n_out=n_out, gmm_prediction=gmm_prediction)
+        fname, mux, stdx, muy, stdy, classifier_type, port=port, n_out=n_out, gmm_prediction=gmm_prediction, lagged=lagged)
     messenger.listen()
