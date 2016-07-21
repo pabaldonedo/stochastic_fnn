@@ -26,14 +26,13 @@ def main():
     assert network_type in network_types
 
     load_means_from_file = True
-    sampled_clipped = True
-    lagged = False
+    sampled_clipped = False
+    lagged = True
     if sampled_clipped:
         print "WARNING USING CLIPPED"
 
-#    x_info_file = 'mux_stdx_lagged_n_16.csv'
-#    x_info_file = 'sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv'
-    x_info_file = 'mux_stdx_n_16_n_impulse_2000_5.csv'
+    x_info_file = 'sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv'
+    #x_info_file = 'mux_stdx_n_16_n_impulse_2000_5.csv'
 #    y_info_file = 'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv'
     y_info_file = 'muy_stdy_n_16_n_impulse_2000_5.csv'
 
@@ -133,6 +132,9 @@ def main():
     if load_means_from_file:
         mux = x_info[0]
         stdx = x_info[1]
+        if lagged:
+            mux = np.hstack((mux, mux))
+            stdx = np.hstack((stdx, stdx))
     else:
         mux = np.mean(x, axis=0)
         stdx = np.std(x, axis=0)
@@ -240,7 +242,7 @@ def main():
 
     else:
         network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
-            "_bsize_{5}_method_{6}_bn_{7}_dropout_{8}{9}".\
+            "_bsize_{5}_method_{6}_bn_{7}_dropout_{8}{9}_lagged_{10}".\
             format(
                 'mlp_classifier' if network_type is network_types[
                     0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier',
