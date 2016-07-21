@@ -23,6 +23,8 @@ from util import get_activation_function
 from util import get_log_likelihood
 from util import get_no_stochastic_log_likelihood
 import warnings
+from lbn import ResidualLBN
+from lbn import LBNOutputLayer
 
 
 class Classifier(object):
@@ -493,6 +495,211 @@ class Classifier(object):
                                 batch_normalization=False if 'batch_normalization'
                                 not in network_properties.keys() else
                                 network_properties['batch_normalization'])
+
+        return loaded_classifier
+
+
+class ResidualClassifier(Classifier):
+
+    def parse_inputs(self, n_in, n_out,
+                     mlp_activation_names, lbn_n_hidden,
+                     det_activations, stoch_activations, stoch_n_hidden,
+                     log, likelihood_precision,
+                     noise_type, batch_normalization):
+        """Checks the type of the inputs and initializes instance variables.
+
+        :type n_in: int.
+        :param n_in: network input dimensionality.
+
+        :type n_out: int.
+        :param n_out: network output dimensionality.
+
+        :type mlp_activation_names: list of strings.
+        :param mlp_activation_names: names of activation functions in bone MLPs.
+
+        :type lbn_n_hidden: list of ints.
+        :param lbn_n_hidden: dimensionalities of hidden layers in LBN network.
+
+        :type det_activations: list of strings.
+        :param det_activations: names of activation functions in deterministic part of
+                                                                    LBN network layers.
+
+        :type stoch_activations: list of strings.
+        :param stoch_activations: names of activation functions in the MLP used in
+                                           the tochastic part of LBN network layer.
+
+        :type stoch_n_hidden: list of ints.
+        :param stoch_activations: dimensionality of hidden layers in the MLP used in
+                                  the stochastic part of LBN layer. Check LBN docs
+                                  for more details.
+
+        :type log: logging instance.
+        :param log: log handler.
+
+        :type likelihood_precision: int, float, double.
+        :param likelihood_precision: precision parameter in log-likelihood function.
+                                     Check util docs for more details.
+
+        :type noise_type: string.
+        :param noise_type: type of noise in the network. Can be "additive" or "multiplicative".
+        """
+
+        self.log = log
+        if self.log is None:
+            logging.basicConfig(level=logging.INFO)
+            self.log = logging.getLogger()
+
+        assert type(
+            n_in) is IntType, "n_in must be an integer: {0!r}".format(n_in)
+
+        assert type(
+            n_out) is IntType, "n_out must be an integer: {0!r}".format(n_out)
+
+        assert type(lbn_n_hidden) is ListType, "lbn_n_hidden must be a list: {0!r}".format(
+            lbn_n_hidden)
+        assert type(det_activations) is ListType, "det_activations must be a list: {0!r}".format(
+            det_activations)
+        assert type(stoch_activations) is ListType, "stoch_activations must be a list: {0!r}". format(
+            stoch_activations)
+        assert type(stoch_n_hidden) is ListType, "stoch_n_hidden must be a list: {0!r}". format(
+            stoch_n_hidden)
+        assert type(batch_normalization) is bool, "batch_normalization must be bool. Given: {0!r}".format(
+            batch_normalization)
+
+        allowed_noise = ['multiplicative', 'additive']
+        assert noise_type in allowed_noise, "noise_type must be one of {0!r}. Provided: {1!r}".format(
+            allowed_noise, noise_type)
+
+        self.batch_normalization = batch_normalization
+        self.noise_type = noise_type
+        self.lbn_n_hidden = lbn_n_hidden
+        self.det_activations = det_activations
+        self.stoch_activations = stoch_activations
+        self.n_in = n_in
+        self.stoch_n_hidden = stoch_n_hidden
+        self.likelihood_precision = likelihood_precision
+        self.n_out = n_out
+
+    def __init__(self,  n_in, n_out, lbn_n_hidden,
+                 det_activations, stoch_activations, stoch_n_hidden=[-1], log=None, weights=None,
+                 likelihood_precision=1, noise_type='multiplicative', batch_normalization=False):
+
+        self.x = T.matrix('x', dtype=theano.config.floatX)
+        self.parse_inputs(n_in, n_out, lbn_n_hidden,
+                          det_activations, stoch_activations, stoch_n_hidden, log, likelihood_precision,
+                          noise_type, batch_normalization)
+        self.m = T.lscalar('M')
+
+        lbns = []
+        params = []
+        for i, h in self.lbn_n_hidden:
+            if i == 0:
+                this_lbn = ResidualLBN(n_in, self.h,
+                                       -1,
+                                       h,
+                                       self.stoch_activations,
+                                       input_var=self.x,
+                                       layers_info=None if weights is None else
+                                       weights['lbn'][i]['layers'],
+                                       likelihood_precision=self.likelihood_precision,
+                                       batch_normalization=self.batch_normalization,
+                                       with_output_layer=False,
+                                       m=self.m)
+
+            else:
+                this_lbn = ResidualLBN(n_in, self.h,
+                                       -1,
+                                       h,
+                                       self.stoch_activations,
+                                       input_var=lbns[i - 1].output,
+                                       layers_info=None if weights is None else
+                                       weights['lbn'][i]['layers'],
+                                       likelihood_precision=self.likelihood_precision,
+                                       batch_normalization=self.batch_normalization,
+                                       with_output_layer=False,
+                                       m=self.m)
+
+            params.append(this_lbn.params)
+            lbns.append(this_lbn)
+
+        linear_activation = get_activation_function('linear')
+        self.output_layer = LBNOutputLayer(np.random.RandomState(0), lbns[-1].output, self.mlp_n_hidden[-1][-1], n_out, linear_activation, 'Linear', V_values=weights['output_layer']['W'],
+                                           timeseries_layer=False,
+                                           batch_normalization=self.batch_normalization,
+                                           gamma_values=None if weights is None or 'gamma_values' not in layers_info[
+            'output_layer'].keys() else weights['output_layer']['gamma_values'],
+            beta_values=None if weights is None or 'beta_values' not in layers_info[
+            'output_layer'].keys() else weights['output_layer']['beta_values'],
+            epsilon=1e-12 if weights is None or 'epsilon' not in weights[
+            'output_layer'].keys() else weights['output_layer']['epsilon'],
+            fixed_means=False,
+            dropout=False, no_bias=False)
+
+        self.output = self.output_layer.output
+
+        self.predict = theano.function(
+            inputs=[self.x, self.m], outputs=self.output)
+
+    def generate_saving_string(self):
+        """Generate json representation of network parameters"""
+        output_string = "{\"network_properties\":"
+        output_string += json.dumps({"n_in": self.n_in, "n_out": self.n_out,
+                                     "lbn_n_hidden": self.lbn_n_hidden,
+                                     "det_activations": self.det_activations,
+                                     "stoch_activations": self.stoch_activations,
+                                     "likelihood_precision": self.likelihood_precision,
+                                     "noise_type": self.noise_type,
+                                     "batch_normalization": self.batch_normalization})
+        output_string += ",\"layers\":{ \"lbn\": ["
+        for i, l in enumerate(self.lbns):
+            if i > 0:
+                output_string += ","
+            output_string += l.generate_saving_string()
+        output_string += "]"
+        output_string += ",\"output_layer\":"
+        buffer_dict = {"n_in": self.output_layer.n_in, "n_out": self.output_layer.n_out,
+                       "activation": self.output_layer.activation_name,
+                       "W": self.output_layer.W.get_value().tolist(),
+                       "b": self.output_layer.b.get_value().tolist(),
+                       "timeseries": self.output_layer.timeseries}
+
+        if self.batch_normalization:
+            buffer_dict[
+                'gamma_values'] = self.output_layer.gamma.get_value().tolist()
+            buffer_dict[
+                'beta_values'] = self.output_layer.beta.get_value().tolist()
+            buffer_dict['epsilon'] = self.output_layer.epsilon
+
+        output_string += json.dumps(buffer_dict)
+
+        output_string += "}}"
+
+        return output_string
+
+    @classmethod
+    def init_from_file(cls, fname, log=None):
+        """Class method that loads network using information in json file fname
+
+        :type fname: string.
+        :param fname: filename (with path) containing network information.
+
+        :type log: logging instance, None.
+        :param log: logging instance to be used by the classifier.
+        """
+        with open(fname, 'r') as f:
+            network_description = json.load(f)
+
+        network_properties = network_description['network_properties']
+        loaded_classifier = cls(network_properties['n_in'],
+                                network_properties['n_out'],
+                                network_properties['lbn_n_hidden'],
+                                network_properties['lbn_n_out'],
+                                network_properties['det_activations'],
+                                network_properties['stoch_activations'],
+                                network_properties['likelihood_precision'],
+                                log=log,
+                                weights=network_description['layers'],
+                                noise_type=network_properties['noise_type'])
 
         return loaded_classifier
 
@@ -1345,7 +1552,7 @@ class ResidualMLPClassifier(object):
         self.predict = theano.function(
             inputs=[self.x], outputs=self.output,
             givens=self.givens_dict)
-	self.compute_error = compute_error = theano.function(
+        self.compute_error = compute_error = theano.function(
             inputs=[self.x, self.y], outputs=self.get_cost(), givens=self.givens_dict)
 
     def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0, test_log_likelihood_constant=None):
@@ -1365,7 +1572,6 @@ class ResidualMLPClassifier(object):
 
         flat_params = flatten(self.params)
         cost = self.get_cost()
-        
 
         if sample_axis == 0:
             seq_length = 1
@@ -1406,8 +1612,8 @@ class ResidualMLPClassifier(object):
 
         opt.fit(self.x, self.y, x, y, b_size, cost, flat_params, n_epochs,
                 self.compute_error, self.get_call_back(save_every, fname, epoch0,
-                                                  log_likelihood_constant=log_likelihood_constant,
-                                                  test_log_likelihood_constant=test_log_likelihood_constant),
+                                                       log_likelihood_constant=log_likelihood_constant,
+                                                       test_log_likelihood_constant=test_log_likelihood_constant),
                 extra_train_givens=self.givens_dict,
                 x_test=x_test, y_test=y_test,
                 chunk_size=chunk_size,

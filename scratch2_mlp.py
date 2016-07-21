@@ -19,22 +19,22 @@ def main():
     load_idx = False
     idx_train_file = None
     idx_test_file = None
-    assert not (load_idx and idx_file is None)
+    assert not (load_idx and idx_train_file is None)
 
     network_types = ['mlp', 'residual', 'bone_residual']
 
     assert network_type in network_types
 
     load_means_from_file = True
-    sampled_clipped = False
-    lagged = True
+    sampled_clipped = True
+    lagged = False
     if sampled_clipped:
         print "WARNING USING CLIPPED"
 
     x_info_file = 'sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv'
     #x_info_file = 'mux_stdx_n_16_n_impulse_2000_5.csv'
-#    y_info_file = 'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv'
-    y_info_file = 'muy_stdy_n_16_n_impulse_2000_5.csv'
+    y_info_file = 'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv'
+#    y_info_file = 'muy_stdy_n_16_n_impulse_2000_5.csv'
 
     # mean and std files:
     x_info = np.asarray(np.genfromtxt(
@@ -189,7 +189,7 @@ def main():
         n_out = y.shape[1]
 
     print "Data ready to go"
-    mlp_activation_names = [['sigmoid', 'sigmoid']] * 2  # , 'sigmoid']
+    mlp_activation_names = [['relu', 'relu']] * 2  # , 'sigmoid']
     mlp_n_hidden = [[150, 100], [50, 50]]  # , [80, 80], [50, 50]]  # , 50]
     likelihood_precision = 0.1
     bone_n_hidden = [11, 11]

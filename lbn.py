@@ -17,9 +17,10 @@ from util import init_bn
 class LBNOutputLayer(object):
 
     def __init__(self, rng, input_var, n_in, n_out, activation, activation_name, V_values=None,
+                 b_values=None,
                  timeseries_layer=False,
                  batch_normalization=False, gamma_values=None, beta_values=None, epsilon=1e-12,
-                 fixed_means=False, stdb=None, mub=None):
+                 fixed_means=False, stdb=None, mub=None, no_bias=True):
         """
         LBN output layer.
         :type rng: numpy.random.RandomState.
@@ -58,12 +59,18 @@ class LBNOutputLayer(object):
         V_values = get_weight_init_values(
             n_in, n_out, activation=activation, rng=rng, W_values=V_values)
 
+        b_values = get_bias_init_values(n_out, b_values=b_values)
+
+        if not no_bias:
+            self.b = theano.shared(value=b_values, name='b', borrow=True)
         V = theano.shared(value=V_values, name='V', borrow=True)
 
         self.n_in = n_in
         self.n_out = n_out
         self.W = V
         self.params = [self.W]
+        if not no_bias:
+            self.params += self.b
         self.activation = activation
         self.activation_name = activation_name
         self.timeseries = timeseries_layer
@@ -88,7 +95,10 @@ class LBNOutputLayer(object):
     def timeseries_layer(self):
         def t_step(x):
             def h_step(x):
+
                 a = T.dot(x, self.W.T)
+                if not self.no_bias:
+                    a += self.b
                 return a
 
             a, _ = theano.scan(h_step, sequences=x)
@@ -118,6 +128,8 @@ class LBNOutputLayer(object):
     def feedforward_layer(self):
         def h_step(x):
             a = T.dot(x, self.W.T)
+            if not self.no_bias:
+                a += self.b
             return a
 
         self.a, _ = theano.scan(h_step, sequences=self.input)
@@ -623,7 +635,9 @@ class StochasticInterface(object):
                  log=None,
                  input_var=None,
                  likelihood_precision=1.,
-                 batch_normalization=False):
+                 batch_normalization=False,
+                 with_output_layer=True,
+                 m=None):
         """
         :type n_in: int.
         :param n_in: input dimensionality of the network.
@@ -670,12 +684,16 @@ class StochasticInterface(object):
             else:
                 self.y = T.matrix('y', dtype=theano.config.floatX)
 
-
         self.timeseries_network = timeseries_network
         self.trng = T.shared_randomstreams.RandomStreams()
         self.rng = np.random.RandomState()
-        self.m = T.lscalar('M')
+        if m is None:
+            self.m = T.lscalar('M')
+        else:
+            self.m = m
         self.log = log
+        self.with_output_layer = with_output_layer
+
         if self.log is None:
             self.log = logging.getLogger()
         self.parse_properties(n_in, n_hidden, n_out, det_activations, stoch_activations,
@@ -686,6 +704,18 @@ class StochasticInterface(object):
                           self.stoch_activation_names, self.stoch_n_hidden))
 
         self.define_network(layers_info=layers_info)
+        self.predict = theano.function(
+            inputs=[self.x, self.m], outputs=self.output)
+        self.log_likelihood = get_log_likelihood(
+            self.output, self.y, self.likelihood_precision, self.timeseries_network)
+        self.regulizer_L2 = T.zeros(1)
+        self.regulizer_L1 = T.zeros(1)
+        for l in self.params:
+            for p in l:
+                self.regulizer_L2 += (p**2).sum()
+                self.regulizer_L1 += p.sum()
+
+        self.log.info('LBN Network defined.')
 
     def parse_properties(self, n_in, n_hidden, n_out, det_activations, stoch_activations,
                          stoch_n_hidden, likelihood_precision, batch_normalization):
@@ -761,7 +791,7 @@ class StochasticInterface(object):
                                                                batch_normalization=self.batch_normalization,
                                                                batch_normalization_info=None if layers_info is None or 'batch_normalization' not in layers_info[
                                                                    'hidden_layers'][i]['LBNlayer'].keys() else layers_info['hidden_layers'][i]['LBNlayer']['batch_normalization'])
-                                                               
+
             else:
                 self.hidden_layers[i] = self.hidden_layer_type(self.rng, self.trng,
                                                                self.hidden_layers[
@@ -785,73 +815,65 @@ class StochasticInterface(object):
                                                                batch_normalization=self.batch_normalization,
                                                                batch_normalization_info=None if layers_info is None or 'batch_normalization' not in layers_info[
                                                                    'hidden_layers'][i]['LBNlayer'].keys() else layers_info['hidden_layers'][i]['LBNlayer']['batch_normalization'])
-                                                               
 
             self.params.append(self.hidden_layers[i].params)
-        if not self.timeseries_network:
-            self.output_layer = self.output_layer_type(self.rng, self.hidden_layers[-1].output,
-                                                       self.n_hidden[-1],
-                                                       self.n_out, self.det_activation[
+
+        if self.with_output_layer:
+            if not self.timeseries_network:
+                self.output_layer = self.output_layer_type(self.rng, self.hidden_layers[-1].output,
+                                                           self.n_hidden[-1],
+                                                           self.n_out, self.det_activation[
                                                            -1],
-                                                       self.det_activation_names[
+                                                           self.det_activation_names[
                                                            -1],
-                                                       V_values=None
-                                                       if layers_info is None else np.array(
-                layers_info['output_layer']['LBNlayer']
-                ['W']),
-                timeseries_layer=self.timeseries_network,
-                batch_normalization=self.batch_normalization,
-                gamma_values=None if layers_info is None or 'batch_normalization' not in layers_info['output_layer']['LBNlayer'].keys() else layers_info['output_layer']['LBNlayer'][
+                                                           V_values=None
+                                                           if layers_info is None else np.array(
+                    layers_info['output_layer']['LBNlayer']
+                    ['W']),
+                    timeseries_layer=self.timeseries_network,
+                    batch_normalization=self.batch_normalization,
+                    gamma_values=None if layers_info is None or 'batch_normalization' not in layers_info['output_layer']['LBNlayer'].keys() else layers_info['output_layer']['LBNlayer'][
                     'batch_normalization']['gamma_values'],
-                beta_values=None if layers_info is None or 'batch_normalization' not in layers_info['output_layer']['LBNlayer'].keys() else layers_info['output_layer']['LBNlayer'][
+                    beta_values=None if layers_info is None or 'batch_normalization' not in layers_info['output_layer']['LBNlayer'].keys() else layers_info['output_layer']['LBNlayer'][
                     'batch_normalization']['beta_values'],
-                epsilon=1e-12 if layers_info is None or 'batch_normalization' not in layers_info['output_layer']['LBNlayer'].keys() else layers_info['output_layer']['LBNlayer'][
+                    epsilon=1e-12 if layers_info is None or 'batch_normalization' not in layers_info['output_layer']['LBNlayer'].keys() else layers_info['output_layer']['LBNlayer'][
                     'batch_normalization']['epsilon'],
-                fixed_means=None if layers_info is None or 'batch_normalization' not in layers_info['output_layer']['LBNlayer'].keys() else layers_info['output_layer']['LBNlayer'][
+                    fixed_means=None if layers_info is None or 'batch_normalization' not in layers_info['output_layer']['LBNlayer'].keys() else layers_info['output_layer']['LBNlayer'][
                     'batch_normalization']['fixed_means'],
-                stdb=None if layers_info is None or 'batch_normalization' not in layers_info['output_layer']['LBNlayer'].keys() else layers_info['output_layer']['LBNlayer'][
+                    stdb=None if layers_info is None or 'batch_normalization' not in layers_info['output_layer']['LBNlayer'].keys() else layers_info['output_layer']['LBNlayer'][
                     'batch_normalization']['stdb'],
-                mub=None if layers_info is None or 'batch_normalization' not in layers_info['output_layer'][
+                    mub=None if layers_info is None or 'batch_normalization' not in layers_info['output_layer'][
                     'LBNlayer'].keys() else layers_info['output_layer']['LBNlayer']['batch_normalization']['mub'])
 
-        else:
-            self.output_layer = self.hidden_layer_type(self.rng, self.trng,
-                                                       self.hidden_layers[-1].output,
-                                                       self.n_hidden[
-                                                           -1], self.n_out, self.det_activation[-1],
-                                                       self.stoch_n_hidden, self.stoch_activation,
-                                                       det_activation_name=self.det_activation_names[
-                                                           -1],
-                                                       stoch_activation_names=self.stoch_activation_names,
-                                                       det_W=None if layers_info is None else
-                                                       np.array(layers_info['output_layer']['LBNlayer']
-                                                                ['detLayer']['W']),
-                                                       det_b=None if layers_info is None else
-                                                       np.array(layers_info['output_layer']['LBNlayer']
-                                                                ['detLayer']['b']),
-                                                       stoch_mlp_info=None if layers_info is None else
-                                                       layers_info['output_layer'][
-                                                           'LBNlayer']['stochLayer'],
-                                                       timeseries_layer=self.timeseries_network,
-                                                       batch_normalization=self.batch_normalization,
-                                                       batch_normalization_info=None if layers_info is None or 'batch_normalization' not in layers_info[
-                                                           'output_layer']['LBNlayer'].keys() else layers_info['output_layer']['LBNlayer']['batch_normalization'])
+            else:
+                self.output_layer = self.hidden_layer_type(self.rng, self.trng,
+                                                           self.hidden_layers[
+                                                               -1].output,
+                                                           self.n_hidden[
+                                                               -1], self.n_out, self.det_activation[-1],
+                                                           self.stoch_n_hidden, self.stoch_activation,
+                                                           det_activation_name=self.det_activation_names[
+                                                               -1],
+                                                           stoch_activation_names=self.stoch_activation_names,
+                                                           det_W=None if layers_info is None else
+                                                           np.array(layers_info['output_layer']['LBNlayer']
+                                                                    ['detLayer']['W']),
+                                                           det_b=None if layers_info is None else
+                                                           np.array(layers_info['output_layer']['LBNlayer']
+                                                                    ['detLayer']['b']),
+                                                           stoch_mlp_info=None if layers_info is None else
+                                                           layers_info['output_layer'][
+                                                               'LBNlayer']['stochLayer'],
+                                                           timeseries_layer=self.timeseries_network,
+                                                           batch_normalization=self.batch_normalization,
+                                                           batch_normalization_info=None if layers_info is None or 'batch_normalization' not in layers_info[
+                                                               'output_layer']['LBNlayer'].keys() else layers_info['output_layer']['LBNlayer']['batch_normalization'])
 
-        self.params.append(self.output_layer.params)
-        self.output = self.output_layer.output
-        self.predict = theano.function(
-            inputs=[self.x, self.m], outputs=self.output)
-        self.log_likelihood = get_log_likelihood(
-            self.output, self.y, self.likelihood_precision, self.timeseries_network)
-        self.regulizer_L2 = T.zeros(1)
-        self.regulizer_L1 = T.zeros(1)
-        for l in self.params:
-            for p in l:
-                self.regulizer_L2 += (p**2).sum()
-                self.regulizer_L1 += p.sum()
-        self.tmp = theano.function(
-            inputs=[], outputs=[self.regulizer_L1, self.regulizer_L2])
-        self.log.info('LBN Network defined.')
+            self.params.append(self.output_layer.params)
+            self.output = self.output_layer.output
+
+        else:
+            self.output = self.hidden_layers[-1].output
 
     def fiting_variables(self, batch_size, train_set_x, train_set_y, test_set_x=None):
         """Sets useful variables for locating batches"""
@@ -977,7 +999,8 @@ class StochasticInterface(object):
                                      "likelihood_precision": self.likelihood_precision.tolist(),
                                      "hidden_layer_type": self.hidden_layer_type_name,
                                      "output_layer_type": self.output_layer_type_name,
-                                     "batch_normalization": self.batch_normalization})
+                                     "batch_normalization": self.batch_normalization,
+                                     "with_output_layer": self.with_output_layer})
 
         output_string += ",\"layers\":{\"hidden_layers\":["
         for k, l in enumerate(self.hidden_layers):
@@ -1029,69 +1052,73 @@ class StochasticInterface(object):
 
             output_string += "}}"
         output_string += "]"
-        output_string += ",\"output_layer\":{\"LBNlayer\":"
 
-        if self.timeseries_network:
-            det = self.output_layer.det_layer
-            stoch = self.output_layer.stoch_layer
-            output_string += "{\"detLayer\":"
-            output_string += json.dumps({"n_in": det.n_in, "n_out": det.n_out,
-                                         "activation": det.activation_name, "W": det.W.get_value().tolist(),
-                                         "b": det.b.get_value().tolist()if det.no_bias is False else None,
-                                         "no_bias": det.no_bias})
-            output_string += ", \"stochLayer\":"
-            output_string += "["
-            for i, hs in enumerate(stoch.hidden_layers):
-                if i > 0:
-                    output_string += ","
+        if self.with_output_layer:
+            output_string += ",\"output_layer\":{\"LBNlayer\":"
+
+            if self.timeseries_network:
+                det = self.output_layer.det_layer
+                stoch = self.output_layer.stoch_layer
                 output_string += "{\"detLayer\":"
-                output_string += json.dumps({"n_in": hs.n_in, "n_out": hs.n_out,
-                                             "activation": hs.activation_name, "W": hs.W.get_value().tolist(),
-                                             "b": hs.b.get_value().tolist() if hs.no_bias is False else None,
-                                             "no_bias": hs.no_bias,
-                                             "timeseries": hs.timeseries})
-                output_string += "}"
-            output_string += "]"
-            if self.batch_normalization:
-                output_string += ", \"batch_normalization:\": {\"detLayer\":"
-                output_string += json.dumps({"gamma_values":
-                                             det.gamma.get_value().tolist(),
-                                             "beta_values":
-                                             det.beta.get_value().tolist(),
-                                             "epsilon":
-                                             det.epsilon})
+                output_string += json.dumps({"n_in": det.n_in, "n_out": det.n_out,
+                                             "activation": det.activation_name, "W": det.W.get_value().tolist(),
+                                             "b": det.b.get_value().tolist()if det.no_bias is False else None,
+                                             "no_bias": det.no_bias})
                 output_string += ", \"stochLayer\":"
                 output_string += "["
                 for i, hs in enumerate(stoch.hidden_layers):
                     if i > 0:
                         output_string += ","
                     output_string += "{\"detLayer\":"
-                    output_string += json.dumps({"gamma_values":
-                                                 hs.gamma.get_value().tolist(),
-                                                 "beta_values":
-                                                 hs.beta.get_value().tolist(),
-                                                 "epsilon":
-                                                 hs.epsilon})
+                    output_string += json.dumps({"n_in": hs.n_in, "n_out": hs.n_out,
+                                                 "activation": hs.activation_name, "W": hs.W.get_value().tolist(),
+                                                 "b": hs.b.get_value().tolist() if hs.no_bias is False else None,
+                                                 "no_bias": hs.no_bias,
+                                                 "timeseries": hs.timeseries})
                     output_string += "}"
+                output_string += "]"
+                if self.batch_normalization:
+                    output_string += ", \"batch_normalization:\": {\"detLayer\":"
+                    output_string += json.dumps({"gamma_values":
+                                                 det.gamma.get_value().tolist(),
+                                                 "beta_values":
+                                                 det.beta.get_value().tolist(),
+                                                 "epsilon":
+                                                 det.epsilon})
+                    output_string += ", \"stochLayer\":"
+                    output_string += "["
+                    for i, hs in enumerate(stoch.hidden_layers):
+                        if i > 0:
+                            output_string += ","
+                        output_string += "{\"detLayer\":"
+                        output_string += json.dumps({"gamma_values":
+                                                     hs.gamma.get_value().tolist(),
+                                                     "beta_values":
+                                                     hs.beta.get_value().tolist(),
+                                                     "epsilon":
+                                                     hs.epsilon})
+                        output_string += "}"
 
-                output_string += "]}"
+                    output_string += "]}"
 
-            output_string += "}"
+                output_string += "}"
+            else:
+                output_dict = {"n_in": self.output_layer.n_in,
+                               "n_out": self.output_layer.n_out,
+                               "activation": self.output_layer.activation_name,
+                               "W": self.output_layer.W.get_value().tolist(),
+                               "timeseries": self.output_layer.timeseries}
+                if self.batch_normalization:
+                    output_dict[
+                        'gamma_values'] = self.output_layer.gamma.get_value().tolist()
+                    output_dict[
+                        'beta_values'] = self.output_layer.beta.get_value().tolist()
+                    output_dict['epsilon'] = self.output_layer.epsilon
+
+                output_string += json.dumps(output_dict)
+            output_string += "}}}"
         else:
-            output_dict = {"n_in": self.output_layer.n_in,
-                           "n_out": self.output_layer.n_out,
-                           "activation": self.output_layer.activation_name,
-                           "W": self.output_layer.W.get_value().tolist(),
-                           "timeseries": self.output_layer.timeseries}
-            if self.batch_normalization:
-                output_dict[
-                    'gamma_values'] = self.output_layer.gamma.get_value().tolist()
-                output_dict[
-                    'beta_values'] = self.output_layer.beta.get_value().tolist()
-                output_dict['epsilon'] = self.output_layer.epsilon
-
-            output_string += json.dumps(output_dict)
-        output_string += "}}}"
+            output_string += "}}"
         return output_string
 
     def save_network(self, fname):
@@ -1124,11 +1151,46 @@ class StochasticInterface(object):
                          layers_info=network_description['layers'],
                          log=log, session_name=session_name,
                          likelihood_precision=1 if 'likelihood_precision' not in network_properties.keys() else
-                         network_properties['likelihood_precision'])
+                         network_properties['likelihood_precision'],
+                         with_output_layer=network_properties['with_output_layer'] if 'with_output_layer' in network_properties.keys() else True)
 
         loaded_lbn.log.info('LBN Network loaded from file: {0}.'.format(fname))
 
         return loaded_lbn
+
+
+class ResidualLBN(StochasticInterface):
+
+    def __init__(self, n_in, n_hidden, n_out, det_activations, stoch_activations,
+                 stoch_n_hidden=[-1],
+                 layers_info=None,
+                 timeseries_network=False,
+                 log=None,
+                 input_var=None,
+                 likelihood_precision=1.,
+                 batch_normalization=False, with_output_layer=True,
+                 m=None):
+        self.hidden_layer_type = LBNHiddenLayer
+        self.output_layer_type = LBNOutputLayer
+        self.hidden_layer_type_name = "LBNHiddenLayer"
+        self.output_layer_type_name = "LBNOutputLayer"
+
+        super(ResidualLBN, self).__init__(n_in, n_hidden, n_out, det_activations, stoch_activations,
+                                          stoch_n_hidden=stoch_n_hidden,
+                                          layers_info=layers_info,
+                                          timeseries_network=timeseries_network,
+                                          log=log,
+                                          input_var=input_var,
+                                          likelihood_precision=likelihood_precision,
+                                          batch_normalization=batch_normalization, with_output_layer=with_output_layer,
+                                          m=m)
+
+    def define_network(self, layers_info=None):
+
+        super(ResidualLBN, self).define_network(layers_info=layers_info)
+
+        self.output = self.hidden_layers[-1].det_layer.activation(
+            self.hidden_layers[-1].det_layer.a + self.x) * self.hidden_layers[-1].stoch_layer.output
 
 
 class LBN(StochasticInterface):
@@ -1140,7 +1202,7 @@ class LBN(StochasticInterface):
                  log=None,
                  input_var=None,
                  likelihood_precision=1.,
-                 batch_normalization=False):
+                 batch_normalization=False, with_output_layer=True):
         self.hidden_layer_type = LBNHiddenLayer
         self.output_layer_type = LBNOutputLayer
         self.hidden_layer_type_name = "LBNHiddenLayer"
@@ -1153,7 +1215,7 @@ class LBN(StochasticInterface):
                                   log=log,
                                   input_var=input_var,
                                   likelihood_precision=likelihood_precision,
-                                  batch_normalization=batch_normalization)
+                                  batch_normalization=batch_normalization, with_output_layer=with_output_layer)
 
 
 class NoisyMLP(StochasticInterface):
