@@ -502,7 +502,7 @@ class Classifier(object):
 class ResidualClassifier(Classifier):
 
     def parse_inputs(self, n_in, n_out,
-                     mlp_activation_names, lbn_n_hidden,
+                     lbn_n_hidden,
                      det_activations, stoch_activations, stoch_n_hidden,
                      log, likelihood_precision,
                      noise_type, batch_normalization):
@@ -588,15 +588,16 @@ class ResidualClassifier(Classifier):
         self.parse_inputs(n_in, n_out, lbn_n_hidden,
                           det_activations, stoch_activations, stoch_n_hidden, log, likelihood_precision,
                           noise_type, batch_normalization)
+
         self.m = T.lscalar('M')
 
-        lbns = []
-        params = []
-        for i, h in self.lbn_n_hidden:
+        self.lbns = []
+        self.params = []
+        for i, h in enumerate(self.lbn_n_hidden):
             if i == 0:
-                this_lbn = ResidualLBN(n_in, self.h,
+                this_lbn = ResidualLBN(n_in, h,
                                        -1,
-                                       h,
+                                       self.det_activations[i],
                                        self.stoch_activations,
                                        input_var=self.x,
                                        layers_info=None if weights is None else
@@ -607,11 +608,11 @@ class ResidualClassifier(Classifier):
                                        m=self.m)
 
             else:
-                this_lbn = ResidualLBN(n_in, self.h,
+                this_lbn = ResidualLBN(n_in, h,
                                        -1,
-                                       h,
+                                       self.det_activations[i],
                                        self.stoch_activations,
-                                       input_var=lbns[i - 1].output,
+                                       input_var=self.lbns[i - 1].output,
                                        layers_info=None if weights is None else
                                        weights['lbn'][i]['layers'],
                                        likelihood_precision=self.likelihood_precision,
@@ -619,23 +620,27 @@ class ResidualClassifier(Classifier):
                                        with_output_layer=False,
                                        m=self.m)
 
-            params.append(this_lbn.params)
-            lbns.append(this_lbn)
+            self.params.append(this_lbn.params)
+            self.lbns.append(this_lbn)
 
         linear_activation = get_activation_function('linear')
-        self.output_layer = LBNOutputLayer(np.random.RandomState(0), lbns[-1].output, self.mlp_n_hidden[-1][-1], n_out, linear_activation, 'Linear', V_values=weights['output_layer']['W'],
+
+        self.output_layer = LBNOutputLayer(np.random.RandomState(0), self.lbns[-1].output,
+                                            self.lbn_n_hidden[-1][-1], n_out, linear_activation, 'Linear', V_values=None if weights is None else weights['output_layer']['W'],
                                            timeseries_layer=False,
                                            batch_normalization=self.batch_normalization,
-                                           gamma_values=None if weights is None or 'gamma_values' not in layers_info[
+                                           gamma_values=None if weights is None or 'gamma_values' not in weights[
             'output_layer'].keys() else weights['output_layer']['gamma_values'],
-            beta_values=None if weights is None or 'beta_values' not in layers_info[
+            beta_values=None if weights is None or 'beta_values' not in weights[
             'output_layer'].keys() else weights['output_layer']['beta_values'],
             epsilon=1e-12 if weights is None or 'epsilon' not in weights[
             'output_layer'].keys() else weights['output_layer']['epsilon'],
             fixed_means=False,
-            dropout=False, no_bias=False)
+            no_bias=False)
 
         self.output = self.output_layer.output
+
+        self.params.append(self.output_layer.params)
 
         self.predict = theano.function(
             inputs=[self.x, self.m], outputs=self.output)
@@ -647,6 +652,7 @@ class ResidualClassifier(Classifier):
                                      "lbn_n_hidden": self.lbn_n_hidden,
                                      "det_activations": self.det_activations,
                                      "stoch_activations": self.stoch_activations,
+                                     "stoch_n_hidden": self.stoch_n_hidden,
                                      "likelihood_precision": self.likelihood_precision,
                                      "noise_type": self.noise_type,
                                      "batch_normalization": self.batch_normalization})
@@ -689,17 +695,19 @@ class ResidualClassifier(Classifier):
         with open(fname, 'r') as f:
             network_description = json.load(f)
 
+
         network_properties = network_description['network_properties']
         loaded_classifier = cls(network_properties['n_in'],
                                 network_properties['n_out'],
                                 network_properties['lbn_n_hidden'],
-                                network_properties['lbn_n_out'],
                                 network_properties['det_activations'],
                                 network_properties['stoch_activations'],
-                                network_properties['likelihood_precision'],
+                                stoch_n_hidden=network_properties['stoch_n_hidden'],
+                                likelihood_precision=network_properties['likelihood_precision'],
                                 log=log,
                                 weights=network_description['layers'],
-                                noise_type=network_properties['noise_type'])
+                                noise_type=network_properties['noise_type'],
+                                batch_normalization=network_properties['batch_normalization'])
 
         return loaded_classifier
 

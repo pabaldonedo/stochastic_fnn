@@ -19,6 +19,7 @@ def load_data():
         x_impulse = load_files(n_impulse_2000, 'states_impulse_2000')
         x = np.vstack((x, x_impulse))
 
+    return x, y
 
 def clipper(y):
     clipped_y = np.empty(y.shape)
@@ -37,7 +38,7 @@ def clipper(y):
     #np.savetxt('clipped_controls_n_16_n_impulse_2000_5.txt', clipped_y, delimiter=',', fmt='%.7f')
 
 
-def equalizer(x, y):
+def uniform_equalizer(x, y):
     n_bins = 100
     max_y = np.max(np.abs(y[:, :-4]), axis=1)
     _, bins = np.histogram(max_y, bins=n_bins)
@@ -58,3 +59,18 @@ def equalizer(x, y):
         x_new[i, :] = x[idx]
         y_new[i, :] = y[idx]
     return x_new, y_new
+
+def normal_equalizer(x,y):
+    n_bins = 100
+    max_y =  y[np.argmax(np.abs(y[:, :-4]), axis=1), :-4]
+    _, bins = np.histogram(max_y, bins=n_bins)
+    bins[-1] += 1
+
+    idx_y = np.digitize(max_y, bins) - 1
+    assert np.min(idx_y) == 0
+    assert np.max(idx_y) == n_bins - 1
+    bin_dict = {k: [] for k in xrange(n_bins)}
+    for i, yi in enumerate(idx_y):
+        bin_dict[yi].append(i)
+
+

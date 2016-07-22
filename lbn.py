@@ -69,8 +69,10 @@ class LBNOutputLayer(object):
         self.n_out = n_out
         self.W = V
         self.params = [self.W]
-        if not no_bias:
-            self.params += self.b
+        self.no_bias = no_bias
+        
+        if not self.no_bias:
+            self.params += [self.b]
         self.activation = activation
         self.activation_name = activation_name
         self.timeseries = timeseries_layer
@@ -556,6 +558,8 @@ class HiddenLayerInterface(object):
         # If -1, same hidden units
         stoch_n_hidden = np.array(
             [i if i > -1 else n_out for i in stoch_n_hidden])
+
+
         self.stoch_layer = self.stoch_hidden_layer_type(rng, trng, self.det_layer.no_bias_output,
                                                         n_out, stoch_n_hidden, n_out,
                                                         stoch_activations, stoch_activation_names,
@@ -563,7 +567,7 @@ class HiddenLayerInterface(object):
                                                         timeseries_layer=self.timeseries_layer,
                                                         batch_normalization=self.batch_normalization,
                                                         batch_normalization_info=None if batch_normalization_info is None else
-                                                        batch_normalization_info['stochLayer']),
+                                                        batch_normalization_info['stochLayer'])
         # self.output = self.stoch_layer.output*self.det_layer.output
         self.define_output()
         self.params = self.det_layer.params + self.stoch_layer.params
@@ -592,6 +596,7 @@ class LBNHiddenLayer(HiddenLayerInterface):
                                              batch_normalization_info=batch_normalization_info)
 
     def define_output(self):
+
         self.output = self.stoch_layer.output * self.det_layer.output
 
 
@@ -728,9 +733,16 @@ class StochasticInterface(object):
             n_out) is IntType, "n_out must be an integer: {0!r}".format(n_out)
         assert type(det_activations) is ListType, "det_activations must be a list: {0!r}".format(
             det_activations)
-        assert len(n_hidden) == len(det_activations) - 1, "len(n_hidden) must be =="\
+
+        if self.with_output_layer:
+            assert len(n_hidden) == len(det_activations) - 1, "len(n_hidden) must be =="\
             " len(det_activations) - 1. n_hidden: {0!r} and det_activations: {1!r}".format(n_hidden,
-                                                                                           det_activations)
+                                                                                       det_activations)
+        else:
+            assert len(n_hidden) == len(det_activations), "len(n_hidden) must be =="\
+            " len(det_activations). n_hidden: {0!r} and det_activations: {1!r}".format(n_hidden,
+                                                                                       det_activations)
+
         assert type(stoch_activations) is ListType, "stoch_activations must be a list: {0!r}".\
             format(stoch_activations)
         assert type(stoch_n_hidden) is ListType, "stoch_n_hidden must be a list: {0!r}".format(
@@ -1182,7 +1194,8 @@ class ResidualLBN(StochasticInterface):
                                           log=log,
                                           input_var=input_var,
                                           likelihood_precision=likelihood_precision,
-                                          batch_normalization=batch_normalization, with_output_layer=with_output_layer,
+                                          batch_normalization=batch_normalization,
+                                          with_output_layer=with_output_layer,
                                           m=m)
 
     def define_network(self, layers_info=None):

@@ -369,10 +369,38 @@ def main():
 
     print "model loaded"
 
-    np.savetxt('{0}/idx_train.txt'.format(opath),
-               np.asarray(idx[:train_bucket], dtype=int), fmt='%i')
-    np.savetxt('{0}/idx_test.txt'.format(opath),
-               np.asarray(idx[train_bucket:], dtype=int), fmt='%i')
+    if not load_idx:
+        np.savetxt('{0}/idx_train.txt'.format(opath),
+                   np.asarray(idx[:train_bucket], dtype=int), fmt='%i')
+        np.savetxt('{0}/idx_test.txt'.format(opath),
+                   np.asarray(idx[train_bucket:], dtype=int), fmt='%i')
+
+    # Training  
+    if load_from_file:
+        log.info("Network loaded from file: {0}".format(loaded_network_fname))
+
+    if recurrent:
+        log.info("Network properites: n_in: {0}, n_out: {1}, mlp_n_hidden: [{2}] "\
+                "mlp_activation_names: {3} "\
+                "rnn_type: {4}, rnn_hidden: {5}, rnn_activations: {6} "\
+                "batch_normalization: {7}, dropout: {8}".format(
+                n_in, n_out,
+                ','.format(str(e) for e in mlp_n_hidden),
+                ','.format(str(e) for e in mlp_activation_names),
+                batch_normalization))
+rnn_type = "LSTM"
+    rnn_hidden = [30]
+    rnn_activations = [['sigmoid', 'tanh', 'sigmoid',
+                        'sigmoid', 'tanh'], 'linear']  # ['sigmoid', 'linear']
+
+    else:
+        log.info("Network properites: n_in: {0}, n_out: {1}, mlp_n_hidden: [{2}] "\
+                "mlp_activation_names: {3} batch_normalization: {4} "\
+                "dropout: {5}".format(
+                n_in, n_out,
+                ','.format(str(e) for e in mlp_n_hidden),
+                ','.format(str(e) for e in mlp_activation_names),
+                batch_normalization, dropout))
 
     # Training
     c.fit(x_train, y_train, n_epochs, b_size, method, fname=fname,
