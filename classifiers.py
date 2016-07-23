@@ -589,6 +589,7 @@ class ResidualClassifier(Classifier):
                           det_activations, stoch_activations, stoch_n_hidden, log, likelihood_precision,
                           noise_type, batch_normalization)
 
+        self.y = T.matrix('y', dtype=theano.config.floatX)
         self.m = T.lscalar('M')
 
         self.lbns = []
@@ -626,7 +627,7 @@ class ResidualClassifier(Classifier):
         linear_activation = get_activation_function('linear')
 
         self.output_layer = LBNOutputLayer(np.random.RandomState(0), self.lbns[-1].output,
-                                            self.lbn_n_hidden[-1][-1], n_out, linear_activation, 'Linear', V_values=None if weights is None else weights['output_layer']['W'],
+                                           self.lbn_n_hidden[-1][-1], n_out, linear_activation, 'Linear', V_values=None if weights is None else weights['output_layer']['W'],
                                            timeseries_layer=False,
                                            batch_normalization=self.batch_normalization,
                                            gamma_values=None if weights is None or 'gamma_values' not in weights[
@@ -644,6 +645,12 @@ class ResidualClassifier(Classifier):
 
         self.predict = theano.function(
             inputs=[self.x, self.m], outputs=self.output)
+
+    def get_cost(self):
+        """Returns cost value to be optimized"""
+        cost = -1. / self.x.shape[0] * get_log_likelihood(
+            self.output, self.y, self.likelihood_precision, False)
+        return cost
 
     def generate_saving_string(self):
         """Generate json representation of network parameters"""
@@ -695,15 +702,16 @@ class ResidualClassifier(Classifier):
         with open(fname, 'r') as f:
             network_description = json.load(f)
 
-
         network_properties = network_description['network_properties']
         loaded_classifier = cls(network_properties['n_in'],
                                 network_properties['n_out'],
                                 network_properties['lbn_n_hidden'],
                                 network_properties['det_activations'],
                                 network_properties['stoch_activations'],
-                                stoch_n_hidden=network_properties['stoch_n_hidden'],
-                                likelihood_precision=network_properties['likelihood_precision'],
+                                stoch_n_hidden=network_properties[
+                                    'stoch_n_hidden'],
+                                likelihood_precision=network_properties[
+                                    'likelihood_precision'],
                                 log=log,
                                 weights=network_description['layers'],
                                 noise_type=network_properties['noise_type'],

@@ -70,7 +70,7 @@ class LBNOutputLayer(object):
         self.W = V
         self.params = [self.W]
         self.no_bias = no_bias
-        
+
         if not self.no_bias:
             self.params += [self.b]
         self.activation = activation
@@ -559,7 +559,6 @@ class HiddenLayerInterface(object):
         stoch_n_hidden = np.array(
             [i if i > -1 else n_out for i in stoch_n_hidden])
 
-
         self.stoch_layer = self.stoch_hidden_layer_type(rng, trng, self.det_layer.no_bias_output,
                                                         n_out, stoch_n_hidden, n_out,
                                                         stoch_activations, stoch_activation_names,
@@ -736,12 +735,12 @@ class StochasticInterface(object):
 
         if self.with_output_layer:
             assert len(n_hidden) == len(det_activations) - 1, "len(n_hidden) must be =="\
-            " len(det_activations) - 1. n_hidden: {0!r} and det_activations: {1!r}".format(n_hidden,
-                                                                                       det_activations)
+                " len(det_activations) - 1. n_hidden: {0!r} and det_activations: {1!r}".format(n_hidden,
+                                                                                               det_activations)
         else:
             assert len(n_hidden) == len(det_activations), "len(n_hidden) must be =="\
-            " len(det_activations). n_hidden: {0!r} and det_activations: {1!r}".format(n_hidden,
-                                                                                       det_activations)
+                " len(det_activations). n_hidden: {0!r} and det_activations: {1!r}".format(n_hidden,
+                                                                                           det_activations)
 
         assert type(stoch_activations) is ListType, "stoch_activations must be a list: {0!r}".\
             format(stoch_activations)
@@ -1202,8 +1201,10 @@ class ResidualLBN(StochasticInterface):
 
         super(ResidualLBN, self).define_network(layers_info=layers_info)
 
+        Weye = T.eye(self.x.shape[1],
+                     self.hidden_layers[-1].det_layer.a.shape[1])
         self.output = self.hidden_layers[-1].det_layer.activation(
-            self.hidden_layers[-1].det_layer.a + self.x) * self.hidden_layers[-1].stoch_layer.output
+            self.hidden_layers[-1].det_layer.a + T.dot(self.x, Weye)) * self.hidden_layers[-1].stoch_layer.output
 
 
 class LBN(StochasticInterface):
