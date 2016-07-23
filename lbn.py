@@ -641,7 +641,8 @@ class StochasticInterface(object):
                  likelihood_precision=1.,
                  batch_normalization=False,
                  with_output_layer=True,
-                 m=None):
+                 m=None,
+                 stochastic_input=False):
         """
         :type n_in: int.
         :param n_in: input dimensionality of the network.
@@ -672,8 +673,16 @@ class StochasticInterface(object):
         :type precision: float or int.
         :param precision: in the Gaussian Mixture Model the value of precison diagonal matrix:
                          tau= precisoin * diag()
+
+        :type stochastic_input: bool.
+        :param stochastic_input: if False the input is supposed to be a matrix. If True the input is
+                                expected to be an already sampled version
+                                (m, n_train_samples, dimensionality)
         """
 
+        assert not (stochastic_input and input_var is None)
+        self.stochastic_input = stochastic_input
+        
         if input_var is None:
             if timeseries_network:
                 self.x = T.tensor3('x', dtype=theano.config.floatX)
@@ -687,6 +696,7 @@ class StochasticInterface(object):
                 self.y = T.tensor3('y', dtype=theano.config.floatX)
             else:
                 self.y = T.matrix('y', dtype=theano.config.floatX)
+
 
         self.timeseries_network = timeseries_network
         self.trng = T.shared_randomstreams.RandomStreams()
@@ -708,8 +718,9 @@ class StochasticInterface(object):
                           self.stoch_activation_names, self.stoch_n_hidden))
 
         self.define_network(layers_info=layers_info)
-        self.predict = theano.function(
-            inputs=[self.x, self.m], outputs=self.output)
+        if m is None:
+            self.predict = theano.function(
+                inputs=[self.x, self.m], outputs=self.output)
         self.log_likelihood = get_log_likelihood(
             self.output, self.y, self.likelihood_precision, self.timeseries_network)
         self.regulizer_L2 = T.zeros(1)
@@ -779,7 +790,8 @@ class StochasticInterface(object):
         self.params = []
         for i, h in enumerate(self.n_hidden):
             if i == 0:
-                self.hidden_layers[i] = self.hidden_layer_type(self.rng, self.trng, self.x, self.n_in,
+                if not self.stochastic_input:
+                    self.hidden_layers[i] = self.hidden_layer_type(self.rng, self.trng, self.x, self.n_in,
                                                                h, self.det_activation[
                                                                    i],
                                                                self.stoch_n_hidden, self.stoch_activation,
@@ -795,6 +807,27 @@ class StochasticInterface(object):
                                                                det_b=None if layers_info is None else
                                                                np.array(layers_info['hidden_layers'][i]
                                                                         ['LBNlayer']['detLayer']['b']),
+                                                               stoch_mlp_info=None if layers_info is None else
+                                                               layers_info['hidden_layers'][i][
+                                                                   'LBNlayer']['stochLayer'],
+                                                               timeseries_layer=self.timeseries_network,
+                                                               batch_normalization=self.batch_normalization,
+                                                               batch_normalization_info=None if layers_info is None or 'batch_normalization' not in layers_info[
+                                                                   'hidden_layers'][i]['LBNlayer'].keys() else layers_info['hidden_layers'][i]['LBNlayer']['batch_normalization'])
+                else:
+                    self.hidden_layers[i] = self.hidden_layer_type(self.rng, self.trng,
+                                                               self.x,
+                                                               self.n_in, h, self.det_activation[i],
+                                                               self.stoch_n_hidden, self.stoch_activation,
+                                                               det_activation_name=self.det_activation_names[
+                                                                   i],
+                                                               stoch_activation_names=self.stoch_activation_names,
+                                                               det_W=None if layers_info is None else
+                                                               np.array(layers_info['hidden_layers'][i]['LBNlayer']
+                                                                        ['detLayer']['W']),
+                                                               det_b=None if layers_info is None else
+                                                               np.array(layers_info['hidden_layers'][i]['LBNlayer']
+                                                                        ['detLayer']['b']),
                                                                stoch_mlp_info=None if layers_info is None else
                                                                layers_info['hidden_layers'][i][
                                                                    'LBNlayer']['stochLayer'],
@@ -1180,7 +1213,7 @@ class ResidualLBN(StochasticInterface):
                  input_var=None,
                  likelihood_precision=1.,
                  batch_normalization=False, with_output_layer=True,
-                 m=None):
+                 m=None, stochastic_input=False):
         self.hidden_layer_type = LBNHiddenLayer
         self.output_layer_type = LBNOutputLayer
         self.hidden_layer_type_name = "LBNHiddenLayer"
@@ -1195,7 +1228,7 @@ class ResidualLBN(StochasticInterface):
                                           likelihood_precision=likelihood_precision,
                                           batch_normalization=batch_normalization,
                                           with_output_layer=with_output_layer,
-                                          m=m)
+                                          m=m, stochastic_input=stochastic_input)
 
     def define_network(self, layers_info=None):
 

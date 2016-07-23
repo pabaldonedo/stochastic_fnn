@@ -606,10 +606,11 @@ class ResidualClassifier(Classifier):
                                        likelihood_precision=self.likelihood_precision,
                                        batch_normalization=self.batch_normalization,
                                        with_output_layer=False,
-                                       m=self.m)
+                                       m=self.m,
+                                       stochastic_input=False)
 
             else:
-                this_lbn = ResidualLBN(n_in, h,
+                this_lbn = ResidualLBN(self.lbn_n_hidden[i-1][-1], h,
                                        -1,
                                        self.det_activations[i],
                                        self.stoch_activations,
@@ -619,7 +620,8 @@ class ResidualClassifier(Classifier):
                                        likelihood_precision=self.likelihood_precision,
                                        batch_normalization=self.batch_normalization,
                                        with_output_layer=False,
-                                       m=self.m)
+                                       m=self.m,
+                                       stochastic_input=True)
 
             self.params.append(this_lbn.params)
             self.lbns.append(this_lbn)
