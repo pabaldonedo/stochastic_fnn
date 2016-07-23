@@ -721,7 +721,7 @@ class StochasticInterface(object):
 
         self.define_network(layers_info=layers_info)
         if m is None:
-        self.predict = theano.function(
+            self.predict = theano.function(
             inputs=[self.x, self.m], outputs=self.output)
         self.log_likelihood = get_log_likelihood(
             self.output, self.y, self.likelihood_precision, self.timeseries_network)
