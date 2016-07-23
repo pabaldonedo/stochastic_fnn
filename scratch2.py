@@ -18,6 +18,7 @@ def main():
     load_idx = False
     idx_train_file = None
     idx_test_file = None
+
     assert not (load_idx and idx_train_file is None)
 
     network_types = ['classifier', 'residual']
@@ -25,15 +26,15 @@ def main():
     assert network_type in network_types
 
     load_means_from_file = True
-    sample_clipped = True
+    sampled_clipped = False
     lagged = False
-    if sample_clipped:
+    if sampled_clipped:
         print "WARNING USING CLIPPED"
 
-    x_info_file = 'sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv'
-    #x_info_file = 'mux_stdx_n_16_n_impulse_2000_5.csv'
-    y_info_file = 'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv'
-#    y_info_file = 'muy_stdy_n_16_n_impulse_2000_5.csv'
+    #x_info_file = 'sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv'
+    x_info_file = 'mux_stdx_n_16_n_impulse_2000_5.csv'
+    #y_info_file = 'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv'
+    y_info_file = 'muy_stdy_n_16_n_impulse_2000_5.csv'
 
     # mean and std files:
     x_info = np.asarray(np.genfromtxt(
@@ -196,7 +197,7 @@ def main():
 
     # LBN definition
     lbn_n_hidden = [[150, 100], [50, 50]]  # , 100, 50]
-    det_activations = [['linear', 'linear']]*2  # , 'linear', 'linear']
+    det_activations = [['linear', 'linear']] * 2  # , 'linear', 'linear']
     stoch_activations = ['sigmoid', 'sigmoid']
     likelihood_precision = 0.1
     m = 10
@@ -212,10 +213,10 @@ def main():
     # Fit options
     b_size = 100
     epoch0 = 1
-    n_epochs = 1000
-    lr = .01
+    n_epochs = 10000
+    lr = .1
     save_every = 10  # Log saving
-    chunk_size = 5000  # Memory chunks
+    chunk_size = 10000  # Memory chunks
     batch_normalization = False  # TODO FOR RECURRENT CLASSIFIER!
     dropout = False
 
@@ -224,7 +225,7 @@ def main():
     method = {'type': opt_type, 'lr_decay_schedule': 'constant',
               'lr_decay_parameters': [lr],
               'momentum_type': 'nesterov', 'momentum': 0.01, 'b1': 0.9,
-              'b2': 0.999, 'epsilon': 1e-8, 'rho': 0.99, 'e', 1e-8,
+              'b2': 0.999, 'epsilon': 1e-8, 'rho': 0.99, 'e': 1e-8,
               'learning_rate': lr, 'dropout': dropout}
 
     # Load from file?
@@ -253,22 +254,39 @@ def main():
                        lagged)
 
     else:
-        network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
-            "_lbn_n_hidden[{5}]_det_activations_[{6}]_stoch"\
-            "_activations_[{7}]_m_{8}_noise_type_{9}_bsize_{10}"\
-            "_method_{11}_bn_{12}_dropout_{13}_lagged_{14}".\
-            format(
-                       'residualclassifer' if network_type == network_types[1] else 'classifier',
-                       n, n_impulse_2000,
-                       ','.join(str(e) for e in mlp_n_hidden),
-                       ','.join(str(e) for e in mlp_activation_names),
-                       ','.join(str(e) for e in lbn_n_hidden),
-                       ','.join(str(e) for e in det_activations),
-                       ','.join(str(e) for e in stoch_activations),
-                       m, noise_type, b_size, method['type'],
-                       batch_normalization, dropout,
-                       lagged)
-   
+        if network_type == network_types[0]:
+            network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
+                "_lbn_n_hidden[{5}]_det_activations_[{6}]_stoch"\
+                "_activations_[{7}]_m_{8}_noise_type_{9}_bsize_{10}"\
+                "_method_{11}_bn_{12}_dropout_{13}_lagged_{14}".\
+                format(
+                    'residualclassifer' if network_type == network_types[
+                           1] else 'classifier',
+                    n, n_impulse_2000,
+                    ','.join(str(e) for e in mlp_n_hidden),
+                    ','.join(str(e) for e in mlp_activation_names),
+                    ','.join(str(e) for e in lbn_n_hidden),
+                    ','.join(str(e) for e in det_activations),
+                    ','.join(str(e) for e in stoch_activations),
+                    m, noise_type, b_size, method['type'],
+                    batch_normalization, dropout,
+                    lagged)
+        elif network_type == network_types[1]:
+            network_name = "{0}_n_{1}_n_impulse_2000_{2}"\
+                "_hidden[{3}]_det_[{4}]_stoch"\
+                "_[{5}]_m_{6}_{7}_bsize_{8}"\
+                "{9}_bn_{10}_dropout_{11}_lagged_{12}".\
+                format(
+                    'residualclassifer' if network_type == network_types[
+                           1] else 'classifier',
+                    n, n_impulse_2000,
+                    ','.join(str(e) for e in lbn_n_hidden),
+                    ','.join(str(e) for e in det_activations),
+                    ','.join(str(e) for e in stoch_activations),
+                    m, noise_type, b_size, method['type'],
+                    batch_normalization, dropout,
+                    lagged)
+
     opath = "network_output/{0}".format(network_name)
     if not os.path.exists(opath):
         os.makedirs(opath)
@@ -282,11 +300,11 @@ def main():
                                                 ','.join(str(e) for e in lbn_n_hidden))
 
     loaded_network_fname = '{0}/networks/{1}_lbn_n_hidden_[{2}]'.format(opath,
-                                                    'recurrentclassifier_{0}'.format(rnn_type) if recurrent
-                                                    else 'classifier' if
-                                                    network_type == network_types[1] else,
-                                                    'residualclassifier',
-                                                    ','.join(str(e) for e in lbn_n_hidden))
+                                                                        'recurrentclassifier_{0}'.format(rnn_type) if recurrent
+                                                                        else 'classifier' if
+                                                                        network_type == network_types[1] else
+                                                                        'residualclassifier',
+                                                                        ','.join(str(e) for e in lbn_n_hidden))
     if load_different_file:
         warnings.warn(
             "CAUTION: loading log and network from different path than the saving path")
@@ -336,7 +354,7 @@ def main():
     print "LOG generated"
     if load_means_from_file:
         log.info('Loading means from x: {0}\ny: {1}'.format(
-            x_info_file, y_info_file))       
+            x_info_file, y_info_file))
     else:
         log.info('Means and stds from data')
 
@@ -365,7 +383,8 @@ def main():
             if load_from_file:
 
                 c = Classifier.init_from_file(
-                    '{0}_epoch_{1}.json'.format(loaded_network_fname, epoch0 - 1),
+                    '{0}_epoch_{1}.json'.format(
+                        loaded_network_fname, epoch0 - 1),
                     log=log)
             else:
                 c = Classifier(n_in, n_out, mlp_n_in, mlp_n_hidden,
@@ -378,14 +397,15 @@ def main():
 
             if load_from_file:
                 c = ResidualClassifier.init_from_file(
-                    '{0}_epoch_{1}.json'.format(loaded_network_fname, epoch0 - 1),
+                    '{0}_epoch_{1}.json'.format(
+                        loaded_network_fname, epoch0 - 1),
                     log=log)
             else:
                 c = ResidualClassifier(n_in, n_out, lbn_n_hidden,
-                               det_activations,
-                               stoch_activations, log=log,
-                               likelihood_precision=likelihood_precision,
-                               batch_normalization=batch_normalization)
+                                       det_activations,
+                                       stoch_activations, log=log,
+                                       likelihood_precision=likelihood_precision,
+                                       batch_normalization=batch_normalization)
 
     print "model loaded"
 
@@ -395,47 +415,46 @@ def main():
         np.savetxt('{0}/idx_test.txt'.format(opath),
                    np.asarray(idx[train_bucket:], dtype=int), fmt='%i')
 
-    # Training  
+    # Training
     if load_from_file:
         log.info("Network loaded from file: {0}".format(loaded_network_fname))
 
     if recurrent:
-        log.info("Network properties: n_in: {0}, mlp_n_hidden: [{1}], mlp_activation_names: "\
-                    "[{2}], lbn_n_hidden: [{3}], det_activations: [{4}], stoch_activations: [{5}] "\
-                    "rnn_hidden: {6}, rnn_activations: {7}, rnn_type: {8} "\
-                    "noise_type: {9}, batch_normalization: {10}".format(
-                       n_in,
-                       ','.join(str(e) for e in mlp_n_hidden),
-                       ','.join(str(e) for e in mlp_activation_names),
-                       ','.join(str(e) for e in lbn_n_hidden),
-                       ','.join(str(e) for e in det_activations),
-                       ','.join(str(e) for e in stoch_activations),
-                       rnn_hidden, rnn_activations, rnn_type
-                       noise_type, batch_normalization))
-        
+        log.info("Network properties: n_in: {0}, mlp_n_hidden: [{1}], mlp_activation_names: "
+                 "[{2}], lbn_n_hidden: [{3}], det_activations: [{4}], stoch_activations: [{5}] "
+                 "rnn_hidden: {6}, rnn_activations: {7}, rnn_type: {8} "
+                 "noise_type: {9}, batch_normalization: {10}".format(
+                     n_in,
+                     ','.join(str(e) for e in mlp_n_hidden),
+                     ','.join(str(e) for e in mlp_activation_names),
+                     ','.join(str(e) for e in lbn_n_hidden),
+                     ','.join(str(e) for e in det_activations),
+                     ','.join(str(e) for e in stoch_activations),
+                     rnn_hidden, rnn_activations, rnn_type,
+                     noise_type, batch_normalization))
+
     else:
         if network_type == network_types[0]:
-            log.info("Network properties: n_in: {0}, mlp_n_hidden: [{1}], mlp_activation_names: "\
-                    "[{2}], lbn_n_hidden: [{3}], det_activations: [{4}], stoch_activations: [{5}] "\
-                    "noise_type: {6}, batch_normalization: {6}".format(
-                       n_in,
-                       ','.join(str(e) for e in mlp_n_hidden),
-                       ','.join(str(e) for e in mlp_activation_names),
-                       ','.join(str(e) for e in lbn_n_hidden),
-                       ','.join(str(e) for e in det_activations),
-                       ','.join(str(e) for e in stoch_activations),
-                       noise_type, batch_normalization))
+            log.info("Network properties: n_in: {0}, mlp_n_hidden: [{1}], mlp_activation_names: "
+                     "[{2}], lbn_n_hidden: [{3}], det_activations: [{4}], stoch_activations: [{5}] "
+                     "noise_type: {6}, batch_normalization: {6}".format(
+                         n_in,
+                         ','.join(str(e) for e in mlp_n_hidden),
+                         ','.join(str(e) for e in mlp_activation_names),
+                         ','.join(str(e) for e in lbn_n_hidden),
+                         ','.join(str(e) for e in det_activations),
+                         ','.join(str(e) for e in stoch_activations),
+                         noise_type, batch_normalization))
 
         elif network_type == network_types[1]:
-            log.info("Network properties: n_in: {0}, "\
-                    "lbn_n_hidden: [{3}], det_activations: [{4}], stoch_activations: [{5}] "\
-                    "noise_type: {6}, batch_normalization: {6}".format(
-                       n_in,
-                       ','.join(str(e) for e in lbn_n_hidden),
-                       ','.join(str(e) for e in det_activations),
-                       ','.join(str(e) for e in stoch_activations),
-                       noise_type, batch_normalization))
-
+            log.info("Network properties: n_in: {0}, "
+                     "lbn_n_hidden: [{1}], det_activations: [{2}], stoch_activations: [{3}] "
+                     "noise_type: {4}, batch_normalization: {5}".format(
+                         n_in,
+                         ','.join(str(e) for e in lbn_n_hidden),
+                         ','.join(str(e) for e in det_activations),
+                         ','.join(str(e) for e in stoch_activations),
+                         noise_type, batch_normalization))
 
     # Training
     c.fit(x_train, y_train, m, n_epochs, b_size, method, fname=fname,
