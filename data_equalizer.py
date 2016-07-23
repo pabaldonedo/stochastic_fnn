@@ -3,7 +3,19 @@ from util import load_controls
 from util import load_files
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy.stats as stats
 
+
+def check_normal(y):
+    max_y = np.max(np.abs(y[:, :-4]), axis=1)
+
+    mu = 20
+    std = np.std(max_y)
+    x_axis = np.linspace(0, np.max(max_y))
+    normal = stats.norm.pdf(x_axis, mu, std)
+    plt.hist(max_y, normed=True, bins=100)
+    plt.plot(x_axis, normal)
+    plt.show()
 
 def load_data():
     n = 16
@@ -61,8 +73,9 @@ def uniform_equalizer(x, y):
     return x_new, y_new
 
 def normal_equalizer(x,y):
+
+    max_y = np.max(np.abs(y[:, :-4]), axis=1)
     n_bins = 100
-    max_y =  y[np.argmax(np.abs(y[:, :-4]), axis=1), :-4]
     _, bins = np.histogram(max_y, bins=n_bins)
     bins[-1] += 1
 
@@ -73,4 +86,24 @@ def normal_equalizer(x,y):
     for i, yi in enumerate(idx_y):
         bin_dict[yi].append(i)
 
+    y_new = np.zeros(y.shape)
+    x_new = np.zeros(x.shape)
+
+    mu = 20
+    std = np.std(max_y)
+    sample = np.abs(np.random.randn(x.shape[0]))*std + mu
+    sample_binned = np.digitize(sample, bins) - 1
+    for i, s in enumerate(sample_binned):
+        idx = np.random.choice(bin_dict[s])
+        x_new[i, :] = x[idx]
+        y_new[i, :] = y[idx]
+
+    return x_new, y_new
+
+
+def main():
+    x, y = load_data()
+    x_new, y_new = normal_equalizer(x, y)
+    np.savetxt('x_n_16_n_impulse_2000_5_normal_eq_mu_20.txt', x_new, delimiter=',', fmt='%.6e')
+    np.savetxt('y_n_16_n_impulse_2000_5_normal_eq_mu_20.txt', y_new, delimiter=',', fmt='%.6e')
 

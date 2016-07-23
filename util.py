@@ -21,7 +21,7 @@ def get_activation_function(activation):
     elif activation == activations[1]:
         return T.nnet.sigmoid
     elif activation == activations[2]:
-        return lambda x: x * (x > 0)
+        return T.nnet.relu
     elif activation == activations[3]:
         return lambda x: x
     else:
@@ -287,7 +287,7 @@ def get_log_likelihood(output, y, precision, timeseries, stochastic_samples=True
 
 
 def get_weight_init_values(n_in, n_out, activation=None, rng=None,
-                           W_values=None):
+                           W_values=None, activation_name=None):
     """Returns initial weights for a weight matrix.
 
     :type n_in: int.
@@ -311,16 +311,38 @@ def get_weight_init_values(n_in, n_out, activation=None, rng=None,
         if rng is None:
             rng = np.random.RandomState(0)
 
-        W_values = np.asarray(
-            rng.uniform(
+        #He et al (2016) Deep Residual Learning for Image Recognition 
+        if activation_name == "relu":
+            std = np.sqrt(2./n_in)
+            W_values = np.asarray(
+            rng.standard_normal(size=(n_out, n_in))*std,
+            dtype=theano.config.floatX
+        )
+        elif activation_name == "linear":
+            std = np.sqrt(1./n_in)
+            W_values = np.asarray(
+            rng.standard_normal(size=(n_out, n_in))*std,
+            dtype=theano.config.floatX
+        )
+        #Borot et Bengio (2010) Understanding the difficulty of training deep feedforward neural networks
+        elif activation_name == "tanh":
+            W_values = np.asarray(
+                rng.uniform(
                 low=-np.sqrt(6. / (n_in + n_out)),
                 high=np.sqrt(6. / (n_in + n_out)),
                 size=(n_out, n_in)
             ),
             dtype=theano.config.floatX
         )
-        if activation == theano.tensor.nnet.sigmoid:
-            W_values *= 4
+        elif activation_name == "sigmoid":
+            W_values = np.asarray(
+                rng.uniform(
+                low=-4*np.sqrt(6. / (n_in + n_out)),
+                high=4*np.sqrt(6. / (n_in + n_out)),
+                size=(n_out, n_in)
+            ),
+            dtype=theano.config.floatX
+        )            
     else:
         W_values = np.asarray(np.array(W_values), dtype=theano.config.floatX)
     return W_values
