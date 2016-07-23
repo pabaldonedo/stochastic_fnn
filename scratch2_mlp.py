@@ -26,15 +26,15 @@ def main():
     assert network_type in network_types
 
     load_means_from_file = True
-    sampled_clipped = True
+    sampled_clipped = False
     lagged = False
     if sampled_clipped:
         print "WARNING USING CLIPPED"
 
-    x_info_file = 'sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv'
-    #x_info_file = 'mux_stdx_n_16_n_impulse_2000_5.csv'
-    y_info_file = 'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv'
-#    y_info_file = 'muy_stdy_n_16_n_impulse_2000_5.csv'
+    #x_info_file = 'sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv'
+    x_info_file = 'mux_stdx_n_16_n_impulse_2000_5.csv'
+    #y_info_file = 'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv'
+    y_info_file = 'muy_stdy_n_16_n_impulse_2000_5.csv'
 
     # mean and std files:
     x_info = np.asarray(np.genfromtxt(
@@ -45,7 +45,7 @@ def main():
     assert not (load_means_from_file and x_info is None and y_info is None)
     # Number of datasets
     n = 16
-    n_impulse_2000 = 0
+    n_impulse_2000 = 5
 
     # RNN on top of MLP
     recurrent = False
@@ -189,8 +189,8 @@ def main():
         n_out = y.shape[1]
 
     print "Data ready to go"
-    mlp_activation_names = [['relu', 'relu']] * 2  # , 'sigmoid']
-    mlp_n_hidden = [[150, 100], [50, 50]]  # , [80, 80], [50, 50]]  # , 50]
+    mlp_activation_names = [['relu', 'relu']] * 3  # , 'sigmoid']
+    mlp_n_hidden = [[150, 100], [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
     likelihood_precision = 0.1
     bone_n_hidden = [11, 11]
     bone_activation_names = ['sigmoid', 'sigmoid']
@@ -204,7 +204,7 @@ def main():
     b_size = 100
     epoch0 = 1
     n_epochs = 10000
-    lr = .1
+    lr = .01
     save_every = 10  # Log saving
     chunk_size = None  # Memory chunks
     batch_normalization = False  # TODO
@@ -385,21 +385,17 @@ def main():
                 "rnn_type: {4}, rnn_hidden: {5}, rnn_activations: {6} "\
                 "batch_normalization: {7}, dropout: {8}".format(
                 n_in, n_out,
-                ','.format(str(e) for e in mlp_n_hidden),
-                ','.format(str(e) for e in mlp_activation_names),
+                ','.join(str(e) for e in mlp_n_hidden),
+                ','.join(str(e) for e in mlp_activation_names),
                 batch_normalization))
-rnn_type = "LSTM"
-    rnn_hidden = [30]
-    rnn_activations = [['sigmoid', 'tanh', 'sigmoid',
-                        'sigmoid', 'tanh'], 'linear']  # ['sigmoid', 'linear']
 
     else:
         log.info("Network properites: n_in: {0}, n_out: {1}, mlp_n_hidden: [{2}] "\
                 "mlp_activation_names: {3} batch_normalization: {4} "\
                 "dropout: {5}".format(
                 n_in, n_out,
-                ','.format(str(e) for e in mlp_n_hidden),
-                ','.format(str(e) for e in mlp_activation_names),
+                ','.join(str(e) for e in mlp_n_hidden),
+                ','.join(str(e) for e in mlp_activation_names),
                 batch_normalization, dropout))
 
     # Training
