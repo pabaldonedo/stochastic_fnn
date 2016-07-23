@@ -57,7 +57,8 @@ class LBNOutputLayer(object):
 
         self.input = input_var
         V_values = get_weight_init_values(
-            n_in, n_out, activation=activation, rng=rng, W_values=V_values)
+            n_in, n_out, activation=activation, rng=rng, W_values=V_values,
+            activation_name=activation_name)
 
         b_values = get_bias_init_values(n_out, b_values=b_values)
 
@@ -216,7 +217,8 @@ class DetHiddenLayer(object):
         self.activation_name = activation_name
         self.m = m
         W_values = get_weight_init_values(
-            n_in, n_out, activation=activation, rng=rng, W_values=W_values)
+            n_in, n_out, activation=activation, rng=rng, W_values=W_values,
+            activation_name=activation_name)
 
         W = theano.shared(value=W_values, name='W', borrow=True)
         b_values = get_bias_init_values(n_out, b_values=b_values)
@@ -719,8 +721,8 @@ class StochasticInterface(object):
 
         self.define_network(layers_info=layers_info)
         if m is None:
-            self.predict = theano.function(
-                inputs=[self.x, self.m], outputs=self.output)
+        self.predict = theano.function(
+            inputs=[self.x, self.m], outputs=self.output)
         self.log_likelihood = get_log_likelihood(
             self.output, self.y, self.likelihood_precision, self.timeseries_network)
         self.regulizer_L2 = T.zeros(1)

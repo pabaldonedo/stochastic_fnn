@@ -69,7 +69,8 @@ class HiddenLayer(object):
         self.activation_name = activation_name
         self.activation = activation
         W_values = get_weight_init_values(
-            n_in, n_out, activation=activation, rng=rng, W_values=W_values)
+            n_in, n_out, activation=activation, rng=rng, W_values=W_values,
+                                                        activation_name=self.activation_name)
 
         W = theano.shared(value=W_values, name='W', borrow=True)
         b_values = get_bias_init_values(n_out, b_values=b_values)
