@@ -1201,10 +1201,11 @@ class ResidualLBN(StochasticInterface):
 
         super(ResidualLBN, self).define_network(layers_info=layers_info)
 
-        Weye = T.eye(self.x.shape[1],
-                     self.hidden_layers[-1].det_layer.a.shape[1])
+        Weye = T.eye(self.x.shape[-1],
+                     self.hidden_layers[-1].det_layer.a.shape[-1])
+        aux = T.dot(self.x, Weye)
         self.output = self.hidden_layers[-1].det_layer.activation(
-            self.hidden_layers[-1].det_layer.a + T.dot(self.x, Weye)) * self.hidden_layers[-1].stoch_layer.output
+            self.hidden_layers[-1].det_layer.a + aux) * self.hidden_layers[-1].stoch_layer.output
 
 
 class LBN(StochasticInterface):
