@@ -204,7 +204,7 @@ def main():
     b_size = 100
     epoch0 = 1
     n_epochs = 10000
-    lr = .01
+    lr = .1
     save_every = 10  # Log saving
     chunk_size = None  # Memory chunks
     batch_normalization = False  # TODO
