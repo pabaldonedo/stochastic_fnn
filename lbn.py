@@ -1236,7 +1236,7 @@ class ResidualLBN(StochasticInterface):
 
         super(ResidualLBN, self).define_network(layers_info=layers_info)
 
-        if n_in == self.n_hidden[-1]
+        if n_in == self.n_hidden[-1]:
             Weye = T.eye(self.x.shape[-1],
                      self.hidden_layers[-1].det_layer.a.shape[-1])
         else:

@@ -22,6 +22,7 @@ from util import flatten
 from util import get_activation_function
 from util import get_log_likelihood
 from util import get_no_stochastic_log_likelihood
+from util import get_weight_init_values
 import warnings
 from lbn import ResidualLBN
 from lbn import LBNOutputLayer
@@ -1530,13 +1531,13 @@ class ResidualMLPClassifier(object):
                     batch_normalization=self.batch_normalization,
                     dropout=self.dropout, training=self.training)
                 
-                if layer_module.n_in == layer_module.n_hidden[-1]
-                    Weye = T.eye(layer_module.x.shape[1],
-                             layer_module.output.shape[1])
-                else:
-                    Weye_values = get_weight_init_values(layer_module.n_hidden[-1], layer_module.n_in, activation_name='linear')
-                    Weye = theano.shared(name='W', value=Weye_values, borrow=True)
-                    self.mlp_layers[i].params.apppend(Weye)
+            if layer_module.n_in == layer_module.n_hidden[-1]:
+                Weye = T.eye(layer_module.x.shape[1],
+                         layer_module.output.shape[1])
+            else:
+                Weye_values = get_weight_init_values(layer_module.n_hidden[-1], layer_module.n_in, activation_name='linear')
+                Weye = theano.shared(name='W', value=Weye_values, borrow=True)
+                layer_module.params.append(Weye)
 
             layer_module.output = layer_module.hidden_layers[-1].activation(
                 T.dot(layer_module.x, Weye) + layer_module.hidden_layers[-1].a)
