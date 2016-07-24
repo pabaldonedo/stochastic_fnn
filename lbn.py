@@ -684,7 +684,7 @@ class StochasticInterface(object):
 
         assert not (stochastic_input and input_var is None)
         self.stochastic_input = stochastic_input
-        
+
         if input_var is None:
             if timeseries_network:
                 self.x = T.tensor3('x', dtype=theano.config.floatX)
@@ -698,7 +698,6 @@ class StochasticInterface(object):
                 self.y = T.tensor3('y', dtype=theano.config.floatX)
             else:
                 self.y = T.matrix('y', dtype=theano.config.floatX)
-
 
         self.timeseries_network = timeseries_network
         self.trng = T.shared_randomstreams.RandomStreams()
@@ -722,7 +721,7 @@ class StochasticInterface(object):
         self.define_network(layers_info=layers_info)
         if m is None:
             self.predict = theano.function(
-            inputs=[self.x, self.m], outputs=self.output)
+                inputs=[self.x, self.m], outputs=self.output)
         self.log_likelihood = get_log_likelihood(
             self.output, self.y, self.likelihood_precision, self.timeseries_network)
         self.regulizer_L2 = T.zeros(1)
@@ -794,49 +793,50 @@ class StochasticInterface(object):
             if i == 0:
                 if not self.stochastic_input:
                     self.hidden_layers[i] = self.hidden_layer_type(self.rng, self.trng, self.x, self.n_in,
-                                                               h, self.det_activation[
-                                                                   i],
-                                                               self.stoch_n_hidden, self.stoch_activation,
-                                                               det_activation_name=self.det_activation_names[
-                                                                   i],
-                                                               stoch_activation_names=self.stoch_activation_names,
-                                                               m=self.m,
-                                                               det_W=None if layers_info is None else
-                                                               np.array(
-                                                                   layers_info['hidden_layers'][
-                                                                       i]['LBNlayer']['detLayer']
-                                                                   ['W']),
-                                                               det_b=None if layers_info is None else
-                                                               np.array(layers_info['hidden_layers'][i]
-                                                                        ['LBNlayer']['detLayer']['b']),
-                                                               stoch_mlp_info=None if layers_info is None else
-                                                               layers_info['hidden_layers'][i][
-                                                                   'LBNlayer']['stochLayer'],
-                                                               timeseries_layer=self.timeseries_network,
-                                                               batch_normalization=self.batch_normalization,
-                                                               batch_normalization_info=None if layers_info is None or 'batch_normalization' not in layers_info[
-                                                                   'hidden_layers'][i]['LBNlayer'].keys() else layers_info['hidden_layers'][i]['LBNlayer']['batch_normalization'])
+                                                                   h, self.det_activation[
+                                                                       i],
+                                                                   self.stoch_n_hidden, self.stoch_activation,
+                                                                   det_activation_name=self.det_activation_names[
+                                                                       i],
+                                                                   stoch_activation_names=self.stoch_activation_names,
+                                                                   m=self.m,
+                                                                   det_W=None if layers_info is None else
+                                                                   np.array(
+                                                                       layers_info['hidden_layers'][
+                                                                           i]['LBNlayer']['detLayer']
+                                                                       ['W']),
+                                                                   det_b=None if layers_info is None else
+                                                                   np.array(layers_info['hidden_layers'][i]
+                                                                            ['LBNlayer']['detLayer']['b']),
+                                                                   stoch_mlp_info=None if layers_info is None else
+                                                                   layers_info['hidden_layers'][i][
+                                                                       'LBNlayer']['stochLayer'],
+                                                                   timeseries_layer=self.timeseries_network,
+                                                                   batch_normalization=self.batch_normalization,
+                                                                   batch_normalization_info=None if layers_info is None or 'batch_normalization' not in layers_info[
+                                                                       'hidden_layers'][i]['LBNlayer'].keys() else layers_info['hidden_layers'][i]['LBNlayer']['batch_normalization'])
                 else:
                     self.hidden_layers[i] = self.hidden_layer_type(self.rng, self.trng,
-                                                               self.x,
-                                                               self.n_in, h, self.det_activation[i],
-                                                               self.stoch_n_hidden, self.stoch_activation,
-                                                               det_activation_name=self.det_activation_names[
-                                                                   i],
-                                                               stoch_activation_names=self.stoch_activation_names,
-                                                               det_W=None if layers_info is None else
-                                                               np.array(layers_info['hidden_layers'][i]['LBNlayer']
-                                                                        ['detLayer']['W']),
-                                                               det_b=None if layers_info is None else
-                                                               np.array(layers_info['hidden_layers'][i]['LBNlayer']
-                                                                        ['detLayer']['b']),
-                                                               stoch_mlp_info=None if layers_info is None else
-                                                               layers_info['hidden_layers'][i][
-                                                                   'LBNlayer']['stochLayer'],
-                                                               timeseries_layer=self.timeseries_network,
-                                                               batch_normalization=self.batch_normalization,
-                                                               batch_normalization_info=None if layers_info is None or 'batch_normalization' not in layers_info[
-                                                                   'hidden_layers'][i]['LBNlayer'].keys() else layers_info['hidden_layers'][i]['LBNlayer']['batch_normalization'])
+                                                                   self.x,
+                                                                   self.n_in, h, self.det_activation[
+                                                                       i],
+                                                                   self.stoch_n_hidden, self.stoch_activation,
+                                                                   det_activation_name=self.det_activation_names[
+                                                                       i],
+                                                                   stoch_activation_names=self.stoch_activation_names,
+                                                                   det_W=None if layers_info is None else
+                                                                   np.array(layers_info['hidden_layers'][i]['LBNlayer']
+                                                                            ['detLayer']['W']),
+                                                                   det_b=None if layers_info is None else
+                                                                   np.array(layers_info['hidden_layers'][i]['LBNlayer']
+                                                                            ['detLayer']['b']),
+                                                                   stoch_mlp_info=None if layers_info is None else
+                                                                   layers_info['hidden_layers'][i][
+                                                                       'LBNlayer']['stochLayer'],
+                                                                   timeseries_layer=self.timeseries_network,
+                                                                   batch_normalization=self.batch_normalization,
+                                                                   batch_normalization_info=None if layers_info is None or 'batch_normalization' not in layers_info[
+                                                                       'hidden_layers'][i]['LBNlayer'].keys() else layers_info['hidden_layers'][i]['LBNlayer']['batch_normalization'])
 
             else:
                 self.hidden_layers[i] = self.hidden_layer_type(self.rng, self.trng,

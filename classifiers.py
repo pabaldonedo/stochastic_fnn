@@ -610,7 +610,7 @@ class ResidualClassifier(Classifier):
                                        stochastic_input=False)
 
             else:
-                this_lbn = ResidualLBN(self.lbn_n_hidden[i-1][-1], h,
+                this_lbn = ResidualLBN(self.lbn_n_hidden[i - 1][-1], h,
                                        -1,
                                        self.det_activations[i],
                                        self.stoch_activations,
@@ -629,7 +629,7 @@ class ResidualClassifier(Classifier):
         linear_activation = get_activation_function('linear')
 
         self.output_layer = LBNOutputLayer(np.random.RandomState(0), self.lbns[-1].output,
-                                           self.lbn_n_hidden[-1][-1], n_out, linear_activation, 'Linear', V_values=None if weights is None else weights['output_layer']['W'],
+                                           self.lbn_n_hidden[-1][-1], n_out, linear_activation, 'linear', V_values=None if weights is None else weights['output_layer']['W'],
                                            timeseries_layer=False,
                                            batch_normalization=self.batch_normalization,
                                            gamma_values=None if weights is None or 'gamma_values' not in weights[

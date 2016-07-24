@@ -214,14 +214,14 @@ def main():
     b_size = 100
     epoch0 = 1
     n_epochs = 10000
-    lr = .1
+    lr = 1e-2
     save_every = 10  # Log saving
     chunk_size = 10000  # Memory chunks
     batch_normalization = False  # TODO FOR RECURRENT CLASSIFIER!
     dropout = False
 
     # Optimizer
-    opt_type = 'SGD'
+    opt_type = 'AdaDelta'
     method = {'type': opt_type, 'lr_decay_schedule': 'constant',
               'lr_decay_parameters': [lr],
               'momentum_type': 'nesterov', 'momentum': 0.01, 'b1': 0.9,
@@ -458,7 +458,6 @@ def main():
 
     # Training
     c.fit(x_train, y_train, m, n_epochs, b_size, method, fname=fname,
-          x_test=x_test, y_test=y_test,
           epoch0=epoch0, chunk_size=chunk_size,
           save_every=save_every, sample_axis=1 if recurrent else 0)
 

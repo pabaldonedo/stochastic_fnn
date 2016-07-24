@@ -237,6 +237,7 @@ class GradientBased(Optimizer):
                     if batch_logger is not None:
                         batch_logger.info(
                             'train minibatch error: {0}'.format(minibatch_avg_cost))
+
                     data_log_likelihood -= minibatch_avg_cost * this_batch_size * seq_len
                 # if chunk < n_chunks - 1:
                     # train_set_x.set_value(x_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_train.shape[0])])
