@@ -391,6 +391,8 @@ def main():
     if sampled_clipped:
         log.info("Network with samle clipped x: {0} y: {1}".format(sampled_clipped_states, sampled_clipped_controls))
 
+
+
     if recurrent:
         log.info("Network properites: n_in: {0}, n_out: {1}, mlp_n_hidden: [{2}] "\
                 "mlp_activation_names: {3} "\
@@ -415,6 +417,16 @@ def main():
             pca = cPickle.load(fid)
             x = pca.transform(x)
 
+        log.info('PCA: True from file: {0}'.format(pca_file))
+
+    else:
+        log.info("PCA: False")
+
+    if sampled_clipped:
+        log.info('Data sampled.\n States loaded from: {0}\n Controls loaded from: {1}'.format(
+                                                sampled_clipped_states, sampled_clipped_controls))
+    else:
+        log.info("Data n: {0} and n_impulse_2000: {1}".format(n, n_impulse_2000))
 
     # Training
     c.fit(x_train, y_train, n_epochs, b_size, method, fname=fname,
