@@ -3,6 +3,7 @@ import theano
 import os
 import warnings
 import pandas as pd
+import cPickle
 from util import load_states
 from util import load_controls
 from util import log_init
@@ -25,8 +26,17 @@ def main():
 
     assert network_type in network_types
 
-    load_means_from_file = True
-    sampled_clipped = False
+    use_pca = False
+    pca_file = None#'pca_mux_stdx_n_16_n_impulse_2000_5.pkl'
+
+    if use_pca:
+        assert pca_file is not None
+
+    load_means_from_file = False
+    sampled_clipped = True
+    sampled_clipped_controls = 'data/x_n_16_n_impulse_2000_5_normal_eq_mu_20.txt'
+    sampled_clipped_states = 'data/y_n_16_n_impulse_2000_5_normal_eq_mu_20.txt'
+
     lagged = False
     if sampled_clipped:
         print "WARNING USING CLIPPED"
@@ -63,7 +73,7 @@ def main():
 
     if sampled_clipped:
         y = np.asarray(pd.read_csv(
-            'data/sample_clipped_controls_n_16_n_impulse_2000_5.txt', delimiter=',',
+            sampled_clipped_controls, delimiter=',',
             header=None).values, dtype=theano.config.floatX)
     else:
         y = load_controls(n)
@@ -118,8 +128,7 @@ def main():
             y_test = y[idx_test]
 
     if sampled_clipped:
-        x = np.asarray(pd.read_csv(
-            'data/sample_clipped_states_n_16_n_impulse_2000_5.txt', delimiter=',', header=None).values, dtype=theano.config.floatX)
+        x = np.asarray(pd.read_csv(sampled_clipped_states, delimiter=',', header=None).values, dtype=theano.config.floatX)
     elif lagged:
         x = load_files(n, 'lagged_states')
         assert not n_impulse_2000 > 0
@@ -189,8 +198,8 @@ def main():
         n_out = y.shape[1]
 
     print "Data ready to go"
-    mlp_activation_names = [['relu', 'relu']] * 3  # , 'sigmoid']
-    mlp_n_hidden = [[150, 100], [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
+    mlp_activation_names = [['tanh', 'tanh']]  # , 'sigmoid']
+    mlp_n_hidden = [[150, 100]]#, [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
     likelihood_precision = 0.1
     bone_n_hidden = [11, 11]
     bone_activation_names = ['sigmoid', 'sigmoid']
@@ -229,7 +238,7 @@ def main():
     if recurrent:
 
         network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
-            "rnn_hidden_[{5}]_rnn_activations_[{6}]_bsize_{7}_method_{8}_bn_{9}_dropout_{10}_lagged_{11}".\
+            "rnn_hidden_[{5}]_rnn_activations_[{6}]_bsize_{7}_method_{8}_bn_{9}_dropout_{10}_lagged_{11}{12}".\
             format(
                        'recurrent_mlp_classifier',
                        n, n_impulse_2000,
@@ -238,11 +247,11 @@ def main():
                        ','.join(str(e) for e in rnn_hidden),
                        ','.join(str(e) for e in rnn_activations),
                        b_size, method['type'], batch_normalization, dropout,
-                       lagged)
+                       lagged, 'pca' if use_pca else '')
 
     else:
         network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
-            "_bsize_{5}_method_{6}_bn_{7}_dropout_{8}{9}_lagged_{10}".\
+            "_bsize_{5}_method_{6}_bn_{7}_dropout_{8}{9}_lagged_{10}{11}".\
             format(
                 'mlp_classifier' if network_type is network_types[
                     0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier',
@@ -252,7 +261,7 @@ def main():
                 b_size,  method['type'], batch_normalization,
                 dropout,
                 '_sampled_clipped' if sampled_clipped else '',
-                lagged)
+                lagged, 'pca' if use_pca else '')
 
     opath = "network_output/{0}".format(network_name)
     if not os.path.exists(opath):
@@ -379,6 +388,9 @@ def main():
     if load_from_file:
         log.info("Network loaded from file: {0}".format(loaded_network_fname))
 
+    if sampled_clipped:
+        log.info("Network with samle clipped x: {0} y: {1}".format(sampled_clipped_states, sampled_clipped_controls))
+
     if recurrent:
         log.info("Network properites: n_in: {0}, n_out: {1}, mlp_n_hidden: [{2}] "\
                 "mlp_activation_names: {3} "\
@@ -397,6 +409,12 @@ def main():
                 ','.join(str(e) for e in mlp_n_hidden),
                 ','.join(str(e) for e in mlp_activation_names),
                 batch_normalization, dropout))
+
+    if use_pca:
+        with open(pca_file, 'r') as fid:
+            pca = cPickle.load(fid)
+            x = pca.transform(x)
+
 
     # Training
     c.fit(x_train, y_train, n_epochs, b_size, method, fname=fname,
