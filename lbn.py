@@ -20,7 +20,7 @@ class LBNOutputLayer(object):
                  b_values=None,
                  timeseries_layer=False,
                  batch_normalization=False, gamma_values=None, beta_values=None, epsilon=1e-12,
-                 fixed_means=False, stdb=None, mub=None, no_bias=True):
+                 fixed_means=False, stdb=None, mub=None, no_bias=False):
         """
         LBN output layer.
         :type rng: numpy.random.RandomState.
@@ -399,7 +399,7 @@ class StochHiddenLayerInterface(object):
                                                            'detLayer']['beta_values'],
                                                        epsilon=1e-12 if batch_normalization_info is None else batch_normalization_info[i][
                                                            'detLayer']['epsilon'],
-                                                       fixed_means=False)
+                                                       fixed_means=False, no_bias=False)
             else:
                 self.hidden_layers[i] = DetHiddenLayer(rng, self.hidden_layers[i - 1].output,
                                                        self.n_hidden[i - 1], h,
@@ -419,14 +419,14 @@ class StochHiddenLayerInterface(object):
                                                            'detLayer']['beta_values'],
                                                        epsilon=1e-12 if batch_normalization_info is None else batch_normalization_info[i][
                                                            'detLayer']['epsilon'],
-                                                       fixed_means=False)
+                                                       fixed_means=False, no_bias=False)
             self.params += self.hidden_layers[i].params
             # self.params[2 * i] = self.hidden_layers[i].W
             # self.params[2 * i + 1] = self.hidden_layers[i].b
 
         # Output layer of MLP.
-        self.hidden_layers[-1] = DetHiddenLayer(rng, self.hidden_layers[-2].output,
-                                                self.n_hidden[-1], self.n_out,
+        self.hidden_layers[-1] = DetHiddenLayer(rng, self.hidden_layers[-2].output if len(self.hidden_layers) > 1 else self.input,
+                                                self.n_hidden[-1] if len(self.hidden_layers) > 1 else self.n_in, self.n_out,
                                                 activations[-1], activation_names[-1],
                                                 W_values=None if mlp_info is None else
                                                 np.array(
@@ -442,7 +442,7 @@ class StochHiddenLayerInterface(object):
             'detLayer']['beta_values'],
             epsilon=1e-12 if batch_normalization_info is None else batch_normalization_info[-1][
             'detLayer']['epsilon'],
-            fixed_means=False)
+            fixed_means=False, no_bias=False)
         # self.params[-2] = self.hidden_layers[-1].W
         # self.params[-1] = self.hidden_layers[-1].b
         self.params += self.hidden_layers[-1].params
@@ -561,7 +561,7 @@ class HiddenLayerInterface(object):
         stoch_n_hidden = np.array(
             [i if i > -1 else n_out for i in stoch_n_hidden])
 
-        self.stoch_layer = self.stoch_hidden_layer_type(rng, trng, self.det_layer.no_bias_output,
+        self.stoch_layer = self.stoch_hidden_layer_type(rng, trng, self.det_layer.output,
                                                         n_out, stoch_n_hidden, n_out,
                                                         stoch_activations, stoch_activation_names,
                                                         mlp_info=stoch_mlp_info,
@@ -570,8 +570,9 @@ class HiddenLayerInterface(object):
                                                         batch_normalization_info=None if batch_normalization_info is None else
                                                         batch_normalization_info['stochLayer'])
         # self.output = self.stoch_layer.output*self.det_layer.output
+        self.params = []
         self.define_output()
-        self.params = self.det_layer.params + self.stoch_layer.params
+        self.params += self.det_layer.params + self.stoch_layer.params
 
 
 class LBNHiddenLayer(HiddenLayerInterface):
@@ -584,7 +585,7 @@ class LBNHiddenLayer(HiddenLayerInterface):
                  batch_normalization=False, batch_normalization_info=None):
 
         self.stoch_hidden_layer_type = StochHiddenLayerBernoulli
-        self.no_bias = True
+        self.no_bias = False
         super(LBNHiddenLayer, self).__init__(rng, trng, input_var, n_in, n_out, det_activation,
                                              stoch_n_hidden, stoch_activations,
                                              det_activation_name=det_activation_name,
@@ -758,7 +759,7 @@ class StochasticInterface(object):
             format(stoch_activations)
         assert type(stoch_n_hidden) is ListType, "stoch_n_hidden must be a list: {0!r}".format(
             stoch_n_hidden)
-        assert stoch_n_hidden == [-1] or len(stoch_n_hidden) == len(stoch_activation) - 1, \
+        assert stoch_n_hidden == [-1] or len(stoch_n_hidden) == len(stoch_activations) - 1, \
             "len(stoch_n_hidden) must be len(stoch_activations) -1 or stoch_n_hidden = [-1]."\
             " stoch_n_hidden = {0!r} and stoch_activations = {1!r}".format(stoch_n_hidden,
                                                                            stoch_activations)

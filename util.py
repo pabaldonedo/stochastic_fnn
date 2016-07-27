@@ -337,8 +337,8 @@ def get_weight_init_values(n_in, n_out, activation=None, rng=None,
         elif activation_name == "sigmoid":
             W_values = np.asarray(
                 rng.uniform(
-                low=-4*np.sqrt(6. / (n_in + n_out)),
-                high=4*np.sqrt(6. / (n_in + n_out)),
+                low=-np.sqrt(6. / (n_in + n_out)),
+                high=np.sqrt(6. / (n_in + n_out)),
                 size=(n_out, n_in)
             ),
             dtype=theano.config.floatX

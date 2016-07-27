@@ -69,7 +69,7 @@ class GradientBased(Optimizer):
     def fit(self, x, y, x_train, y_train, batch_size, cost, theta, n_epochs,
             compute_error, call_back, x_test=None, y_test=None,
             validate_every=1, extra_train_givens={}, chunk_size=None,
-            sample_axis=0, batch_logger=None):
+            sample_axis=0, batch_logger=None, model=None):
         """Performs the optimization using a Gradient Based algorithm.
 
         :type x: numpy.array of dimensionality:
@@ -192,11 +192,11 @@ class GradientBased(Optimizer):
 
         givens_default_values.update(extra_train_givens)
 
-        outputs = [cost, self.batch_stop - self.batch_start]
+        outputs = [cost, self.batch_stop - self.batch_start, model.lbn.hidden_layers[0].stoch_layer.output]
         if 'lr' in self.opt_parameters.keys():
             print self.opt_parameters.keys()
             outputs = [cost, self.batch_stop -
-                       self.batch_start, self.opt_parameters['lr']]
+                       self.batch_start, self.opt_parameters['lr'], model.lbn.hidden_layers[0].stoch_layer.output, model.lbn.output, train_set_y[self.batch_start:self.batch_stop]]
 
         train_model = theano.function(inputs=[self.index, self.n_ex],
                                       outputs=outputs,
@@ -227,18 +227,22 @@ class GradientBased(Optimizer):
                 for minibatch_idx in xrange(n_train_batches):
 
                     if 'lr' in self.opt_parameters.keys():
-                        minibatch_avg_cost, this_batch_size, l_r = train_model(
+                        minibatch_avg_cost, this_batch_size, l_r, ber, out, this_y = train_model(
                             minibatch_idx, this_chunk_size)
                         self.opt_parameters['lr'] = l_r
                     else:
-                        minibatch_avg_cost, this_batch_size = train_model(
+                        minibatch_avg_cost, this_batch_size, ber = train_model(
                             minibatch_idx, this_chunk_size)
 
                     if batch_logger is not None:
                         batch_logger.info(
                             'train minibatch error: {0}'.format(minibatch_avg_cost))
-
+                    print ber
                     data_log_likelihood -= minibatch_avg_cost * this_batch_size * seq_len
+                    print out
+                    print this_y
+                    print "..--------.."
+
                 # if chunk < n_chunks - 1:
                     # train_set_x.set_value(x_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_train.shape[0])])
                  #   train_set_x.set_value(x_train.take(xrange((chunk+1)*chunk_size,min((chunk+2)*chunk_size, x_train.shape[sample_axis])), axis=sample_axis))
@@ -249,7 +253,8 @@ class GradientBased(Optimizer):
                 batch_logger.info('-------------------EPOCH-----------------')
             print "EPOCH"
             train_log_likelihood_evolution.append((epoch, data_log_likelihood))
-
+            #import ipdb
+            #ipdb.set_trace()
             if self.test_availavility:
                 test_log_likelihood = 0
                 for chunk in xrange(test_n_chunks):
