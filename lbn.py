@@ -726,6 +726,7 @@ class StochasticInterface(object):
             self.output, self.y, self.likelihood_precision, self.timeseries_network)
         self.regulizer_L2 = T.zeros(1)
         self.regulizer_L1 = T.zeros(1)
+
         for l in self.params:
             for p in l:
                 self.regulizer_L2 += (p**2).sum()
@@ -1236,13 +1237,15 @@ class ResidualLBN(StochasticInterface):
 
         super(ResidualLBN, self).define_network(layers_info=layers_info)
 
-        if n_in == self.n_hidden[-1]:
+        if self.n_in == self.n_hidden[-1]:
             Weye = T.eye(self.x.shape[-1],
-                     self.hidden_layers[-1].det_layer.a.shape[-1])
+                         self.hidden_layers[-1].det_layer.a.shape[-1])
         else:
-            Weye_values = get_weight_init_values(self.n_hidden[-1], n_in, activation_name='linear')
-            Weye = theano.shared(name='W', value=Weye_values, borrow=True)
-            self.params.apppend(Weye)
+            Weye_values = get_weight_init_values(
+                self.n_hidden[-1], self.n_in, activation_name='linear')
+            Weye = theano.shared(name='W_eye', value=Weye_values, borrow=True)
+            self.params.append([Weye])
+
         aux = T.dot(self.x, Weye)
         self.output = self.hidden_layers[-1].det_layer.activation(
             self.hidden_layers[-1].det_layer.a + aux) * self.hidden_layers[-1].stoch_layer.output
