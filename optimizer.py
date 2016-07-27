@@ -69,7 +69,7 @@ class GradientBased(Optimizer):
     def fit(self, x, y, x_train, y_train, batch_size, cost, theta, n_epochs,
             compute_error, call_back, x_test=None, y_test=None,
             validate_every=1, extra_train_givens={}, chunk_size=None,
-            sample_axis=0, batch_logger=None, model=None):
+            sample_axis=0, batch_logger=None):
         """Performs the optimization using a Gradient Based algorithm.
 
         :type x: numpy.array of dimensionality:
@@ -192,11 +192,11 @@ class GradientBased(Optimizer):
 
         givens_default_values.update(extra_train_givens)
 
-        outputs = [cost, self.batch_stop - self.batch_start, model.lbn.hidden_layers[0].stoch_layer.output]
+        outputs = [cost, self.batch_stop - self.batch_start]
         if 'lr' in self.opt_parameters.keys():
             print self.opt_parameters.keys()
             outputs = [cost, self.batch_stop -
-                       self.batch_start, self.opt_parameters['lr'], model.lbn.hidden_layers[0].stoch_layer.output, model.lbn.output, train_set_y[self.batch_start:self.batch_stop]]
+                       self.batch_start, self.opt_parameters['lr']]
 
         train_model = theano.function(inputs=[self.index, self.n_ex],
                                       outputs=outputs,

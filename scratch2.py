@@ -14,7 +14,7 @@ from classifiers import ResidualClassifier
 
 def main():
 
-    network_type = 'residual'
+    network_type = 'classifier'
     load_idx = False
     idx_train_file = None
     idx_test_file = None
@@ -31,9 +31,9 @@ def main():
     if sampled_clipped:
         print "WARNING USING CLIPPED"
 
-    #x_info_file = 'sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv'
+    # x_info_file = 'sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv'
     x_info_file = 'mux_stdx_n_16_n_impulse_2000_5.csv'
-    #y_info_file = 'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv'
+    # y_info_file = 'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv'
     y_info_file = 'muy_stdy_n_16_n_impulse_2000_5.csv'
 
     # mean and std files:
@@ -46,13 +46,13 @@ def main():
     assert not (load_means_from_file and x_info is None and y_info is None)
     # Number of datasets
     n = 16
-    n_impulse_2000 = 0
+    n_impulse_2000 = 5
 
     # RNN on top of LBN
     recurrent = False
 
     # Only for NO recurrent
-    feet_learning = True
+    feet_learning = False
     feet_min = 50
     feet_max = 100
 
@@ -196,11 +196,11 @@ def main():
     mlp_n_hidden = [10]
 
     # LBN definition
-    lbn_n_hidden = [[150, 100], [50, 50]]  # , 100, 50]
-    det_activations = [['linear', 'linear']] * 2  # , 'linear', 'linear']
+    lbn_n_hidden = [150]  # , 100, 50]
+    det_activations = ['linear', 'linear']   # , 'linear', 'linear']
     stoch_activations = ['sigmoid', 'sigmoid']
     likelihood_precision = 0.1
-    m = 10
+    m = 20
 
     # RNN definiton + LBN n_out if RNN is the final layer
     rnn_type = "LSTM"
@@ -214,14 +214,14 @@ def main():
     b_size = 100
     epoch0 = 1
     n_epochs = 10000
-    lr = 1e-2
+    lr = .1
     save_every = 10  # Log saving
     chunk_size = 10000  # Memory chunks
     batch_normalization = False  # TODO FOR RECURRENT CLASSIFIER!
     dropout = False
 
     # Optimizer
-    opt_type = 'AdaDelta'
+    opt_type = 'SGD'
     method = {'type': opt_type, 'lr_decay_schedule': 'constant',
               'lr_decay_parameters': [lr],
               'momentum_type': 'nesterov', 'momentum': 0.01, 'b1': 0.9,
@@ -261,7 +261,7 @@ def main():
                 "_method_{11}_bn_{12}_dropout_{13}_lagged_{14}".\
                 format(
                     'residualclassifer' if network_type == network_types[
-                           1] else 'classifier',
+                        1] else 'classifier',
                     n, n_impulse_2000,
                     ','.join(str(e) for e in mlp_n_hidden),
                     ','.join(str(e) for e in mlp_activation_names),
