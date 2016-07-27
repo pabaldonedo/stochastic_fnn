@@ -47,7 +47,7 @@ def clipper(y):
     plt.hist(np.max(np.abs(clipped_y), axis=1),
              bins=bins, color='r', alpha=0.8)
 
-    #np.savetxt('clipped_controls_n_16_n_impulse_2000_5.txt', clipped_y, delimiter=',', fmt='%.7f')
+    np.savetxt('clipped_controls_n_16_n_impulse_2000_5.txt', clipped_y, delimiter=',', fmt='%.6f')
 
 
 def uniform_equalizer(x, y):

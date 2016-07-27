@@ -32,19 +32,27 @@ def main():
     if use_pca:
         assert pca_file is not None
 
-    load_means_from_file = False
-    sampled_clipped = True
-    sampled_clipped_controls = 'data/x_n_16_n_impulse_2000_5_normal_eq_mu_20.txt'
-    sampled_clipped_states = 'data/y_n_16_n_impulse_2000_5_normal_eq_mu_20.txt'
+    load_means_from_file = True
+
+    clipped_y = False
+    clipped_y_file = 'data/clipped_controls_n_16_n_impulse_2000_5.txt'
+
+    sampled_clipped = False
+    sampled_clipped_controls = 'data/y_n_16_n_impulse_2000_5_normal_eq_mu_20.txt'
+    sampled_clipped_states = 'data/x_n_16_n_impulse_2000_5_normal_eq_mu_20.txt'
 
     lagged = False
     if sampled_clipped:
         print "WARNING USING CLIPPED"
 
+    assert not (sampled_clipped and clipped_y)
+    #x_info_file = "mux_stdx_n_16_n_impulse_2000_5_normal_eq_mu_20.csv"
+    #y_info_file = "muy_stdy_n_16_n_impulse_2000_5_normal_eq_mu_20.csv"
     #x_info_file = 'sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv'
     x_info_file = 'mux_stdx_n_16_n_impulse_2000_5.csv'
     #y_info_file = 'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv'
     y_info_file = 'muy_stdy_n_16_n_impulse_2000_5.csv'
+    #y_info_file = "clipped_muy_stdy_n_16_n_impulse_2000_5.csv"
 
     # mean and std files:
     x_info = np.asarray(np.genfromtxt(
@@ -74,6 +82,10 @@ def main():
     if sampled_clipped:
         y = np.asarray(pd.read_csv(
             sampled_clipped_controls, delimiter=',',
+            header=None).values, dtype=theano.config.floatX)
+    elif clipped_y:
+        y = np.asarray(pd.read_csv(
+            clipped_y_file, delimiter=',',
             header=None).values, dtype=theano.config.floatX)
     else:
         y = load_controls(n)
@@ -417,7 +429,7 @@ def main():
             pca = cPickle.load(fid)
             x = pca.transform(x)
 
-        log.info('PCA: True from file: {0}'.format(pca_file))
+        log.info("PCA: True from file: {0}".format(pca_file))
 
     else:
         log.info("PCA: False")
@@ -426,7 +438,10 @@ def main():
         log.info('Data sampled.\n States loaded from: {0}\n Controls loaded from: {1}'.format(
                                                 sampled_clipped_states, sampled_clipped_controls))
     else:
-        log.info("Data n: {0} and n_impulse_2000: {1}".format(n, n_impulse_2000))
+        log.info("Data n: {0} and n_impulse_2000: {1}".format(n, n_impulse_2000))
+
+    if clipped_y:
+        log.info("Controls clipped with file: {0}".format(clipped_y_file))
 
     # Training
     c.fit(x_train, y_train, n_epochs, b_size, method, fname=fname,
