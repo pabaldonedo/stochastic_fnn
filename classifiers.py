@@ -38,7 +38,7 @@ class Classifier(object):
                      mlp_activation_names, lbn_n_hidden,
                      det_activations, stoch_activations, stoch_n_hidden,
                      log, likelihood_precision,
-                     noise_type, batch_normalization):
+                     noise_type, batch_normalization, bone_networks):
         """Checks the type of the inputs and initializes instance variables.
 
         :type n_in: int.
@@ -90,15 +90,17 @@ class Classifier(object):
 
         assert type(
             n_in) is IntType, "n_in must be an integer: {0!r}".format(n_in)
-        assert type(mlp_n_in) is IntType, "mlp_n_in must be an integer: {0!r}".format(
-            mlp_n_in)
 
         assert type(
             n_out) is IntType, "n_out must be an integer: {0!r}".format(n_out)
-        assert type(mlp_n_hidden) is ListType, "mlp_n_hidden must be a list: {0!r}".format(
-            mlp_n_hidden)
-        assert type(
-            mlp_activation_names) is ListType, "mlp_activation_names must be a list: {0!r}".format(
+
+        if bone_networks:
+            assert type(mlp_n_in) is IntType, "mlp_n_in must be an integer: {0!r}".format(
+                mlp_n_in)
+            assert type(mlp_n_hidden) is ListType, "mlp_n_hidden must be a list: {0!r}".format(
+                mlp_n_hidden)
+            assert type(
+                mlp_activation_names) is ListType, "mlp_activation_names must be a list: {0!r}".format(
                 mlp_n_hidden)
         assert type(lbn_n_hidden) is ListType, "lbn_n_hidden must be a list: {0!r}".format(
             lbn_n_hidden)
@@ -111,6 +113,7 @@ class Classifier(object):
         assert type(batch_normalization) is bool, "batch_normalization must be bool. Given: {0!r}".format(
             batch_normalization)
 
+        self.bone_networks = bone_networks
         allowed_noise = ['multiplicative', 'additive']
         assert noise_type in allowed_noise, "noise_type must be one of {0!r}. Provided: {1!r}".format(
             allowed_noise, noise_type)
@@ -184,9 +187,10 @@ class Classifier(object):
             input_x, xi), sequences=input_x)
         return input_x[T.argmax(output, axis=0), T.arange(input_x.shape[1])]
 
-    def __init__(self, n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
+    def __init__(self, n_in, n_out, lbn_n_hidden,
                  det_activations, stoch_activations, stoch_n_hidden=[-1], log=None, weights=None,
-                 likelihood_precision=1, noise_type='multiplicative', batch_normalization=False):
+                 likelihood_precision=1, noise_type='multiplicative', batch_normalization=False, bone_networks=True,
+                 mlp_n_in=None, mlp_n_hidden=None, mlp_activation_names=None):
         """
         :type n_in: int.
         :param n_in: network input dimensionality.
@@ -237,15 +241,21 @@ class Classifier(object):
         self.x = T.matrix('x', dtype=theano.config.floatX)
         self.parse_inputs(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                           det_activations, stoch_activations, stoch_n_hidden, log, likelihood_precision,
-                          noise_type, batch_normalization)
+                          noise_type, batch_normalization, bone_networks)
 
-        self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in,
-                        weights=weights, batch_normalization=self.batch_normalization)
+        if self.bone_networks:
+            self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in,
+                            weights=weights, batch_normalization=self.batch_normalization)
 
-        self.lbn_input = T.concatenate([bone.output for bone in self.bone_representations] +
-                                       [self.x[:, -2:]], axis=1)
+            self.lbn_input = T.concatenate([bone.output for bone in self.bone_representations] +
+                                           [self.x[:, -2:]], axis=1)
+            lbn_n_in = len(self.bone_representations) * \
+                self.mlp_n_hidden[-1] + 2
+        else:
+            self.lbn_input = self.x
+            lbn_n_in = self.n_in
 
-        self.lbn = LBN(len(self.bone_representations) * self.mlp_n_hidden[-1] + 2, self.lbn_n_hidden,
+        self.lbn = LBN(lbn_n_in, self.lbn_n_hidden,
                        self.n_out,
                        self.det_activations,
                        self.stoch_activations,
@@ -260,8 +270,12 @@ class Classifier(object):
         self.get_log_likelihood = theano.function(inputs=[self.x, self.lbn.y, self.lbn.m],
                                                   outputs=self.lbn.log_likelihood)
 
-        mlp_params = [mlp_i.params for mlp_i in self.bone_representations]
-        self.params = [mlp_params, self.lbn.params]
+        if self.bone_networks:
+            mlp_params = [mlp_i.params for mlp_i in self.bone_representations]
+            self.params = [mlp_params, self.lbn.params]
+        else:
+            self.params = [self.lbn.params]
+
         if self.batch_normalization:
             self.frozen_weights = False
         self.predict = theano.function(
@@ -270,11 +284,12 @@ class Classifier(object):
         self.gmm_output = self.sample_from_distribution(self.lbn.output)
         self.predict_gmm = theano.function(
             inputs=[self.x, self.lbn.m], outputs=self.gmm_output)
-        self.log.info("Network created with n_in: {0}, mlp_n_hidden: {1}, "
-                      "mlp_activation_names: {2}, lbn_n_hidden: {3}, det_activations: {4}, "
-                      "stoch_activations: {5}, n_out: {6}".format(
-                          self.n_in, self.mlp_n_hidden, self.mlp_activation_names, self.lbn_n_hidden,
-                          self.det_activations, self.stoch_activations, self.n_out))
+        self.log.info("Network created with n_in: {0},{1} lbn_n_hidden: {2}, det_activations: {3}, "
+                      "stoch_activations: {4}, n_out: {5}, likelihood_precision: {6}".format(
+                          self.n_in, " mlp_n_hidden: {0}, "
+                          "mlp_activation_names: {1}".format(
+                              self.mlp_n_hidden, self.mlp_activation_names) if self.bone_networks else "", self.lbn_n_hidden,
+                          self.det_activations, self.stoch_activations, self.n_out, self.likelihood_precision))
 
     def freeze_weights(self, fname=None, dataset=None):
         assert fname is not None or dataset is not None, "with batch_normalization weights are required "\
@@ -314,16 +329,22 @@ class Classifier(object):
                                      "stoch_activations": self.stoch_activations,
                                      "likelihood_precision": self.likelihood_precision,
                                      "noise_type": self.noise_type,
-                                     "batch_normalization": self.batch_normalization})
-        output_string += ",\"layers\": {\"bone_mlps\":["
-        for i, bone in enumerate(self.bone_representations):
-            if i > 0:
-                output_string += ","
-            output_string += "{\"MLPLayer\":"
-            output_string += bone.generate_saving_string()
-            output_string += "}"
-        output_string += "]"
-        output_string += ",\"lbn\":"
+                                     "batch_normalization": self.batch_normalization,
+                                     "bone_networks": self.bone_networks})
+        output_string += ",\"layers\": "
+
+        if self.bone_networks:
+            "{\"bone_mlps\":["
+            for i, bone in enumerate(self.bone_representations):
+                if i > 0:
+                    output_string += ","
+                output_string += "{\"MLPLayer\":"
+                output_string += bone.generate_saving_string()
+                output_string += "}"
+            output_string += "]"
+            output_string += ",\"lbn\":"
+        else:
+            output_string += "{\"lbn\":"
         output_string += self.lbn.generate_saving_string()
         output_string += "}}"
 
@@ -482,9 +503,6 @@ class Classifier(object):
         network_properties = network_description['network_properties']
         loaded_classifier = cls(network_properties['n_in'],
                                 network_properties['n_out'],
-                                network_properties['mlp_n_in'],
-                                network_properties['mlp_n_hidden'],
-                                network_properties['mlp_activation_names'],
                                 network_properties['lbn_n_hidden'],
                                 network_properties['det_activations'],
                                 network_properties['stoch_activations'],
@@ -495,7 +513,14 @@ class Classifier(object):
                                 noise_type=network_properties['noise_type'],
                                 batch_normalization=False if 'batch_normalization'
                                 not in network_properties.keys() else
-                                network_properties['batch_normalization'])
+                                network_properties['batch_normalization'],
+                                mlp_n_in=network_properties[
+                                    'mlp_n_in'] if 'mlp_n_in' in network_properties.keys() else None,
+                                mlp_n_hidden=network_properties[
+                                    'mlp_n_hidden'] if 'mlp_n_hidden' in network_properties.keys() else None,
+                                mlp_activation_names=network_properties[
+                                    'mlp_activation_names'] if 'mlp_activation_names' in network_properties.keys() else None,
+                                bone_networks=network_properties['bone_networks'] if 'bone_networks' in network_properties.keys() else True)
 
         return loaded_classifier
 
@@ -1530,12 +1555,13 @@ class ResidualMLPClassifier(object):
                     'hidden_layers'][i],
                     batch_normalization=self.batch_normalization,
                     dropout=self.dropout, training=self.training)
-                
+
             if layer_module.n_in == layer_module.n_hidden[-1]:
                 Weye = T.eye(layer_module.x.shape[1],
-                         layer_module.output.shape[1])
+                             layer_module.output.shape[1])
             else:
-                Weye_values = get_weight_init_values(layer_module.n_hidden[-1], layer_module.n_in, activation_name='linear')
+                Weye_values = get_weight_init_values(
+                    layer_module.n_hidden[-1], layer_module.n_in, activation_name='linear')
                 Weye = theano.shared(name='W', value=Weye_values, borrow=True)
                 layer_module.params.append(Weye)
 

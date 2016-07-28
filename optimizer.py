@@ -227,21 +227,18 @@ class GradientBased(Optimizer):
                 for minibatch_idx in xrange(n_train_batches):
 
                     if 'lr' in self.opt_parameters.keys():
-                        minibatch_avg_cost, this_batch_size, l_r, ber, out, this_y = train_model(
+                        minibatch_avg_cost, this_batch_size, l_r = train_model(
                             minibatch_idx, this_chunk_size)
                         self.opt_parameters['lr'] = l_r
                     else:
-                        minibatch_avg_cost, this_batch_size, ber = train_model(
+                        minibatch_avg_cost, this_batch_size = train_model(
                             minibatch_idx, this_chunk_size)
 
                     if batch_logger is not None:
                         batch_logger.info(
                             'train minibatch error: {0}'.format(minibatch_avg_cost))
-                    print ber
+
                     data_log_likelihood -= minibatch_avg_cost * this_batch_size * seq_len
-                    print out
-                    print this_y
-                    print "..--------.."
 
                 # if chunk < n_chunks - 1:
                     # train_set_x.set_value(x_train[(chunk+1)*chunk_size:min((chunk+2)*chunk_size, x_train.shape[0])])
@@ -254,7 +251,7 @@ class GradientBased(Optimizer):
             print "EPOCH"
             train_log_likelihood_evolution.append((epoch, data_log_likelihood))
             #import ipdb
-            #ipdb.set_trace()
+            # ipdb.set_trace()
             if self.test_availavility:
                 test_log_likelihood = 0
                 for chunk in xrange(test_n_chunks):

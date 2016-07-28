@@ -26,14 +26,18 @@ def main():
     assert network_type in network_types
 
     load_means_from_file = True
-    sampled_clipped = False
+
+    data_x_from_file_name = None
+    data_y_from_file_name = 'clipped_controls_n_16_n_impulse_2000_5.txt'
+    extra_name_tag = 'clipped'
+
     lagged = False
-    if sampled_clipped:
-        print "WARNING USING CLIPPED"
+    if data_x_from_file_name is not None or data_y_from_file_name is not None:
+        print "WARNING DATA FROM FILE"
 
     # x_info_file = 'sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv'
     x_info_file = 'mux_stdx_n_16_n_impulse_2000_5.csv'
-    # y_info_file = 'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv'
+    #_info_file = 'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv'
     y_info_file = 'muy_stdy_n_16_n_impulse_2000_5.csv'
 
     # mean and std files:
@@ -62,9 +66,9 @@ def main():
     # Load data
     seq_len = 61
 
-    if sampled_clipped:
+    if data_y_from_file_name is not None:
         y = np.asarray(pd.read_csv(
-            'data/sample_clipped_controls_n_16_n_impulse_2000_5.txt', delimiter=',',
+            'data/{0}'.format(data_y_from_file_name), delimiter=',',
             header=None).values, dtype=theano.config.floatX)
     else:
         y = load_controls(n)
@@ -100,27 +104,27 @@ def main():
             y_train = y[:, :train_bucket]
             y_test = y[:, train_bucket:]
         else:
-            idx_train = genfromtxt(idx_train_file, delimiter=',')
-            idx_test = genfromtxt(idx_test_file, delimiter=',')
-            y_train = y[:, idx_train]
-            y_test = y[:, idx_test]
+            idx_train = np.genfromtxt(idx_train_file, delimiter=',', dtype=int)
+            idx_test = np.genfromtxt(idx_test_file, delimiter=',', dtype=int)
+            y_train = y[:, idx_train, :-4]
+            y_test = y[:, idx_test, :-4]
 
     else:
         if not load_idx:
             idx = np.random.permutation(y.shape[0])
-            y = y[idx]
+            y = y[idx, :-4]
             train_bucket = int(np.ceil(y.shape[0] * train_size))
             y_train = y[:train_bucket]
             y_test = y[train_bucket:]
         else:
-            idx_train = genfromtxt(idx_train_file, delimiter=',')
-            idx_test = genfromtxt(idx_test_file, delimiter=',')
-            y_train = y[idx_train]
-            y_test = y[idx_test]
+            idx_train = np.genfromtxt(idx_train_file, delimiter=',', dtype=int)
+            idx_test = np.genfromtxt(idx_test_file, delimiter=',', dtype=int)
+            y_train = y[idx_train, :-4]
+            y_test = y[idx_test, :-4]
 
-    if sampled_clipped:
+    if data_x_from_file_name is not None:
         x = np.asarray(pd.read_csv(
-            'data/sample_clipped_states_n_16_n_impulse_2000_5.txt', delimiter=',', header=None).values, dtype=theano.config.floatX)
+            'data/{0}'.format(data_x_from_file_name), delimiter=',', header=None).values, dtype=theano.config.floatX)
     elif lagged:
         x = load_files(n, 'lagged_states')
         assert not n_impulse_2000 > 0
@@ -149,7 +153,7 @@ def main():
     if recurrent:
         x = x.reshape(seq_len, -1, x.shape[1])
         if lagged:
-            cols = [1] + list(range(3, 197)) + [198] + \
+            cols = [1] + list(range(3, 197)) + [198] +\
                 list(range(200, x.shape[2]))
         else:
             cols = [1] + list(range(3, x.shape[2]))
@@ -170,7 +174,7 @@ def main():
     else:
 
         if lagged:
-            cols = [1] + list(range(3, 197)) + [198] + \
+            cols = [1] + list(range(3, 197)) + [198] +\
                 list(range(200, x.shape[1]))
         else:
             cols = [1] + list(range(3, x.shape[1]))
@@ -195,12 +199,13 @@ def main():
     mlp_n_in = 13
     mlp_n_hidden = [10]
 
+    bone_networks = True
     # LBN definition
     lbn_n_hidden = [150]  # , 100, 50]
     det_activations = ['linear', 'linear']   # , 'linear', 'linear']
     stoch_activations = ['sigmoid', 'sigmoid']
-    likelihood_precision = 0.1
-    m = 20
+    likelihood_precision = .1
+    m = 10
 
     # RNN definiton + LBN n_out if RNN is the final layer
     rnn_type = "LSTM"
@@ -214,7 +219,7 @@ def main():
     b_size = 100
     epoch0 = 1
     n_epochs = 10000
-    lr = .1
+    lr = 1.
     save_every = 10  # Log saving
     chunk_size = 10000  # Memory chunks
     batch_normalization = False  # TODO FOR RECURRENT CLASSIFIER!
@@ -240,25 +245,25 @@ def main():
         network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
             "_lbn_n_hidden[{5}]_det_activations_[{6}]_stoch"\
             "_activations_[{7}]_m_{8}_noise_type_{9}_bsize_{10}"\
-            "_method_{11}_bn_{12}_dropout_{13}_lagged_{14}".\
+            "_method_{11}_bn_{12}_dropout_{13}_lagged_{14}_{15}".\
             format(
-                       'recurrentclassifer_{0}'.format(rnn_type),
-                       n, n_impulse_2000,
-                       ','.join(str(e) for e in mlp_n_hidden),
+                'recurrentclassifer_{0}'.format(rnn_type),
+                n, n_impulse_2000,
+                ','.join(str(e) for e in mlp_n_hidden),
                        ','.join(str(e) for e in mlp_activation_names),
                        ','.join(str(e) for e in lbn_n_hidden),
                        ','.join(str(e) for e in det_activations),
                        ','.join(str(e) for e in stoch_activations),
                        m, noise_type, b_size, method['type'],
                        batch_normalization, dropout,
-                       lagged)
+                       lagged, extra_name_tag)
 
     else:
         if network_type == network_types[0]:
             network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
                 "_lbn_n_hidden[{5}]_det_activations_[{6}]_stoch"\
                 "_activations_[{7}]_m_{8}_noise_type_{9}_bsize_{10}"\
-                "_method_{11}_bn_{12}_dropout_{13}_lagged_{14}".\
+                "_method_{11}_bn_{12}_dropout_{13}_lagged_{14}_{15}".\
                 format(
                     'residualclassifer' if network_type == network_types[
                         1] else 'classifier',
@@ -270,22 +275,23 @@ def main():
                     ','.join(str(e) for e in stoch_activations),
                     m, noise_type, b_size, method['type'],
                     batch_normalization, dropout,
-                    lagged)
+                    lagged, extra_name_tag)
+
         elif network_type == network_types[1]:
             network_name = "{0}_n_{1}_n_impulse_2000_{2}"\
                 "_hidden[{3}]_det_[{4}]_stoch"\
                 "_[{5}]_m_{6}_{7}_bsize_{8}"\
-                "{9}_bn_{10}_dropout_{11}_lagged_{12}".\
+                "{9}_bn_{10}_dropout_{11}_lagged_{12}_{13}".\
                 format(
                     'residualclassifer' if network_type == network_types[
-                           1] else 'classifier',
+                        1] else 'classifier',
                     n, n_impulse_2000,
                     ','.join(str(e) for e in lbn_n_hidden),
                     ','.join(str(e) for e in det_activations),
                     ','.join(str(e) for e in stoch_activations),
                     m, noise_type, b_size, method['type'],
                     batch_normalization, dropout,
-                    lagged)
+                    lagged, extra_name_tag)
 
     opath = "network_output/{0}".format(network_name)
     if not os.path.exists(opath):
@@ -294,9 +300,9 @@ def main():
     print "Paths created"
     fname = '{0}/{1}_lbn_n_hidden_[{2}]'.format(opath,
                                                 'recurrentclassifier_{0}'.format(rnn_type) if recurrent
-                                                else 'classifier' if
+                                                else 'residualclassifier' if
                                                 network_type == network_types[1] else
-                                                'residualclassifier',
+                                                'classifier',
                                                 ','.join(str(e) for e in lbn_n_hidden))
 
     loaded_network_fname = '{0}/networks/{1}_lbn_n_hidden_[{2}]'.format(opath,
@@ -327,7 +333,7 @@ def main():
         assert os.path.exists(
             loaded_opath), "Trying to load a network for non existing path: {0}".format(loaded_opath)
 
-        loaded_network_name =  "{0}_n_{1}_n_impulse_2000_{2}_mlp_hidden_[{3}]_mlp_activation_[{4}]"\
+        loaded_network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_hidden_[{3}]_mlp_activation_[{4}]"\
             "_lbn_n_hidden_[{5}]_det_activations_[{6}]_stoch"\
             "_activations_[{7}]_m_{8}_noise_type_{9}_bsize_{10}"\
             "_method_{11}".\
@@ -387,12 +393,15 @@ def main():
                         loaded_network_fname, epoch0 - 1),
                     log=log)
             else:
-                c = Classifier(n_in, n_out, mlp_n_in, mlp_n_hidden,
-                               mlp_activation_names, lbn_n_hidden,
+
+                c = Classifier(n_in, n_out, lbn_n_hidden,
                                det_activations,
                                stoch_activations, log=log,
                                likelihood_precision=likelihood_precision,
-                               batch_normalization=batch_normalization)
+                               batch_normalization=batch_normalization,
+                               mlp_n_in=mlp_n_in, mlp_n_hidden=mlp_n_hidden,
+                               mlp_activation_names=mlp_activation_names,
+                               bone_networks=bone_networks)
         else:
 
             if load_from_file:
@@ -408,6 +417,11 @@ def main():
                                        batch_normalization=batch_normalization)
 
     print "model loaded"
+
+    log.info("Training with data x from: {0}".format(
+        data_x_from_file_name if data_x_from_file_name is not None else "files n: {0} n_impulse_2000: {1}".format(n, n_impulse_2000)))
+    log.info("Training with data y from: {0}".format(
+        data_y_from_file_name if data_y_from_file_name is not None else "files n: {0} n_impulse_2000: {1}".format(n, n_impulse_2000)))
 
     if not load_idx:
         np.savetxt('{0}/idx_train.txt'.format(opath),

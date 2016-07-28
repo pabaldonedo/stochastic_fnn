@@ -311,38 +311,50 @@ def get_weight_init_values(n_in, n_out, activation=None, rng=None,
         if rng is None:
             rng = np.random.RandomState(0)
 
-        #He et al (2016) Deep Residual Learning for Image Recognition 
+        # He et al (2016) Deep Residual Learning for Image Recognition
         if activation_name == "relu":
-            std = np.sqrt(2./n_in)
+            std = np.sqrt(2. / n_in)
             W_values = np.asarray(
-            rng.standard_normal(size=(n_out, n_in))*std,
-            dtype=theano.config.floatX
-        )
+                rng.standard_normal(size=(n_out, n_in)) * std,
+                dtype=theano.config.floatX
+            )
         elif activation_name == "linear":
-            std = np.sqrt(1./n_in)
+            #std = np.sqrt(1./n_in)
+            # W_values = np.asarray(
+            #rng.standard_normal(size=(n_out, n_in))*std,
+            # dtype=theano.config.floatX
+            #)
             W_values = np.asarray(
-            rng.standard_normal(size=(n_out, n_in))*std,
-            dtype=theano.config.floatX
-        )
-        #Borot et Bengio (2010) Understanding the difficulty of training deep feedforward neural networks
+                rng.uniform(
+                    low=-np.sqrt(6. / (n_in + n_out)),
+                    high=np.sqrt(6. / (n_in + n_out)),
+                    size=(n_out, n_in)
+                ),
+                dtype=theano.config.floatX
+            )
+
+        # Borot et Bengio (2010) Understanding the difficulty of training deep
+        # feedforward neural networks
         elif activation_name == "tanh":
             W_values = np.asarray(
                 rng.uniform(
-                low=-np.sqrt(6. / (n_in + n_out)),
-                high=np.sqrt(6. / (n_in + n_out)),
-                size=(n_out, n_in)
-            ),
-            dtype=theano.config.floatX
-        )
+                    low=-np.sqrt(6. / (n_in + n_out)),
+                    high=np.sqrt(6. / (n_in + n_out)),
+                    size=(n_out, n_in)
+                ),
+                dtype=theano.config.floatX
+            )
         elif activation_name == "sigmoid":
             W_values = np.asarray(
                 rng.uniform(
-                low=-np.sqrt(6. / (n_in + n_out)),
-                high=np.sqrt(6. / (n_in + n_out)),
-                size=(n_out, n_in)
-            ),
-            dtype=theano.config.floatX
-        )            
+                    low=-4 * np.sqrt(6. / (n_in + n_out)),
+                    high=4 * np.sqrt(6. / (n_in + n_out)),
+                    size=(n_out, n_in)
+                ),
+                dtype=theano.config.floatX
+            )
+        else:
+            raise NotImplementedError
     else:
         W_values = np.asarray(np.array(W_values), dtype=theano.config.floatX)
     return W_values
