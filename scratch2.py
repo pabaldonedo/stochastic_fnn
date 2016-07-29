@@ -15,9 +15,10 @@ from classifiers import ResidualClassifier
 def main():
 
     network_type = 'classifier'
-    load_idx = False
-    idx_train_file = None
-    idx_test_file = None
+    load_idx = True
+    idx_train_file = "network_output/classifier_n_16_n_impulse_2000_0_mlp_n_hidden_[10]_mlp_activation_[sigmoid]_lbn_n_hidden[150]_det_activations_[linear,linear]_stoch_activations_[sigmoid,sigmoid]_m_10_noise_type_multiplicative_bsize_100_SGD/idx_train.txt"
+
+    idx_test_file = "network_output/classifier_n_16_n_impulse_2000_0_mlp_n_hidden_[10]_mlp_activation_[sigmoid]_lbn_n_hidden[150]_det_activations_[linear,linear]_stoch_activations_[sigmoid,sigmoid]_m_10_noise_type_multiplicative_bsize_100_SGD/idx_test.txt"
 
     assert not (load_idx and idx_train_file is None)
 
@@ -28,8 +29,8 @@ def main():
     load_means_from_file = True
 
     data_x_from_file_name = None
-    data_y_from_file_name = 'clipped_controls_n_16_n_impulse_2000_5.txt'
-    extra_name_tag = 'clipped'
+    data_y_from_file_name = None
+    extra_name_tag = ''
 
     lagged = False
     if data_x_from_file_name is not None or data_y_from_file_name is not None:
@@ -50,7 +51,7 @@ def main():
     assert not (load_means_from_file and x_info is None and y_info is None)
     # Number of datasets
     n = 16
-    n_impulse_2000 = 5
+    n_impulse_2000 = 0
 
     # RNN on top of LBN
     recurrent = False
@@ -126,7 +127,7 @@ def main():
         x = np.asarray(pd.read_csv(
             'data/{0}'.format(data_x_from_file_name), delimiter=',', header=None).values, dtype=theano.config.floatX)
     elif lagged:
-        x = load_files(n, 'lagged_states')
+        x = load_files(n, 'lagged_tates')
         assert not n_impulse_2000 > 0
     else:
         x = load_states(n)
@@ -204,7 +205,8 @@ def main():
     lbn_n_hidden = [150]  # , 100, 50]
     det_activations = ['linear', 'linear']   # , 'linear', 'linear']
     stoch_activations = ['sigmoid', 'sigmoid']
-    likelihood_precision = .1
+    likelihood_precision = .4
+    change_on_load = True
     m = 10
 
     # RNN definiton + LBN n_out if RNN is the final layer
@@ -217,9 +219,9 @@ def main():
 
     # Fit options
     b_size = 100
-    epoch0 = 1
+    epoch0 = 1071
     n_epochs = 10000
-    lr = 1.
+    lr = .1
     save_every = 10  # Log saving
     chunk_size = 10000  # Memory chunks
     batch_normalization = False  # TODO FOR RECURRENT CLASSIFIER!
@@ -234,8 +236,8 @@ def main():
               'learning_rate': lr, 'dropout': dropout}
 
     # Load from file?
-    load_from_file = False
-    session_name = None
+    load_from_file = True
+    session_name = 'corrin'
     load_different_file = False
 
     assert not (load_different_file and not load_from_file), "You have set load different_file to True but you are not loading any network!"
@@ -245,7 +247,7 @@ def main():
         network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
             "_lbn_n_hidden[{5}]_det_activations_[{6}]_stoch"\
             "_activations_[{7}]_m_{8}_noise_type_{9}_bsize_{10}"\
-            "_method_{11}_bn_{12}_dropout_{13}_lagged_{14}_{15}".\
+            "_method_{11}{12}{13}{14}{15}".\
             format(
                 'recurrentclassifer_{0}'.format(rnn_type),
                 n, n_impulse_2000,
@@ -255,15 +257,15 @@ def main():
                        ','.join(str(e) for e in det_activations),
                        ','.join(str(e) for e in stoch_activations),
                        m, noise_type, b_size, method['type'],
-                       batch_normalization, dropout,
-                       lagged, extra_name_tag)
+                       '_bn' if batch_normalization else '', '_dropout' if dropout else '',
+                       '_lagged' if lagged else '', extra_name_tag)
 
     else:
         if network_type == network_types[0]:
             network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
                 "_lbn_n_hidden[{5}]_det_activations_[{6}]_stoch"\
                 "_activations_[{7}]_m_{8}_noise_type_{9}_bsize_{10}"\
-                "_method_{11}_bn_{12}_dropout_{13}_lagged_{14}_{15}".\
+                "_{11}{12}{13}{14}{15}".\
                 format(
                     'residualclassifer' if network_type == network_types[
                         1] else 'classifier',
@@ -274,14 +276,14 @@ def main():
                     ','.join(str(e) for e in det_activations),
                     ','.join(str(e) for e in stoch_activations),
                     m, noise_type, b_size, method['type'],
-                    batch_normalization, dropout,
-                    lagged, extra_name_tag)
+                    '_bn' if batch_normalization else '', '_dropout' if dropout else '',
+                    '_lagged' if lagged else '', extra_name_tag)
 
         elif network_type == network_types[1]:
             network_name = "{0}_n_{1}_n_impulse_2000_{2}"\
                 "_hidden[{3}]_det_[{4}]_stoch"\
                 "_[{5}]_m_{6}_{7}_bsize_{8}"\
-                "{9}_bn_{10}_dropout_{11}_lagged_{12}_{13}".\
+                "{9}{10}{11}{12}{13}".\
                 format(
                     'residualclassifer' if network_type == network_types[
                         1] else 'classifier',
@@ -290,8 +292,8 @@ def main():
                     ','.join(str(e) for e in det_activations),
                     ','.join(str(e) for e in stoch_activations),
                     m, noise_type, b_size, method['type'],
-                    batch_normalization, dropout,
-                    lagged, extra_name_tag)
+                    '_bn' if batch_normalization else '', '_dropout' if dropout else '',
+                    '_lagged' if lagged else '', extra_name_tag)
 
     opath = "network_output/{0}".format(network_name)
     if not os.path.exists(opath):
@@ -307,10 +309,11 @@ def main():
 
     loaded_network_fname = '{0}/networks/{1}_lbn_n_hidden_[{2}]'.format(opath,
                                                                         'recurrentclassifier_{0}'.format(rnn_type) if recurrent
-                                                                        else 'classifier' if
+                                                                        else 'residualclassifier' if
                                                                         network_type == network_types[1] else
-                                                                        'residualclassifier',
+                                                                        'classifier',
                                                                         ','.join(str(e) for e in lbn_n_hidden))
+
     if load_different_file:
         warnings.warn(
             "CAUTION: loading log and network from different path than the saving path")
@@ -375,6 +378,8 @@ def main():
             c = RecurrentClassifier.init_from_file(
                 '{0}_epoch_{1}.json'.format(loaded_network_fname, epoch0 - 1),
                 log=log)
+            if change_on_load:
+                c.update_likelihood_precision(likelihood_precision)
         else:
             c = RecurrentClassifier(n_in, n_out, mlp_n_in, mlp_n_hidden,
                                     mlp_activation_names, lbn_n_hidden,
@@ -392,6 +397,8 @@ def main():
                     '{0}_epoch_{1}.json'.format(
                         loaded_network_fname, epoch0 - 1),
                     log=log)
+                if change_on_load:
+                    c.update_likelihood_precision(likelihood_precision)
             else:
 
                 c = Classifier(n_in, n_out, lbn_n_hidden,
@@ -409,6 +416,8 @@ def main():
                     '{0}_epoch_{1}.json'.format(
                         loaded_network_fname, epoch0 - 1),
                     log=log)
+                if change_on_load:
+                    c.update_likelihood_precision(likelihood_precision)
             else:
                 c = ResidualClassifier(n_in, n_out, lbn_n_hidden,
                                        det_activations,
@@ -432,6 +441,9 @@ def main():
     # Training
     if load_from_file:
         log.info("Network loaded from file: {0}".format(loaded_network_fname))
+        if change_on_load:
+            log.info("Externally updating log likelihood_precision to: {0}".format(
+                likelihood_precision))
 
     if recurrent:
         log.info("Network properties: n_in: {0}, mlp_n_hidden: [{1}], mlp_activation_names: "
@@ -470,6 +482,7 @@ def main():
                          ','.join(str(e) for e in stoch_activations),
                          noise_type, batch_normalization))
 
+    print c.bone_networks
     # Training
     c.fit(x_train, y_train, m, n_epochs, b_size, method, fname=fname,
           epoch0=epoch0, chunk_size=chunk_size,

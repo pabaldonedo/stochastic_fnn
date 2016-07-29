@@ -426,7 +426,8 @@ class StochHiddenLayerInterface(object):
 
         # Output layer of MLP.
         self.hidden_layers[-1] = DetHiddenLayer(rng, self.hidden_layers[-2].output if len(self.hidden_layers) > 1 else self.input,
-                                                self.n_hidden[-1] if len(self.hidden_layers) > 1 else self.n_in, self.n_out,
+                                                self.n_hidden[-1] if len(
+                                                    self.hidden_layers) > 1 else self.n_in, self.n_out,
                                                 activations[-1], activation_names[-1],
                                                 W_values=None if mlp_info is None else
                                                 np.array(
@@ -720,10 +721,13 @@ class StochasticInterface(object):
                           self.stoch_activation_names, self.stoch_n_hidden))
 
         self.define_network(layers_info=layers_info)
+        self.likelihood_precision_dependent_functions()
+
         if m is None:
             self.predict = theano.function(
                 inputs=[self.x, self.m], outputs=self.output)
-                self.regulizer_L2 = T.zeros(1)
+
+        self.regulizer_L2 = T.zeros(1)
         self.regulizer_L1 = T.zeros(1)
 
         for l in self.params:
@@ -737,8 +741,9 @@ class StochasticInterface(object):
         self.log_likelihood = get_log_likelihood(
             self.output, self.y, self.likelihood_precision, self.timeseries_network)
 
-    def update_likelihood_precison(self, new_precision):
-        self.likelihood_precision = new_precision
+    def update_likelihood_precision(self, new_precision):
+        self.likelihood_precision = np.asarray(
+            new_precision, dtype=theano.config.floatX)
         self.likelihood_precision_dependent_functions()
 
     def parse_properties(self, n_in, n_hidden, n_out, det_activations, stoch_activations,

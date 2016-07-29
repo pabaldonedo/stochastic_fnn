@@ -277,7 +277,7 @@ class Classifier(object):
             self.frozen_weights = False
         self.predict = theano.function(
             inputs=[self.x, self.lbn.m], outputs=self.lbn.output)
-        
+
         self.likelihood_precision_dependent_functions()
 
         self.log.info("Network created with n_in: {0},{1} lbn_n_hidden: {2}, det_activations: {3}, "
@@ -290,7 +290,6 @@ class Classifier(object):
     def likelihood_precision_dependent_functions(self):
         self.get_log_likelihood = theano.function(inputs=[self.x, self.lbn.y, self.lbn.m],
                                                   outputs=self.lbn.log_likelihood)
-
 
         self.gmm_output = self.sample_from_distribution(self.lbn.output)
         self.predict_gmm = theano.function(
@@ -370,7 +369,8 @@ class Classifier(object):
         self.likelihood_precision = new_precision
         self.lbn.update_likelihood_precision(new_precision)
         self.likelihood_precision_dependent_functions()
-
+        self.log.info(
+            "Likelihood precision updated: {0}".format(new_precision))
 
     def fit(self, x, y, m, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1,
             x_test=None, y_test=None, chunk_size=None, sample_axis=0, batch_logger=None):
