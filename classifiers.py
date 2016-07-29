@@ -338,7 +338,7 @@ class Classifier(object):
         output_string += ",\"layers\": "
 
         if self.bone_networks:
-            "{\"bone_mlps\":["
+            output_string += "{\"bone_mlps\":["
             for i, bone in enumerate(self.bone_representations):
                 if i > 0:
                     output_string += ","
@@ -904,6 +904,7 @@ class RecurrentClassifier(Classifier):
                                      "likelihood_precision": self.likelihood_precision,
                                      "rnn_type": self.rnn_type,
                                      "noise_type": self.noise_type})
+
         output_string += ",\"layers\": {\"bone_mlps\":["
         for i, bone in enumerate(self.bone_representations):
             if i > 0:
