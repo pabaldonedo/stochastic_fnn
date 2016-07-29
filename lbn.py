@@ -723,9 +723,7 @@ class StochasticInterface(object):
         if m is None:
             self.predict = theano.function(
                 inputs=[self.x, self.m], outputs=self.output)
-        self.log_likelihood = get_log_likelihood(
-            self.output, self.y, self.likelihood_precision, self.timeseries_network)
-        self.regulizer_L2 = T.zeros(1)
+                self.regulizer_L2 = T.zeros(1)
         self.regulizer_L1 = T.zeros(1)
 
         for l in self.params:
@@ -734,6 +732,14 @@ class StochasticInterface(object):
                 self.regulizer_L1 += p.sum()
 
         self.log.info('LBN Network defined.')
+
+    def likelihood_precision_dependent_functions(self):
+        self.log_likelihood = get_log_likelihood(
+            self.output, self.y, self.likelihood_precision, self.timeseries_network)
+
+    def update_likelihood_precison(self, new_precision):
+        self.likelihood_precision = new_precision
+        self.likelihood_precision_dependent_functions()
 
     def parse_properties(self, n_in, n_hidden, n_out, det_activations, stoch_activations,
                          stoch_n_hidden, likelihood_precision, batch_normalization):

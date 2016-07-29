@@ -267,9 +267,6 @@ class Classifier(object):
 
         self.y = self.lbn.y
         self.m = self.lbn.m
-        self.get_log_likelihood = theano.function(inputs=[self.x, self.lbn.y, self.lbn.m],
-                                                  outputs=self.lbn.log_likelihood)
-
         if self.bone_networks:
             mlp_params = [mlp_i.params for mlp_i in self.bone_representations]
             self.params = [mlp_params, self.lbn.params]
@@ -280,16 +277,24 @@ class Classifier(object):
             self.frozen_weights = False
         self.predict = theano.function(
             inputs=[self.x, self.lbn.m], outputs=self.lbn.output)
+        
+        self.likelihood_precision_dependent_functions()
 
-        self.gmm_output = self.sample_from_distribution(self.lbn.output)
-        self.predict_gmm = theano.function(
-            inputs=[self.x, self.lbn.m], outputs=self.gmm_output)
         self.log.info("Network created with n_in: {0},{1} lbn_n_hidden: {2}, det_activations: {3}, "
                       "stoch_activations: {4}, n_out: {5}, likelihood_precision: {6}".format(
                           self.n_in, " mlp_n_hidden: {0}, "
                           "mlp_activation_names: {1}".format(
                               self.mlp_n_hidden, self.mlp_activation_names) if self.bone_networks else "", self.lbn_n_hidden,
                           self.det_activations, self.stoch_activations, self.n_out, self.likelihood_precision))
+
+    def likelihood_precision_dependent_functions(self):
+        self.get_log_likelihood = theano.function(inputs=[self.x, self.lbn.y, self.lbn.m],
+                                                  outputs=self.lbn.log_likelihood)
+
+
+        self.gmm_output = self.sample_from_distribution(self.lbn.output)
+        self.predict_gmm = theano.function(
+            inputs=[self.x, self.lbn.m], outputs=self.gmm_output)
 
     def freeze_weights(self, fname=None, dataset=None):
         assert fname is not None or dataset is not None, "with batch_normalization weights are required "\
@@ -360,6 +365,12 @@ class Classifier(object):
         """Returns cost value to be optimized"""
         cost = -1. / self.x.shape[0] * self.lbn.log_likelihood
         return cost
+
+    def update_likelihood_precision(self, new_precision):
+        self.likelihood_precision = new_precision
+        self.lbn.update_likelihood_precision(new_precision)
+        self.likelihood_precision_dependent_functions()
+
 
     def fit(self, x, y, m, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1,
             x_test=None, y_test=None, chunk_size=None, sample_axis=0, batch_logger=None):
