@@ -133,7 +133,7 @@ class RNNPredictor(Predictor):
         x_norm.reshape(1, 1, -1)
 
         if pca is not None:
-            x_norm = self.pca.transform(x_norm)
+            x_norm = pca.transform(x_norm)
         return self.classifier.predict_one(x_norm, 1)[0] * self.stdy + self.muy
 
 
@@ -183,11 +183,11 @@ class FNNPredictor(Predictor):
         x_t_norm = (x - self.mux) * 1. / self.stdx
         x_t_norm.reshape(1, -1)
 
-        x_norm = self.get_x(x_t_norm)
+
 
         if pca is not None:
-            x_norm = self.pca.transform(x_norm)
-
+            x_t_norm = pca.transform(x_t_norm)
+        x_norm = self.get_x(x_t_norm)
         if self.twod:
             return self.classifier.predict(x_norm, 1)[0] * self.stdy + self.muy
             
@@ -248,11 +248,11 @@ class MLPPredictor(Predictor):
             
         x_t_norm = (x - self.mux) * 1. / self.stdx
         x_t_norm.reshape(1, -1)
+        if pca is not None:
+            x_t_norm = pca.transform(x_t_norm)
 
         x_norm = self.get_x(x_t_norm)
-        if pca is not None:
-            x_norm = self.pca.transform(x_norm)
-
+       
         if self.twod:
             return self.classifier.predict(x_norm) * self.stdy + self.muy
             
@@ -308,6 +308,8 @@ class RecurrentMLPPredictor(Predictor):
             
         x_norm = (x - self.mux) * 1. / self.stdx
         x_norm.reshape(1, 1, -1)
+        if pca is not None:
+            x_norm = pca.transform(x_norm)
         return self.classifier.predict_one(x_norm)[0] * self.stdy + self.muy
 
 
@@ -420,6 +422,9 @@ class ResidualPredictor(Predictor):
         x_t_norm = (x - self.mux) * 1. / self.stdx
         x_t_norm.reshape(1, -1)
 
+        if pca is not None:
+            x_t_norm = pca.transform(x_t_norm)
+        
         x_norm = self.get_x(x_t_norm)
 
         if self.twod:
@@ -470,7 +475,7 @@ class UnityMessenger(object):
         self.n_out = n_out
         self.gmm_prediction = gmm_prediction
         self.use_pca = pca
-        assert not (pca_file is not None and self.use_pca)
+        assert not (pca_file is None and self.use_pca)
         if self.use_pca:
             with open(pca_file, 'r') as fid:
                 self.pca = cPickle.load(fid)
@@ -525,7 +530,7 @@ class UnityMessenger(object):
 
 if __name__ == '__main__':
     port = 5555
-    fname = "network_output/mlp_classifier_n_hidden_[20]_epoch_1280.json"
+    fname = "network_output/mlp_classifier_n_hidden_[20,15]_epoch_180_pca.json"
     n_out = 3
     classifier_type = 'MLP'
     twod = True
@@ -545,8 +550,8 @@ if __name__ == '__main__':
     #y_info = numpy.genfromtxt('muy_stdy_n_13.csv', delimiter=',')
     lagged = False
     gmm_prediction = False
-    pca = False
-    pca_file = "pca_mux_stdx_n_16_n_impulse_2000_5.pkl"
+    pca = True
+    pca_file = "2d/pca_sklearn.pkl"
     mux = x_info[0]
     stdx = x_info[1]
     stdx[stdx==0] = 1
