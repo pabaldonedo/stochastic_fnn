@@ -7,6 +7,7 @@ from types import ListType
 from types import TupleType
 import numpy as np
 import logging
+import os
 
 
 class Optimizer():
@@ -123,6 +124,18 @@ class GradientBased(Optimizer):
                                                                 "training samples".
         """
 
+        # if batch_logger is None:
+
+        #     if os.path.isfile('batch_logger.log'):
+        #         os.remove('batch_logger.log')
+        #     batch_logger = logging.getLogger('batch')
+        #     formatter = logging.Formatter('%(asctime)s : %(message)s')
+        #     fileHandler = logging.FileHandler('batch_logger.log', mode='w')
+        #     fileHandler.setFormatter(formatter)
+        #     batch_logger.setLevel(logging.INFO)
+        #     batch_logger.addHandler(fileHandler)
+        #     batch_logger.propagate = False
+
         data_shape = x_train.shape
         seq_len = 1 if len(data_shape) == 2 else np.prod(data_shape[:-2])
 
@@ -193,10 +206,12 @@ class GradientBased(Optimizer):
         givens_default_values.update(extra_train_givens)
 
         outputs = [cost, self.batch_stop - self.batch_start]
+
+
+        outputs += gtheta
         if 'lr' in self.opt_parameters.keys():
             print self.opt_parameters.keys()
-            outputs = [cost, self.batch_stop -
-                       self.batch_start, self.opt_parameters['lr']]
+            outputs += [self.opt_parameters['lr']]
 
         train_model = theano.function(inputs=[self.index, self.n_ex],
                                       outputs=outputs,
@@ -205,6 +220,7 @@ class GradientBased(Optimizer):
                                       on_unused_input='warn')
         epoch = 0
 
+        tmp = theano.function(inputs=[self.index, self.n_ex], outputs=[self.batch_start, self.batch_stop])
         while epoch < n_epochs:
             data_log_likelihood = 0
             idx = np.random.permutation(self.n_train)
@@ -226,18 +242,35 @@ class GradientBased(Optimizer):
                     np.ceil(1.0 * this_chunk_size / batch_size))
                 for minibatch_idx in xrange(n_train_batches):
 
+                    batch_outputs = train_model(
+                            minibatch_idx, this_chunk_size)
+                    minibatch_avg_cost = batch_outputs[0]
+                    this_batch_size = batch_outputs[1]
+
                     if 'lr' in self.opt_parameters.keys():
-                        minibatch_avg_cost, this_batch_size, l_r = train_model(
-                            minibatch_idx, this_chunk_size)
+                        l_r = batch_outputs[-1]
                         self.opt_parameters['lr'] = l_r
+                        batch_grad = batch_outputs[2:-1]
                     else:
-                        minibatch_avg_cost, this_batch_size = train_model(
-                            minibatch_idx, this_chunk_size)
+                        batch_grad = batch_outputs[2:]
 
                     if batch_logger is not None:
                         batch_logger.info(
                             'train minibatch error: {0}'.format(minibatch_avg_cost))
+                        batch_logger.info(
+                            'minibatch norms: {0}'.format(','.join(str(1./x.get_value().size*np.sum(x.get_value()**2)) for x in theta)))
+                        
+                        batch_grad_norm = np.array([np.sum(e**2) for e in batch_grad])
+                        batch_logger.info('Minibatch grads: {0}'.format(batch_grad_norm.tolist()))
+                        batch_logger.info('Minibatch TOTAL grads: {0}'.format(batch_grad))
+                        batch_logger.info('Minibatch Weights: {0}'.format(','.join(str(e.get_value().tolist()) for e in theta)))
 
+                        batch_logger.info('idx: {0}'.format(tmp(minibatch_idx, this_chunk_size)))
+                        if np.any(np.isnan(batch_grad_norm)):
+                            import ipdb
+                            ipdb.set_trace()
+                            call_back(-1, self.n_train * seq_len, train_log_likelihood=data_log_likelihood,
+                                        opt_parameters=self.opt_parameters)
                     data_log_likelihood -= minibatch_avg_cost * this_batch_size * seq_len
 
                 # if chunk < n_chunks - 1:

@@ -16,6 +16,7 @@ from classifiers import BoneResidualMLPClassifier
 def main():
 
     network_type = 'mlp'
+    extra_tag = ''
     load_idx = False
     idx_train_file = None
     idx_test_file = None
@@ -25,8 +26,8 @@ def main():
 
     assert network_type in network_types
 
-    use_pca = False
-    pca_file = None#'pca_mux_stdx_n_16_n_impulse_2000_5.pkl'
+    use_pca = True
+    pca_file = 'pca_sklearn.pkl'
 
     if use_pca:
         assert pca_file is not None
@@ -73,8 +74,8 @@ def main():
         y_train = y[:train_bucket]
         y_test = y[train_bucket:]
     else:
-        idx_train = np.genfromtxt(idx_train_file, delimiter=',')
-        idx_test = np.genfromtxt(idx_test_file, delimiter=',')
+        idx_train = np.genfromtxt(idx_train_file, delimiter=',', dtype=int)
+        idx_test = np.genfromtxt(idx_test_file, delimiter=',', dtype=int)
         y_train = y[idx_train]
         y_test = y[idx_test]
 
@@ -114,8 +115,8 @@ def main():
     n_out = y.shape[1]
 
     print "Data ready to go"
-    mlp_activation_names = ['relu']  # , 'sigmoid']
-    mlp_n_hidden = [20]#, [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
+    mlp_activation_names = ['relu', 'relu']  # , 'sigmoid']
+    mlp_n_hidden = [20, 15]#, [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
     likelihood_precision = 1
 
     # Fit options
@@ -127,9 +128,11 @@ def main():
     chunk_size = None  # Memory chunks
     batch_normalization = False  # TODO
     dropout = False
+    l2_coeff = 0
+    l1_coeff = 0
 
     # Optimizer
-    opt_type = 'AdaDelta'
+    opt_type = 'SGD'
     method = {'type': opt_type, 'lr_decay_schedule': 'constant',
               'lr_decay_parameters': [lr],
               'momentum_type': 'nesterov', 'momentum': 0.01, 'b1': 0.9,
@@ -145,7 +148,7 @@ def main():
 
 
     network_name = "{0}_mlp_n_hidden_[{1}]_mlp_activation_[{2}]"\
-        "_bsize_{3}_method_{4}_bn_{5}_dropout_{6}{7}{8}".\
+        "_bsize_{3}_method_{4}_bn_{5}_dropout_{6}{7}{8}{9}".\
         format(
             'mlp_classifier' if network_type is network_types[
                 0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier',
@@ -153,7 +156,7 @@ def main():
             ','.join(str(e) for e in mlp_activation_names),
             b_size,  method['type'], batch_normalization,
             dropout,
-            '_lagged' if lagged else '', 'pca' if use_pca else '')
+            '_lagged' if lagged else '', 'pca' if use_pca else '', extra_tag)
 
     opath = "network_output/{0}".format(network_name)
     if not os.path.exists(opath):
@@ -287,7 +290,7 @@ def main():
           x_test=None, y_test=None,
           epoch0=epoch0, chunk_size=chunk_size,
           save_every=save_every, sample_axis=0,
-          batch_logger=None)
+          batch_logger=None, l2_coeff=l2_coeff, l1_coeff=l1_coeff)
 
 
 if __name__ == '__main__':

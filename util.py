@@ -26,8 +26,8 @@ def get_activation_function(activation):
         return lambda x: x
     else:
         raise NotImplementedError(
-            "Activation function not implemented. Choose one out of: {0}".
-            format(activations))
+            "Activation function {0} not implemented. Choose one out of: {1}".
+            format(activation, activations))
 
 
 def get_activation_function_derivative(activation):

@@ -28,6 +28,19 @@ from lbn import ResidualLBN
 from lbn import LBNOutputLayer
 
 
+def compute_regularizer(c):
+    c.l2 = T.zeros(1)
+    c.l1 = T.zeros(1)
+
+    for i, p in enumerate(flatten(c.params)):
+        if i == 0:
+            c.l2 = (p**2).sum()
+            c.l1 = p.sum()
+        else:
+            c.l2 += (p**2).sum()
+            c.l1 += p.sum()
+
+
 class Classifier(object):
     """Builds a network that maps bones state to torque controls.
     For each bone (15 in total) an MLP is built. The output of the MLPs are concatenated.
@@ -275,9 +288,12 @@ class Classifier(object):
 
         if self.batch_normalization:
             self.frozen_weights = False
+    
+
         self.predict = theano.function(
             inputs=[self.x, self.lbn.m], outputs=self.lbn.output)
 
+        compute_regularizer(self)
         self.likelihood_precision_dependent_functions()
 
         self.log.info("Network created with n_in: {0},{1} lbn_n_hidden: {2}, det_activations: {3}, "
@@ -360,9 +376,13 @@ class Classifier(object):
                      log_likelihood_constant=log_likelihood_constant, test_log_likelihood_constant=test_log_likelihood_constant)
         return c.cback
 
-    def get_cost(self):
+    def get_cost(self, l2_coeff, l1_coeff):
         """Returns cost value to be optimized"""
         cost = -1. / self.x.shape[0] * self.lbn.log_likelihood
+        if l2_coeff > 0:
+            cost += l2_coeff*self.l2
+        if l1_coeff >0:
+            cost += l1_coeff*self.l1
         return cost
 
     def update_likelihood_precision(self, new_precision):
@@ -373,8 +393,10 @@ class Classifier(object):
             "Likelihood precision updated: {0}".format(new_precision))
 
     def fit(self, x, y, m, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1,
-            x_test=None, y_test=None, chunk_size=None, sample_axis=0, batch_logger=None):
+            x_test=None, y_test=None, chunk_size=None, sample_axis=0, batch_logger=None,
+            l2_coeff=0, l1_coeff=0):
 
+        assert l2_coeff >= 0 and l1_coeff >= 0
         self.log.info("Number of training samples: {0}.".format(
             x.shape[sample_axis]))
         if x_test is not None:
@@ -382,7 +404,8 @@ class Classifier(object):
                 x_test.shape[sample_axis]))
 
         flat_params = flatten(self.params)
-        cost = self.get_cost()
+        cost = self.get_cost(l2_coeff, l1_coeff)
+        self.log.info('l2_coeff:{0} l1_coeff: {1}'.format(l2_coeff, l1_coeff))
         compute_error = theano.function(inputs=[self.x, self.y], outputs=cost,
                                         givens={self.m: m})
 
@@ -682,13 +705,20 @@ class ResidualClassifier(Classifier):
 
         self.params.append(self.output_layer.params)
 
+        compute_regularizer(self)
         self.predict = theano.function(
             inputs=[self.x, self.m], outputs=self.output)
 
-    def get_cost(self):
+
+    def get_cost(self, l2_coeff, l1_coeff):
         """Returns cost value to be optimized"""
         cost = -1. / self.x.shape[0] * get_log_likelihood(
             self.output, self.y, self.likelihood_precision, False)
+
+        if l2_coeff > 0:
+            cost += l2_coeff*self.l2
+        if l1_coeff >0:
+            cost += l1_coeff*self.l1
         return cost
 
     def generate_saving_string(self):
@@ -857,6 +887,8 @@ class RecurrentClassifier(Classifier):
         self.predict_sequence = theano.function(
             inputs=[self.x, self.lbnrnn.lbn.m], outputs=self.output)
 
+        compute_regularizer(self)
+
         # self.set_up_predict_one()
         self.log.info("Network created with n_in: {0}, mlp_n_hidden: {1}, "
                       "mlp_activation_names: {2}, lbn_n_hidden: {3}, det_activations: {4}, "
@@ -882,11 +914,14 @@ class RecurrentClassifier(Classifier):
         self.predict_one = theano.function(
             inputs=[self.x, self.lbnrnn.lbn.m], outputs=self.output[-1], updates=predict_upd)
 
-    def get_cost(self):
+    def get_cost(self, l2_coeff, l1_coeff):
         """Returns cost value to be optimized"""
         cost = -1. / (self.x.shape[0] * self.x.shape[1]
                       ) * self.lbnrnn.log_likelihood
-
+        if l2_coeff > 0:
+            cost += l2_coeff*self.l2
+        if l1_coeff >0:
+            cost += l1_coeff*self.l1
         return cost
 
     def generate_saving_string(self):
@@ -1036,6 +1071,7 @@ class RNNClassifier(object):
         self.output = self.rnn.output
         self.predict_sequence = theano.function(
             inputs=[self.x], outputs=self.output)
+        compute_regularizer(self)
 
         self.set_up_predict_one()
         self.log.info("Network created with n_in: {0}, n_out: {1}, rnn_hidden: {2}, rnn_activations: {3}".format(
@@ -1060,8 +1096,9 @@ class RNNClassifier(object):
             inputs=[self.x], outputs=self.output[-1], updates=predict_upd)
 
     def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
-            y_test=None, chunk_size=None, sample_axis=1, batch_logger=None):
+            y_test=None, chunk_size=None, sample_axis=1, batch_logger=None, l2_coeff=0, l1_coeff=0):
 
+        assert l2_coeff >= 0 and l1_coeff >=0
         self.log.info("Number of training samples: {0}.".format(
             x.shape[sample_axis]))
         if x_test is not None:
@@ -1069,7 +1106,7 @@ class RNNClassifier(object):
                 x_test.shape[sample_axis]))
 
         flat_params = flatten(self.params)
-        cost = self.get_cost()
+        cost = self.get_cost(l2_coeff, l1_coeff)
         compute_error = theano.function(inputs=[self.x, self.y], outputs=cost)
 
         if sample_axis == 0:
@@ -1118,12 +1155,16 @@ class RNNClassifier(object):
                 sample_axis=1,
                 batch_logger=batch_logger)
 
-    def get_cost(self):
+    def get_cost(self, l2_coeff, l1_coeff):
         """Returns cost value to be optimized"""
         cost = -1. / (self.x.shape[0] * self.x.shape[1]
                       ) * get_no_stochastic_log_likelihood(self.output, self.y,
                                                            self.likelihood_precision, True)
 
+        if l2_coeff > 0:
+            cost += l2_coeff*self.l2
+        if l1_coeff >0:
+            cost += l1_coeff*self.l1
         return cost
 
     def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0, test_log_likelihood_constant=None):
@@ -1375,6 +1416,8 @@ class MLPClassifier(object):
                 0).astype(theano.config.floatX)}
         else:
             self.givens_dict = {}
+
+        compute_regularizer(self)
         self.output = self.output_layer.output
         self.predict = theano.function(
             inputs=[self.x], outputs=self.output,
@@ -1387,7 +1430,7 @@ class MLPClassifier(object):
         return c.cback
 
     def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
-            y_test=None, chunk_size=None, sample_axis=0,  batch_logger=None):
+            y_test=None, chunk_size=None, sample_axis=0, batch_logger=None, l2_coeff=0, l1_coeff=0):
 
         self.log.info("Number of training samples: {0}.".format(
             x.shape[sample_axis]))
@@ -1396,7 +1439,7 @@ class MLPClassifier(object):
                 x_test.shape[sample_axis]))
 
         flat_params = flatten(self.params)
-        cost = self.get_cost()
+        cost = self.get_cost(l2_coeff, l1_coeff)
         compute_error = theano.function(
             inputs=[self.x, self.y], outputs=cost, givens=self.givens_dict)
 
@@ -1447,10 +1490,15 @@ class MLPClassifier(object):
                 sample_axis=sample_axis,
                 batch_logger=batch_logger)
 
-    def get_cost(self):
+    def get_cost(self, l2_coeff, l1_coeff):
         """Returns cost value to be optimized"""
         cost = -1. / self.x.shape[0] * get_no_stochastic_log_likelihood(self.output, self.y,
                                                                         self.likelihood_precision, False)
+        
+        if l2_coeff > 0:
+            cost += l2_coeff*self.l2
+        if l1_coeff >0:
+            cost += l1_coeff*self.l1
         return cost
 
     def generate_saving_string(self):
@@ -1616,17 +1664,17 @@ class ResidualMLPClassifier(object):
         self.predict = theano.function(
             inputs=[self.x], outputs=self.output,
             givens=self.givens_dict)
-        self.compute_error = compute_error = theano.function(
-            inputs=[self.x, self.y], outputs=self.get_cost(), givens=self.givens_dict)
 
     def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0, test_log_likelihood_constant=None):
         """Returns callback function to be sent to optimer for debugging and log purposes"""
         c = callBack(self, save_every, fname, epoch0,
                      log_likelihood_constant=log_likelihood_constant, test_log_likelihood_constant=test_log_likelihood_constant)
         return c.cback
-
     def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
-            y_test=None, chunk_size=None, sample_axis=0, batch_logger=None):
+            y_test=None, chunk_size=None, sample_axis=0, batch_logger=None, l2_coeff=0, l1_coeff=0):
+
+
+        assert l2_coeff >= 0 and l1_coeff >= 0
 
         self.log.info("Number of training samples: {0}.".format(
             x.shape[sample_axis]))
@@ -1635,7 +1683,9 @@ class ResidualMLPClassifier(object):
                 x_test.shape[sample_axis]))
 
         flat_params = flatten(self.params)
-        cost = self.get_cost()
+        cost = self.get_cost(l2_coeff, l1_coeff)
+        self.compute_error = compute_error = theano.function(
+            inputs=[self.x, self.y], outputs=cost, givens=self.givens_dict)
 
         if sample_axis == 0:
             seq_length = 1
@@ -1684,10 +1734,15 @@ class ResidualMLPClassifier(object):
                 sample_axis=sample_axis,
                 batch_logger=batch_logger)
 
-    def get_cost(self):
+    def get_cost(self, l2_coeff, l1_coeff):
         """Returns cost value to be optimized"""
         cost = -1. / self.x.shape[0] * get_no_stochastic_log_likelihood(self.output, self.y,
                                                                         self.likelihood_precision, False)
+        
+        if l2_coeff > 0:
+            cost += l2_coeff*self.l2
+        if l1_coeff >0:
+            cost += l1_coeff*self.l1
         return cost
 
     def generate_saving_string(self):
@@ -2027,7 +2082,7 @@ class RecurrentMLP(object):
         return c.cback
 
     def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
-            y_test=None, chunk_size=None, batch_logger=None):
+            y_test=None, chunk_size=None, batch_logger=None, l2_coeff=0, l1_coeff=0):
 
         self.log.info("Number of training samples: {0}.".format(
             x.shape[1]))
@@ -2036,7 +2091,7 @@ class RecurrentMLP(object):
                 x_test.shape[1]))
 
         flat_params = flatten(self.params)
-        cost = self.get_cost()
+        cost = self.get_cost(l2_coeff, l1_coeff)
         compute_error = theano.function(inputs=[self.x, self.y], outputs=cost)
 
         log_likelihood_constant = x.shape[
@@ -2079,11 +2134,15 @@ class RecurrentMLP(object):
                 chunk_size=chunk_size,
                 sample_axis=1, batch_logger=batch_logger)
 
-    def get_cost(self):
+    def get_cost(self, l2_coeff, l1_coeff):
         """Returns cost value to be optimized"""
         cost = -1. / (self.x.shape[0] * self.x.shape[1]) * get_no_stochastic_log_likelihood(
             self.output, self.y,
             self.likelihood_precision, True)
+        if l2_coeff > 0:
+            cost += l2_coeff*self.l2
+        if l1_coeff >0:
+            cost += l1_coeff*self.l1
         return cost
 
     def generate_saving_string(self):

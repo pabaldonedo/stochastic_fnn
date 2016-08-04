@@ -3,26 +3,22 @@ import theano
 import os
 import warnings
 import pandas as pd
+import matplotlib.pyplot as plt
 from util import load_states
 from util import load_controls
 from util import log_init
 from util import load_files
+from util import flatten
 from classifiers import MLPClassifier
 from classifiers import RecurrentMLP
 from classifiers import ResidualMLPClassifier
 from classifiers import BoneResidualMLPClassifier
 
-
-def main():
-    network_name = 'network_output/Testr/networks/residual_mlp_classifier_n_hidden_[[150, 150],[100, 100],[80, 80],[50, 50]]'
-    network_type = 'residual'
-    network_types = ['mlp', 'residual', 'bone_residual']
-    assert network_type in network_types
+def load_3d():
     sampled_clipped = False
     lagged = False
     n_out = 30
 
-    ofile = 'network_output/Testr/likelihoods/residual_mlp_classifier_n_hidden_[[150, 150],[100, 100],[80, 80],[50, 50]]_test.csv'
 
     idx_file = 'network_output/Testr/prueba_test.txt'
 #    x_info_file = 'mux_stdx_lagged_n_16.csv'
@@ -41,9 +37,7 @@ def main():
     n = 16
     n_impulse_2000 = 0
 
-    epoch0 = 640
-    epochn = 1570
-    epoch_step = 10
+
 
     if sampled_clipped:
         y = np.asarray(pd.read_csv(
@@ -58,7 +52,7 @@ def main():
     stdy = y_info[1]
     y = (y - muy) * 1. / stdy
 
-    idx = np.asarray(np.genfromtxt(idx_file, delimiter=','), dtype='int')
+    idx = np.asarray(np.genfromtxt(idx_file, delimiter=','), dtype=int)
     y_test = y[idx]
 
     if sampled_clipped:
@@ -83,33 +77,156 @@ def main():
         cols = [1] + list(range(3, x.shape[1]))
 
     x = x[:, cols]
-    x_test = x[idx]
+    x_test = x[idx]    
 
-    log_likelihood = []
 
-    for epoch in xrange(epoch0, epochn + 1, epoch_step):
+    return x_test, y_test
 
-        if network_type is network_types[0]:
-            c = MLPClassifier.init_from_file(
-                '{0}_epoch_{1}.json'.format(
-                    network_name,  epoch))
-        elif network_type is network_types[1]:
-            c = ResidualMLPClassifier.init_from_file(
-                '{0}_epoch_{1}.json'.format(
-                    network_name,  epoch))
-        elif network_type is network_types[2]:
-            c = ResidualMLPClassifier.init_from_file(
-                '{0}_epoch_{1}.json'.format(
-                    network_name,  epoch))
 
-        cost = c.compute_error(
-            x_test, y_test[:, :n_out])
-        print cost
-        log_likelihood.append(cost * x_test.shape[0])
+def load_2d(idx_path):
+    controls_file = '2d/data/merged_controls.txt'
+    states_file = '2d/data/merged_starting_states.txt'
 
-    log_l = np.array(log_likelihood).reshape(-1, 1)
-    np.savetxt(ofile, np.hstack((
-        np.arange(epoch0, epochn + 1, epoch_step).reshape(-1, 1), log_l)), delimiter=',')
+    x_info_file = '2d/mux_stdx.csv'
+    y_info_file = '2d/muy_stdy.csv'
+
+    idx_train_file = '{0}/idx_train.txt'.format(idx_path)
+    idx_test_file = '{0}/idx_test.txt'.format(idx_path)
+
+
+
+    x_info = np.asarray(np.genfromtxt(
+        x_info_file, delimiter=','), dtype=theano.config.floatX)
+    y_info = np.asarray(np.genfromtxt(
+        y_info_file, delimiter=','), dtype=theano.config.floatX)
+    print "means loaded"
+
+    y = np.asarray(pd.read_csv(
+            controls_file, delimiter=',',
+            header=None).values, dtype=theano.config.floatX)
+    
+    muy = y_info[0]
+    stdy = y_info[1]
+    stdy[stdy == 0] = 1.
+    y = (y - muy) * 1. / stdy
+    idx_train = np.genfromtxt(idx_train_file, delimiter=',', dtype=int)
+    idx_test = np.genfromtxt(idx_test_file, delimiter=',', dtype=int)
+
+    y_train = y[idx_train]
+    y_test = y[idx_test]
+
+    x = np.asarray(pd.read_csv(
+            states_file, delimiter=',',
+            header=None).values, dtype=theano.config.floatX)
+
+    mux = np.mean(x, axis=0)
+    stdx = np.std(x, axis=0)
+    stdx[stdx == 0] = 1.
+
+    x = (x - mux) * 1. / stdx
+    x_train = x[idx_train]
+    x_test = x[idx_test]
+
+    n_train = x_train.shape[0]
+    n_test = x_test.shape[0]
+
+    return x_test, y_test, n_train, n_test
+
+
+def main(): 
+
+    folders = ['mlp_classifier_mlp_n_hidden_[20,15]_mlp_activation_[relu,relu]_bsize_100_method_SGD_bn_False_dropout_Falsepca', 'mlp_classifier_mlp_n_hidden_[20,15]_mlp_activation_[relu,relu]_bsize_100_method_SGD_bn_False_dropout_False', 'mlp_classifier_mlp_n_hidden_[20,15]_mlp_activation_[relu,relu]_bsize_100_method_SGD_bn_False_dropout_Falsereg0001']
+    nnames = ['mlp_classifier_n_hidden_[20,15]', 'mlp_classifier_n_hidden_[20,15]', 'mlp_classifier_n_hidden_[20,15]']
+
+    network_names = ['2d/network_output/{0}/networks/{1}'.format(folder, nname) for folder, nname in zip(folders, nnames)]
+    network_type = 'mlp'
+    network_types = ['mlp', 'residual', 'bone_residual']
+    assert network_type in network_types
+    
+    opath = ['2d/network_output/{0}/likelihoods/'.format(folder) for folder in folders]
+    ofile_l = ['{0}_test.csv'.format(nname) for nname in nnames]
+    ofile_n = 'norms.csv'
+
+
+    epoch0s = [10]*len(folders)
+    epochns = [130, 200, 270]
+    epoch_steps = [10]*len(folders)
+    n_out = 3
+
+
+    for i in xrange(len(folders)):
+
+        epoch0 = epoch0s[i]
+        epochn = epochns[i]
+        epoch_step = epoch_steps[i]
+        opath = '2d/network_output/{0}/likelihoods/'.format(folders[i])
+        ofile_l = '{0}_test.csv'.format(nnames[i])
+        ofile_n = 'norms.csv'
+        network_name = network_names[i]
+        train_log_likelihood = np.genfromtxt('{0}{1}.csv'.format(opath, nnames[i]), delimiter=',')
+        norm_evolution = []
+        log_likelihood = []
+
+        x_test, y_test, n_train, n_test = load_2d('2d/network_output/{0}'.format(folders[i]))
+
+        for epoch in xrange(epoch0, epochn + 1, epoch_step):
+
+            if network_type is network_types[0]:
+                c = MLPClassifier.init_from_file(
+                    '{0}_epoch_{1}.json'.format(
+                        network_name,  epoch))
+            elif network_type is network_types[1]:
+                c = ResidualMLPClassifier.init_from_file(
+                    '{0}_epoch_{1}.json'.format(
+                        network_name,  epoch))
+            elif network_type is network_types[2]:
+                c = ResidualMLPClassifier.init_from_file(
+                    '{0}_epoch_{1}.json'.format(
+                        network_name,  epoch))
+
+
+            norms = [1./p.size*(p**2).sum() for p in flatten(c.params)]
+            compute_error_and_norms = theano.function(inputs=[c.x, c.y], outputs=[c.get_cost(0,0)]+norms)
+            cost_and_norm = compute_error_and_norms(
+                x_test, y_test[:, :n_out])
+            cost = cost_and_norm[0]
+            norms = cost_and_norm[1:]
+
+            print cost
+            log_likelihood.append(-1*cost * x_test.shape[0])
+            norm_evolution.append(norms)
+
+
+        log_l = np.array(log_likelihood).reshape(-1, 1)
+        norms = np.array(norm_evolution)
+        normed_log_l = log_l - n_test*n_out/2.*np.log(2*np.pi)
+
+
+        fig, ax = plt.subplots()
+        ax.plot(train_log_likelihood[:,0], 1./n_train*train_log_likelihood[:,1],'b')
+        ax.plot(np.arange(epoch0, epochn + 1, epoch_step), 1./n_test*normed_log_l, 'r')
+        ax.set_xlabel('epoch')
+        ax.set_ylabel('log likelihood')
+        ax.legend(['Train', 'Test'])
+        plt.savefig(opath+'log_likelihood.png')
+
+        legend = ['{0}{1}'.format(str(p),i//2) for i, p in enumerate(flatten(c.params))]
+
+        fig, ax = plt.subplots()
+        for i in xrange(norms.shape[1]):
+            ax.plot(np.arange(epoch0, epochn + 1, epoch_step), norms[:,i])
+        ax.set_xlabel('epoch')
+        ax.set_ylabel('norm')
+        ax.legend(legend)
+
+        plt.savefig(opath+'norms.png')
+
+
+        np.savetxt(opath + ofile_l, np.hstack((
+            np.arange(epoch0, epochn + 1, epoch_step).reshape(-1, 1), log_l)), delimiter=',')
+        np.savetxt(opath + ofile_n, np.hstack((
+            np.arange(epoch0, epochn + 1, epoch_step).reshape(-1, 1), norms)), delimiter=',')
+
 
 
 if __name__ == '__main__':

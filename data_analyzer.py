@@ -263,6 +263,28 @@ def states_hist(x, bone_names, bone_features):
     plt.savefig('bone_plots/states_hists/contact_ground.png')
 
 
+def mapping(x,y):
+
+    x_binned = np.zeros(x.shape)
+    n_bins = 50
+    for i in xrange(x.shape[1]):
+        this_h, this_edges = np.histogram(x[:,i], bins=n_bins)
+        if i == 0:
+            h = this_h
+            bedges = this_edges
+        else:
+            h = np.vstack((h, this_h))
+            bedges = np.vstack((bedges, this_edges))
+
+        x_binned[:,i] = np.digitize(x[:,i], this_edges)
+
+
+    ncols = x_binned.shape[1]
+    dtype = x_binned.dtype.descr * ncols
+    struct = x_binned.view(dtype)
+    uniq = np.unique(struct)
+    classes = uniq.view(x_binned.dtype).reshape(-1, ncols)
+
 def main():
 
     n = 16
@@ -270,9 +292,9 @@ def main():
     x = load_states(n)
     x_impulse = load_files(n_impulse_2000, 'states_impulse_2000')
     x = np.vstack((x, x_impulse))
-#    y = load_controls(n)
-#    y_impulse = load_files(n_impulse_2000, 'controls_impulse_2000')
-#    y = np.vstack((y, y_impulse))
+    y = load_controls(n)
+    y_impulse = load_files(n_impulse_2000, 'controls_impulse_2000')
+    y = np.vstack((y, y_impulse))
     
     #idx = np.random.permutation(x.shape[0])
 #    x = x[idx[:80000],:]
