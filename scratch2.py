@@ -207,7 +207,7 @@ def main():
     stoch_activations = ['sigmoid', 'sigmoid']
     likelihood_precision = .4
     change_on_load = True
-    m = 10
+    m = 50
 
     # RNN definiton + LBN n_out if RNN is the final layer
     rnn_type = "LSTM"
@@ -219,7 +219,7 @@ def main():
 
     # Fit options
     b_size = 100
-    epoch0 = 1071
+    epoch0 = 1081
     n_epochs = 10000
     lr = .1
     save_every = 10  # Log saving
@@ -237,8 +237,8 @@ def main():
 
     # Load from file?
     load_from_file = True
-    session_name = 'corrin'
-    load_different_file = False
+    session_name = None
+    load_different_file = True
 
     assert not (load_different_file and not load_from_file), "You have set load different_file to True but you are not loading any network!"
 
@@ -318,42 +318,33 @@ def main():
         warnings.warn(
             "CAUTION: loading log and network from different path than the saving path")
 
-        loaded_network_folder = "{0}_n_13_n_impulse_2000_0_mlp_hidden_[{3}]_mlp_activation_[{4}]"\
-            "_lbn_n_hidden_[{5}]_det_activations_[{6}]_stoch"\
-            "_activations_[{7}]_m_{8}_noise_type_{9}_bsize_{10}"\
-            "_method_{11}_bn_{12}".\
+        loaded_network_folder =  "{0}_n_{1}_n_impulse_2000_{2}_mlp_n_hidden_[{3}]_mlp_activation_[{4}]"\
+            "_lbn_n_hidden[{5}]_det_activations_[{6}]_stoch"\
+            "_activations_[{7}]_m_100_noise_type_{9}_bsize_{10}"\
+            "_{11}{12}{13}{14}{15}".\
             format(
-                'recurrentclassifier_{0}'.format(rnn_type) if recurrent
-                else 'classifier',
+                'residualclassifer' if network_type == network_types[
+                    1] else 'classifier',
                 n, n_impulse_2000,
                 ','.join(str(e) for e in mlp_n_hidden),
                 ','.join(str(e) for e in mlp_activation_names),
                 ','.join(str(e) for e in lbn_n_hidden),
                 ','.join(str(e) for e in det_activations),
                 ','.join(str(e) for e in stoch_activations),
-                m, noise_type, b_size, method['type'], batch_normalization)
+                m, noise_type, b_size, method['type'],
+                '_bn' if batch_normalization else '', '_dropout' if dropout else '',
+                '_lagged' if lagged else '', extra_name_tag)
+
         loaded_opath = "network_output/{0}".format(loaded_network_folder)
         assert os.path.exists(
             loaded_opath), "Trying to load a network for non existing path: {0}".format(loaded_opath)
 
-        loaded_network_name = "{0}_n_{1}_n_impulse_2000_{2}_mlp_hidden_[{3}]_mlp_activation_[{4}]"\
-            "_lbn_n_hidden_[{5}]_det_activations_[{6}]_stoch"\
-            "_activations_[{7}]_m_{8}_noise_type_{9}_bsize_{10}"\
-            "_method_{11}".\
-            format(
-                'recurrentclassifier_{0}'.format(rnn_type) if recurrent
-                else 'classifier',
-                n, n_impulse_2000,
-                ','.join(str(e) for e in mlp_n_hidden),
-                ','.join(str(e) for e in mlp_activation_names),
-                ','.join(str(e) for e in lbn_n_hidden),
-                ','.join(str(e) for e in det_activations),
-                ','.join(str(e) for e in stoch_activations),
-                m, noise_type, b_size, method['type'], batch_normalization)  # "classifier_lbn_n_hidden_[150]"
-
-        loaded_network_fname = '{0}/networks/{1}'.format(
-            loaded_opath, loaded_network_name)
-
+        loaded_network_fname = '{0}/networks/{1}_lbn_n_hidden_[{2}]'.format(loaded_opath,
+                                                                            'recurrentclassifier_{0}'.format(rnn_type) if recurrent
+                                                                            else 'residualclassifier' if
+                                                                            network_type == network_types[1] else
+                                                                            'classifier',
+                                                                            ','.join(str(e) for e in lbn_n_hidden))
     else:
         loaded_opath = opath
     # LOGGING

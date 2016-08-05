@@ -51,7 +51,7 @@ class Classifier(object):
                      mlp_activation_names, lbn_n_hidden,
                      det_activations, stoch_activations, stoch_n_hidden,
                      log, likelihood_precision,
-                     noise_type, batch_normalization, bone_networks):
+                     noise_type, batch_normalization, bone_networks, bone_type):
         """Checks the type of the inputs and initializes instance variables.
 
         :type n_in: int.
@@ -131,6 +131,9 @@ class Classifier(object):
         assert noise_type in allowed_noise, "noise_type must be one of {0!r}. Provided: {1!r}".format(
             allowed_noise, noise_type)
 
+        assert bone_type in ['3d', '2d']
+
+        self.bone_type = bone_type
         self.batch_normalization = batch_normalization
         self.noise_type = noise_type
         self.lbn_n_hidden = lbn_n_hidden
@@ -142,7 +145,7 @@ class Classifier(object):
         self.n_out = n_out
 
     def set_up_mlp(self, mlp_n_hidden, mlp_activation_names, mlp_n_in, weights=None, timeseries_layer=False,
-                   batch_normalization=False):
+                   batch_normalization=False, twod=False):
         """Defines the MLP networks for the 15 bones.
 
         :type mlp_n_hidden: list of ints.
@@ -164,18 +167,32 @@ class Classifier(object):
         """
 
         self.mlp_n_hidden = mlp_n_hidden
-        self.bone_representations = [None] * 15
+        if twod:
+            n_bones = 4
+        else:
+            n_bones = 15
+        self.bone_representations = [None] * n_bones
         self.mlp_activation_names = mlp_activation_names
         self.mlp_n_in = mlp_n_in
         for i in xrange(len(self.bone_representations)):
             if i == 0:
-                bone_mlp = MLPLayer(mlp_n_in - 2, self.mlp_n_hidden, self.mlp_activation_names,
-                                    input_var=self.x[:, :, :mlp_n_in - 2] if timeseries_layer
-                                    else self.x[:, :mlp_n_in - 2],
-                                    layers_info=None if weights is
-                                    None else weights['bone_mlps'][i]['MLPLayer'],
-                                    timeseries_network=timeseries_layer,
-                                    batch_normalization=batch_normalization)
+                if twod:
+                    bone_mlp = MLPLayer(mlp_n_in, self.mlp_n_hidden, self.mlp_activation_names,
+                                        input_var=self.x[:, :, :mlp_n_in] if timeseries_layer
+                                        else self.x[:, :mlp_n_in],
+                                        layers_info=None if weights is
+                                        None else weights['bone_mlps'][i]['MLPLayer'],
+                                        timeseries_network=timeseries_layer,
+                                        batch_normalization=batch_normalization)
+
+                else:
+                    bone_mlp = MLPLayer(mlp_n_in - 2, self.mlp_n_hidden, self.mlp_activation_names,
+                                        input_var=self.x[:, :, :mlp_n_in - 2] if timeseries_layer
+                                        else self.x[:, :mlp_n_in - 2],
+                                        layers_info=None if weights is
+                                        None else weights['bone_mlps'][i]['MLPLayer'],
+                                        timeseries_network=timeseries_layer,
+                                        batch_normalization=batch_normalization)
 
             else:
                 bone_mlp = MLPLayer(mlp_n_in, self.mlp_n_hidden, self.mlp_activation_names,
@@ -203,7 +220,7 @@ class Classifier(object):
     def __init__(self, n_in, n_out, lbn_n_hidden,
                  det_activations, stoch_activations, stoch_n_hidden=[-1], log=None, weights=None,
                  likelihood_precision=1, noise_type='multiplicative', batch_normalization=False, bone_networks=True,
-                 mlp_n_in=None, mlp_n_hidden=None, mlp_activation_names=None):
+                 mlp_n_in=None, mlp_n_hidden=None, mlp_activation_names=None, bone_type='3d'):
         """
         :type n_in: int.
         :param n_in: network input dimensionality.
@@ -254,11 +271,11 @@ class Classifier(object):
         self.x = T.matrix('x', dtype=theano.config.floatX)
         self.parse_inputs(n_in, n_out, mlp_n_in, mlp_n_hidden, mlp_activation_names, lbn_n_hidden,
                           det_activations, stoch_activations, stoch_n_hidden, log, likelihood_precision,
-                          noise_type, batch_normalization, bone_networks)
+                          noise_type, batch_normalization, bone_networks, bone_type)
 
         if self.bone_networks:
             self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in,
-                            weights=weights, batch_normalization=self.batch_normalization)
+                            weights=weights, batch_normalization=self.batch_normalization, twod=self.bone_type == '3d')
 
             self.lbn_input = T.concatenate([bone.output for bone in self.bone_representations] +
                                            [self.x[:, -2:]], axis=1)
@@ -288,7 +305,6 @@ class Classifier(object):
 
         if self.batch_normalization:
             self.frozen_weights = False
-    
 
         self.predict = theano.function(
             inputs=[self.x, self.lbn.m], outputs=self.lbn.output)
@@ -297,11 +313,11 @@ class Classifier(object):
         self.likelihood_precision_dependent_functions()
 
         self.log.info("Network created with n_in: {0},{1} lbn_n_hidden: {2}, det_activations: {3}, "
-                      "stoch_activations: {4}, n_out: {5}, likelihood_precision: {6}".format(
+                      "stoch_activations: {4}, n_out: {5}, likelihood_precision: {6}, bone_networks: {7}".format(
                           self.n_in, " mlp_n_hidden: {0}, "
                           "mlp_activation_names: {1}".format(
                               self.mlp_n_hidden, self.mlp_activation_names) if self.bone_networks else "", self.lbn_n_hidden,
-                          self.det_activations, self.stoch_activations, self.n_out, self.likelihood_precision))
+                          self.det_activations, self.stoch_activations, self.n_out, self.likelihood_precision, bone_networks))
 
     def likelihood_precision_dependent_functions(self):
         self.get_log_likelihood = theano.function(inputs=[self.x, self.lbn.y, self.lbn.m],
@@ -350,7 +366,8 @@ class Classifier(object):
                                      "likelihood_precision": self.likelihood_precision,
                                      "noise_type": self.noise_type,
                                      "batch_normalization": self.batch_normalization,
-                                     "bone_networks": self.bone_networks})
+                                     "bone_networks": self.bone_networks,
+                                     "bone_type": self.bone_type})
         output_string += ",\"layers\": "
 
         if self.bone_networks:
@@ -380,9 +397,9 @@ class Classifier(object):
         """Returns cost value to be optimized"""
         cost = -1. / self.x.shape[0] * self.lbn.log_likelihood
         if l2_coeff > 0:
-            cost += l2_coeff*self.l2
-        if l1_coeff >0:
-            cost += l1_coeff*self.l1
+            cost += l2_coeff * self.l2
+        if l1_coeff > 0:
+            cost += l1_coeff * self.l1
         return cost
 
     def update_likelihood_precision(self, new_precision):
@@ -554,7 +571,9 @@ class Classifier(object):
                                     'mlp_n_hidden'] if 'mlp_n_hidden' in network_properties.keys() else None,
                                 mlp_activation_names=network_properties[
                                     'mlp_activation_names'] if 'mlp_activation_names' in network_properties.keys() else None,
-                                bone_networks=network_properties['bone_networks'] if 'bone_networks' in network_properties.keys() else True)
+                                bone_networks=network_properties[
+                                    'bone_networks'] if 'bone_networks' in network_properties.keys() else True,
+                                bone_type=network_properties['bone_type'] if 'bone_type' in network_properties.keys() else '3d')
 
         return loaded_classifier
 
@@ -709,16 +728,15 @@ class ResidualClassifier(Classifier):
         self.predict = theano.function(
             inputs=[self.x, self.m], outputs=self.output)
 
-
     def get_cost(self, l2_coeff, l1_coeff):
         """Returns cost value to be optimized"""
         cost = -1. / self.x.shape[0] * get_log_likelihood(
             self.output, self.y, self.likelihood_precision, False)
 
         if l2_coeff > 0:
-            cost += l2_coeff*self.l2
-        if l1_coeff >0:
-            cost += l1_coeff*self.l1
+            cost += l2_coeff * self.l2
+        if l1_coeff > 0:
+            cost += l1_coeff * self.l1
         return cost
 
     def generate_saving_string(self):
@@ -919,9 +937,9 @@ class RecurrentClassifier(Classifier):
         cost = -1. / (self.x.shape[0] * self.x.shape[1]
                       ) * self.lbnrnn.log_likelihood
         if l2_coeff > 0:
-            cost += l2_coeff*self.l2
-        if l1_coeff >0:
-            cost += l1_coeff*self.l1
+            cost += l2_coeff * self.l2
+        if l1_coeff > 0:
+            cost += l1_coeff * self.l1
         return cost
 
     def generate_saving_string(self):
@@ -1098,7 +1116,7 @@ class RNNClassifier(object):
     def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
             y_test=None, chunk_size=None, sample_axis=1, batch_logger=None, l2_coeff=0, l1_coeff=0):
 
-        assert l2_coeff >= 0 and l1_coeff >=0
+        assert l2_coeff >= 0 and l1_coeff >= 0
         self.log.info("Number of training samples: {0}.".format(
             x.shape[sample_axis]))
         if x_test is not None:
@@ -1162,9 +1180,9 @@ class RNNClassifier(object):
                                                            self.likelihood_precision, True)
 
         if l2_coeff > 0:
-            cost += l2_coeff*self.l2
-        if l1_coeff >0:
-            cost += l1_coeff*self.l1
+            cost += l2_coeff * self.l2
+        if l1_coeff > 0:
+            cost += l1_coeff * self.l1
         return cost
 
     def get_call_back(self, save_every, fname, epoch0, log_likelihood_constant=0, test_log_likelihood_constant=None):
@@ -1494,11 +1512,11 @@ class MLPClassifier(object):
         """Returns cost value to be optimized"""
         cost = -1. / self.x.shape[0] * get_no_stochastic_log_likelihood(self.output, self.y,
                                                                         self.likelihood_precision, False)
-        
+
         if l2_coeff > 0:
-            cost += l2_coeff*self.l2
-        if l1_coeff >0:
-            cost += l1_coeff*self.l1
+            cost += l2_coeff * self.l2
+        if l1_coeff > 0:
+            cost += l1_coeff * self.l1
         return cost
 
     def generate_saving_string(self):
@@ -1670,9 +1688,9 @@ class ResidualMLPClassifier(object):
         c = callBack(self, save_every, fname, epoch0,
                      log_likelihood_constant=log_likelihood_constant, test_log_likelihood_constant=test_log_likelihood_constant)
         return c.cback
+
     def fit(self, x, y, n_epochs, b_size, method, save_every=1, fname=None, epoch0=1, x_test=None,
             y_test=None, chunk_size=None, sample_axis=0, batch_logger=None, l2_coeff=0, l1_coeff=0):
-
 
         assert l2_coeff >= 0 and l1_coeff >= 0
 
@@ -1738,11 +1756,11 @@ class ResidualMLPClassifier(object):
         """Returns cost value to be optimized"""
         cost = -1. / self.x.shape[0] * get_no_stochastic_log_likelihood(self.output, self.y,
                                                                         self.likelihood_precision, False)
-        
+
         if l2_coeff > 0:
-            cost += l2_coeff*self.l2
-        if l1_coeff >0:
-            cost += l1_coeff*self.l1
+            cost += l2_coeff * self.l2
+        if l1_coeff > 0:
+            cost += l1_coeff * self.l1
         return cost
 
     def generate_saving_string(self):
@@ -2140,9 +2158,9 @@ class RecurrentMLP(object):
             self.output, self.y,
             self.likelihood_precision, True)
         if l2_coeff > 0:
-            cost += l2_coeff*self.l2
-        if l1_coeff >0:
-            cost += l1_coeff*self.l1
+            cost += l2_coeff * self.l2
+        if l1_coeff > 0:
+            cost += l1_coeff * self.l1
         return cost
 
     def generate_saving_string(self):

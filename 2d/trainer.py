@@ -11,18 +11,20 @@ from classifiers import MLPClassifier
 from classifiers import RecurrentMLP
 from classifiers import ResidualMLPClassifier
 from classifiers import BoneResidualMLPClassifier
+from classifiers import Classifier
 
 
 def main():
 
-    network_type = 'mlp'
+    network_type = 'classifier'
     extra_tag = ''
     load_idx = True
     idx_train_file = 'network_output/idx_train.txt'
     idx_test_file = 'network_output/idx_test.txt'
     assert not (load_idx and idx_train_file is None)
 
-    network_types = ['mlp', 'residual', 'bone_residual']
+    network_types = ['mlp', 'residual', 'bone_residual',
+                     'classifier', 'residual_classifier']
 
     assert network_type in network_types
 
@@ -51,8 +53,8 @@ def main():
     assert not (load_means_from_file and x_info is None and y_info is None)
 
     y = np.asarray(pd.read_csv(
-            controls_file, delimiter=',',
-            header=None).values, dtype=theano.config.floatX)
+        controls_file, delimiter=',',
+        header=None).values, dtype=theano.config.floatX)
 
     if load_means_from_file:
         muy = y_info[0]
@@ -66,7 +68,7 @@ def main():
 
     print "controls loaded"
     y = (y - muy) * 1. / stdy
-    
+
     if not load_idx:
         idx = np.random.permutation(y.shape[0])
         y = y[idx]
@@ -116,12 +118,13 @@ def main():
 
     print "Data ready to go"
     mlp_activation_names = ['relu', 'relu', 'relu']  # , 'sigmoid']
-    mlp_n_hidden = [20, 15, 15]#, [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
+    # , [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
+    mlp_n_hidden = [20, 15, 15]
     likelihood_precision = 1
 
     # Fit options
     b_size = 100
-    epoch0 = 251
+    epoch0 = 11
     n_epochs = 10000
     lr = .001
     save_every = 10  # Log saving
@@ -130,6 +133,18 @@ def main():
     dropout = False
     l2_coeff = 0
     l1_coeff = 0
+
+    # FOR LBN!!
+    bone_networks = True
+    bone_type = '2d'
+    mlp_n_in = 6
+    lbn_n_hidden = [20, 15]
+    mlp_activation_names = ['relu']
+    mlp_n_hidden = [5]
+
+    det_activations = ['linear', 'linear', 'linear']   # , 'linear', 'linear']
+    stoch_activations = ['sigmoid', 'sigmoid']
+    m = 50
 
     # Optimizer
     opt_type = 'Adam'
@@ -140,18 +155,17 @@ def main():
               'learning_rate': lr, 'dropout': dropout}
 
     # Load from file?
-    load_from_file = True
+    load_from_file = False
     session_name = None
-    load_different_file = True
+    load_different_file = False
 
     assert not (load_different_file and not load_from_file), "You have set load different_file to True but you are not loading any network!"
-
 
     network_name = "{0}_mlp_n_hidden_[{1}]_mlp_activation_[{2}]"\
         "_bsize_{3}_method_{4}_bn_{5}_dropout_{6}{7}{8}{9}".\
         format(
             'mlp_classifier' if network_type is network_types[
-                0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier',
+                0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier' if network_type is network_types[2] else 'lbn_classifier',
             ','.join(str(e) for e in mlp_n_hidden),
             ','.join(str(e) for e in mlp_activation_names),
             b_size,  method['type'], batch_normalization,
@@ -177,23 +191,22 @@ def main():
     #                                                                                                                                                                              str(e) for e in mlp_activation_names),
      # b_size,  method['type'])
         loaded_network_folder = "{0}_mlp_n_hidden_[{1}]_mlp_activation_[{2}]"\
-        "_bsize_{3}_method_SGD_bn_{5}_dropout_{6}{7}{8}{9}".\
-        format(
-            'mlp_classifier' if network_type is network_types[
-                0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier',
-            ','.join(str(e) for e in mlp_n_hidden),
-            ','.join(str(e) for e in mlp_activation_names),
-            b_size,  method['type'], batch_normalization,
-            dropout,
-            '_lagged' if lagged else '', 'pca' if use_pca else '', extra_tag)
+            "_bsize_{3}_method_SGD_bn_{5}_dropout_{6}{7}{8}{9}".\
+            format(
+                'mlp_classifier' if network_type is network_types[
+                    0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier',
+                ','.join(str(e) for e in mlp_n_hidden),
+                ','.join(str(e) for e in mlp_activation_names),
+                b_size,  method['type'], batch_normalization,
+                dropout,
+                '_lagged' if lagged else '', 'pca' if use_pca else '', extra_tag)
 
         loaded_opath = "network_output/{0}".format(loaded_network_folder)
         assert os.path.exists(
             loaded_opath), "Trying to load a network from a non existing path; {0}".format(loaded_opath)
 
-        loaded_network_name = "{0}_n_hidden_[{1}]".format('mlp_classifier' if network_type is network_types[0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier', ','.join(str(e) for e in mlp_n_hidden))
-
-
+        loaded_network_name = "{0}_n_hidden_[{1}]".format('mlp_classifier' if network_type is network_types[
+                                                          0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier', ','.join(str(e) for e in mlp_n_hidden))
 
         loaded_network_fname = "{0}/networks/".format(
             loaded_opath, loaded_network_name)
@@ -210,7 +223,6 @@ def main():
             x_info_file, y_info_file))
     else:
         log.info('Means and stds from data')
-
 
     if load_from_file:
         if network_type is network_types[0]:
@@ -249,6 +261,15 @@ def main():
                                           likelihood_precision=likelihood_precision,
                                           batch_normalization=batch_normalization,
                                           dropout=dropout)
+        elif network_type is network_types[3]:
+            c = Classifier(n_in, n_out, lbn_n_hidden,
+                           det_activations,
+                           stoch_activations, log=log,
+                           likelihood_precision=likelihood_precision,
+                           batch_normalization=batch_normalization,
+                           mlp_n_in=mlp_n_in, mlp_n_hidden=mlp_n_hidden,
+                           mlp_activation_names=mlp_activation_names,
+                           bone_networks=bone_networks)
 
     print "model loaded"
 
@@ -258,18 +279,17 @@ def main():
         np.savetxt('{0}/idx_test.txt'.format(opath),
                    np.asarray(idx[train_bucket:], dtype=int), fmt='%i')
 
-    # Training  
+    # Training
     if load_from_file:
         log.info("Network loaded from file: {0}".format(loaded_network_fname))
 
-
-    log.info("Network properites: n_in: {0}, n_out: {1}, mlp_n_hidden: [{2}] "\
-                "mlp_activation_names: {3} batch_normalization: {4} "\
-                "dropout: {5}".format(
-                n_in, n_out,
-                ','.join(str(e) for e in mlp_n_hidden),
-                ','.join(str(e) for e in mlp_activation_names),
-                batch_normalization, dropout))
+    log.info("Network properites: n_in: {0}, n_out: {1}, mlp_n_hidden: [{2}] "
+             "mlp_activation_names: {3} batch_normalization: {4} "
+             "dropout: {5}".format(
+                 n_in, n_out,
+                 ','.join(str(e) for e in mlp_n_hidden),
+                 ','.join(str(e) for e in mlp_activation_names),
+                 batch_normalization, dropout))
 
     if use_pca:
         with open(pca_file, 'r') as fid:
@@ -281,13 +301,17 @@ def main():
     else:
         log.info("PCA: False")
 
-
-    # Training
-    c.fit(x_train, y_train, n_epochs, b_size, method, fname=fname,
-          x_test=None, y_test=None,
-          epoch0=epoch0, chunk_size=chunk_size,
-          save_every=save_every, sample_axis=0,
-          batch_logger=None, l2_coeff=l2_coeff, l1_coeff=l1_coeff)
+    if network_type == network_types[3] or network_type == network_types[4]:
+        c.fit(x_train, y_train, m, n_epochs, b_size, method, save_every=save_every, fname=fname, epoch0=epoch0,
+              chunk_size=chunk_size, sample_axis=0,
+              l2_coeff=l2_coeff, l1_coeff=l1_coeff)
+    else:
+        # Training
+        c.fit(x_train, y_train, n_epochs, b_size, method, fname=fname,
+              x_test=None, y_test=None,
+              epoch0=epoch0, chunk_size=chunk_size,
+              save_every=save_every, sample_axis=0,
+              batch_logger=None, l2_coeff=l2_coeff, l1_coeff=l1_coeff)
 
 
 if __name__ == '__main__':
