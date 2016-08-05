@@ -17,16 +17,16 @@ def main():
 
     network_type = 'mlp'
     extra_tag = ''
-    load_idx = False
-    idx_train_file = None
-    idx_test_file = None
+    load_idx = True
+    idx_train_file = 'network_output/idx_train.txt'
+    idx_test_file = 'network_output/idx_test.txt'
     assert not (load_idx and idx_train_file is None)
 
     network_types = ['mlp', 'residual', 'bone_residual']
 
     assert network_type in network_types
 
-    use_pca = True
+    use_pca = False
     pca_file = 'pca_sklearn.pkl'
 
     if use_pca:
@@ -115,15 +115,15 @@ def main():
     n_out = y.shape[1]
 
     print "Data ready to go"
-    mlp_activation_names = ['relu', 'relu']  # , 'sigmoid']
-    mlp_n_hidden = [20, 15]#, [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
+    mlp_activation_names = ['relu', 'relu', 'relu']  # , 'sigmoid']
+    mlp_n_hidden = [20, 15, 15]#, [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
     likelihood_precision = 1
 
     # Fit options
     b_size = 100
-    epoch0 = 1
+    epoch0 = 251
     n_epochs = 10000
-    lr = .01
+    lr = .001
     save_every = 10  # Log saving
     chunk_size = None  # Memory chunks
     batch_normalization = False  # TODO
@@ -132,7 +132,7 @@ def main():
     l1_coeff = 0
 
     # Optimizer
-    opt_type = 'SGD'
+    opt_type = 'Adam'
     method = {'type': opt_type, 'lr_decay_schedule': 'constant',
               'lr_decay_parameters': [lr],
               'momentum_type': 'nesterov', 'momentum': 0.01, 'b1': 0.9,
@@ -140,9 +140,9 @@ def main():
               'learning_rate': lr, 'dropout': dropout}
 
     # Load from file?
-    load_from_file = False
+    load_from_file = True
     session_name = None
-    load_different_file = False
+    load_different_file = True
 
     assert not (load_different_file and not load_from_file), "You have set load different_file to True but you are not loading any network!"
 
@@ -177,29 +177,25 @@ def main():
     #                                                                                                                                                                              str(e) for e in mlp_activation_names),
      # b_size,  method['type'])
         loaded_network_folder = "{0}_mlp_n_hidden_[{1}]_mlp_activation_[{2}]"\
-            "_bsize_{3}_method_{4}_bn_{5}_dropout_{6}{7}".\
-            format(
-                'mlp_classifier' if network_type is network_types[
-                    0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier',
-                ','.join(str(e) for e in mlp_n_hidden),
-                ','.join(str(e) for e in mlp_activation_names),
-                b_size,  method['type'], batch_normalization,
-                dropout,
-                '_sampled_clipped' if sampled_clipped else '',
-                lagged)
+        "_bsize_{3}_method_SGD_bn_{5}_dropout_{6}{7}{8}{9}".\
+        format(
+            'mlp_classifier' if network_type is network_types[
+                0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier',
+            ','.join(str(e) for e in mlp_n_hidden),
+            ','.join(str(e) for e in mlp_activation_names),
+            b_size,  method['type'], batch_normalization,
+            dropout,
+            '_lagged' if lagged else '', 'pca' if use_pca else '', extra_tag)
+
         loaded_opath = "network_output/{0}".format(loaded_network_folder)
         assert os.path.exists(
             loaded_opath), "Trying to load a network from a non existing path; {0}".format(loaded_opath)
 
-        # "mlp_classifier_n_{0}_n_impulse_2000_{1}_mlp_n_hidden_[{2}]_mlp_activation_[{3}]_bsize_{4}_method_{5}".format(n, n_impulse_2000,
-        loaded_network_name = "residual_mlp_classifier_n_hidden_[[150, 150],[100, 100],[80, 80],[50, 50]]"
-        #                                                                                                              ','.join(
-#                                                                                                                                                str(e) for e in mlp_n_hidden),
-#                                                                                                                                            ','.join(
-#                                                                                                                                                str(e) for e in mlp_activation_names),
-# b_size,  method['type'])
+        loaded_network_name = "{0}_n_hidden_[{1}]".format('mlp_classifier' if network_type is network_types[0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier', ','.join(str(e) for e in mlp_n_hidden))
 
-        loaded_network_fname = "{0}/networks/{1}".format(
+
+
+        loaded_network_fname = "{0}/networks/".format(
             loaded_opath, loaded_network_name)
 
     else:
@@ -219,7 +215,7 @@ def main():
     if load_from_file:
         if network_type is network_types[0]:
             c = MLPClassifier.init_from_file(
-                '{0}_epoch_{1}.json'.format(
+                '{0}init.json'.format(
                     loaded_network_fname,  epoch0 - 1),
                 log=log)
         elif network_type is network_types[1]:
@@ -284,6 +280,7 @@ def main():
 
     else:
         log.info("PCA: False")
+
 
     # Training
     c.fit(x_train, y_train, n_epochs, b_size, method, fname=fname,
