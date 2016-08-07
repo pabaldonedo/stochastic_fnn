@@ -120,7 +120,7 @@ def main():
     mlp_activation_names = ['relu', 'relu', 'relu']  # , 'sigmoid']
     # , [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
     mlp_n_hidden = [20, 15, 15]
-    likelihood_precision = 1
+    likelihood_precision = .1
 
     # Fit options
     b_size = 100
@@ -138,16 +138,16 @@ def main():
     bone_networks = True
     bone_type = '2d'
     mlp_n_in = 6
-    lbn_n_hidden = [20, 15]
-    mlp_activation_names = ['relu']
+    lbn_n_hidden = [20]
+    mlp_activation_names = ['tanh']
     mlp_n_hidden = [5]
 
-    det_activations = ['linear', 'linear', 'linear']   # , 'linear', 'linear']
+    det_activations = ['linear', 'linear']   # , 'linear', 'linear']
     stoch_activations = ['sigmoid', 'sigmoid']
-    m = 50
+    m = 20
 
     # Optimizer
-    opt_type = 'Adam'
+    opt_type = 'SGD'
     method = {'type': opt_type, 'lr_decay_schedule': 'constant',
               'lr_decay_parameters': [lr],
               'momentum_type': 'nesterov', 'momentum': 0.01, 'b1': 0.9,
