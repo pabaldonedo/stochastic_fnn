@@ -277,8 +277,14 @@ class Classifier(object):
             self.set_up_mlp(mlp_n_hidden, mlp_activation_names, mlp_n_in,
                             weights=weights, batch_normalization=self.batch_normalization, twod=self.bone_type == '3d')
 
-            self.lbn_input = T.concatenate([bone.output for bone in self.bone_representations] +
+            if self.bone_type == '3d':
+                self.lbn_input = T.concatenate([bone.output for bone in self.bone_representations] +
                                            [self.x[:, -2:]], axis=1)
+            elif self.bone_type == '2d:'
+                self.lbn_input = T.concatenate([bone.output for bone in self.bone_representations], 
+                                            axis=1)
+            else:
+                raise NotImplementedError
             lbn_n_in = len(self.bone_representations) * \
                 self.mlp_n_hidden[-1] + 2
         else:
