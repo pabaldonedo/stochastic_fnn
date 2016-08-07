@@ -139,7 +139,7 @@ def main():
     bone_type = '2d'
     mlp_n_in = 6
     lbn_n_hidden = [20]
-    mlp_activation_names = ['relu']
+    mlp_activation_names = ['tanh']
     mlp_n_hidden = [5]
 
     det_activations = ['linear', 'linear']   # , 'linear', 'linear']
@@ -269,7 +269,7 @@ def main():
                            batch_normalization=batch_normalization,
                            mlp_n_in=mlp_n_in, mlp_n_hidden=mlp_n_hidden,
                            mlp_activation_names=mlp_activation_names,
-                           bone_networks=bone_networks, bone_type=bone_tpye)
+                           bone_networks=bone_networks, bone_type=bone_type)
 
     print "model loaded"
 
