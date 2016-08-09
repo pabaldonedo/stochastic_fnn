@@ -396,3 +396,101 @@ def init_bn(layer, n_in, gamma_values=None, beta_values=None):
         value=np.asarray(gamma_values, dtype=theano.config.floatX), name='gamma', borrow=True)
     layer.beta = theano.shared(
         value=np.asarray(beta_values, dtype=theano.config.floatX), name='beta', borrow=True)
+
+
+def get_correlated_weights_init_values(n, activation=None, rng=None,
+                                       W_correlated_values=None, activation_name=None):
+    """Returns initial weights for a weight matrix.
+
+
+    :type n: int.
+    :param n: number of units in the layer.
+
+    :type activation: function/theano function.
+    :param activation: activation function of layer.
+
+    :type rng: numpy.random.RandomState.
+    :param rng: random number generator used to initialize weights.
+
+    :type W_values: numpy.array / None.
+    :param W_values: initialization values. If None, random numbers from
+                     uniform distribution are drawn.
+    """
+
+    if W_correlated_values is None:
+        W_correlated_values = []
+        for i in xrange(1, n):
+            if rng is None:
+                rng = np.random.RandomState(0)
+
+                # He et al (2016) Deep Residual Learning for Image Recognition
+            if activation_name == "relu":
+                std = np.sqrt(2. / i)
+                W_values = np.asarray(
+                    rng.standard_normal(size=(i,)) * std,
+                    dtype=theano.config.floatX
+                )
+            elif activation_name == "linear":
+
+                W_values = np.asarray(
+                    rng.uniform(
+                        low=-np.sqrt(6. / (i + 1)),
+                        high=np.sqrt(6. / (i + 1)),
+                        size=(i,)
+                    ),
+                    dtype=theano.config.floatX
+                )
+
+            # Borot et Bengio (2010) Understanding the difficulty of training deep
+            # feedforward neural networks
+            elif activation_name == "tanh":
+                W_values = np.asarray(
+                    rng.uniform(
+                        low=-np.sqrt(6. / (i + 1)),
+                        high=np.sqrt(6. / (i + 1)),
+                        size=(i,)
+                    ),
+                    dtype=theano.config.floatX
+                )
+            elif activation_name == "sigmoid":
+                W_values = np.asarray(
+                    rng.uniform(
+                        low=-4 * np.sqrt(6. / (i + 1)),
+                        high=4 * np.sqrt(6. / (i + 1)),
+                        size=(i)
+                    ),
+                    dtype=theano.config.floatX
+                )
+            else:
+                raise NotImplementedError
+
+            W_correlated_values.append(W_values)
+
+    return W_correlated_values
+
+
+def get_correlated_biases_init_values(n, b0=None, b_correlated_values=None):
+    """Returns initial bias values.
+
+    :type n: int.
+    :param n: vector size of biases.
+
+    :type b0: float, double.
+    :param b0: if b_values is None, bias is initialize to vector b0.
+               If None bias initialized to vector of zeros.
+
+    :type b_values: numpy.array, None.
+    :param b_values: initialization values. If None, b0 is used.
+    """
+
+    if b_correlated_values is None:
+        b_correlated_values = []
+        for i in xrange(1, n):
+            if b0 is None:
+                b_values = np.zeros((i,), dtype=theano.config.floatX)
+            else:
+                b_values = np.empty((i,), dtype=theano.config.floatX)
+                b_values.fill(b0)
+            b_correlated_values.append(b_values)
+
+    return b_correlated_values

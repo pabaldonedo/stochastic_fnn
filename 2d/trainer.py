@@ -16,7 +16,7 @@ from classifiers import Classifier
 
 def main():
 
-    network_type = 'classifier'
+    network_type = 'mlp'
     extra_tag = ''
     load_idx = True
     idx_train_file = 'network_output/idx_train.txt'
@@ -30,6 +30,8 @@ def main():
 
     use_pca = False
     pca_file = 'pca_sklearn.pkl'
+
+    correlated_output = True
 
     if use_pca:
         assert pca_file is not None
@@ -83,7 +85,6 @@ def main():
 
     if lagged:
         raise NotImplementedError
-        assert not n_impulse_2000 > 0
     else:
         x = np.asarray(pd.read_csv(
             states_file, delimiter=',',
@@ -120,13 +121,13 @@ def main():
     mlp_activation_names = ['relu', 'relu', 'relu']  # , 'sigmoid']
     # , [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
     mlp_n_hidden = [20, 15, 15]
-    likelihood_precision = .1
+    likelihood_precision = 1
 
     # Fit options
     b_size = 100
-    epoch0 = 11
+    epoch0 = 1
     n_epochs = 10000
-    lr = .001
+    lr = .1
     save_every = 10  # Log saving
     chunk_size = None  # Memory chunks
     batch_normalization = False  # TODO
@@ -246,13 +247,13 @@ def main():
                               mlp_activation_names, log=log,
                               likelihood_precision=likelihood_precision,
                               batch_normalization=batch_normalization,
-                              dropout=dropout)
+                              dropout=dropout, correlated_output=correlated_output)
         elif network_type is network_types[1]:
             c = ResidualMLPClassifier(n_in, n_out, mlp_n_hidden,
                                       mlp_activation_names, log=log,
                                       likelihood_precision=likelihood_precision,
                                       batch_normalization=batch_normalization,
-                                      dropout=dropout)
+                                      dropout=dropout, correlated_output=correlated_output)
         elif network_type is network_types[2]:
             c = BoneResidualMLPClassifier(n_in, n_out, mlp_n_hidden,
                                           mlp_activation_names,
@@ -260,7 +261,7 @@ def main():
                                           log=log,
                                           likelihood_precision=likelihood_precision,
                                           batch_normalization=batch_normalization,
-                                          dropout=dropout)
+                                          dropout=dropout, correlated_output=correlated_output)
         elif network_type is network_types[3]:
             c = Classifier(n_in, n_out, lbn_n_hidden,
                            det_activations,
@@ -269,7 +270,8 @@ def main():
                            batch_normalization=batch_normalization,
                            mlp_n_in=mlp_n_in, mlp_n_hidden=mlp_n_hidden,
                            mlp_activation_names=mlp_activation_names,
-                           bone_networks=bone_networks, bone_type=bone_type)
+                           bone_networks=bone_networks, bone_type=bone_type,
+                           correlated_output=correlated_output)
 
     print "model loaded"
 
