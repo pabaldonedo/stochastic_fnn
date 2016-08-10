@@ -1665,7 +1665,7 @@ class MLPClassifier(object):
                                 layers_info=network_description,
                                 batch_normalization=False if 'batch_normalization' not in network_properties.keys(
         ) else network_properties['batch_normalization'],            dropout=network_properties['dropout'] if 'dropout' in network_properties.keys() else False, correlated_outputs=None if 'correlated_outputs' not in network_properties.keys() else network_properties['correlated_outputs'],
-            output_activtion='linear' if 'output_activation' not in network_properties.keys() else network_properties['output_activation'])
+            output_activation_name='linear' if 'output_activation' not in network_properties.keys() else network_properties['output_activation'])
 
         return loaded_classifier
 
