@@ -1404,20 +1404,22 @@ class MLPClassifier(object):
             n_out) is IntType, "n_out must be an integer: {0!r}".format(n_out)
 
         assert type(mlp_n_hidden) is ListType, "det_activations must be a list: {0!r}".format(
-            det_activations)
+            mlp_n_hidden)
         assert type(mlp_activation_names) is ListType, "stoch_activations must be a list: {0!r}". format(
-            stoch_activations)
+            mlp_activation_names)
 
         assert type(batch_normalization) is bool, "batch_normalization must be bool. Given: {0!r}".format(
             batch_normalization)
-        assert type(correlated_outputs) is bool
+        assert type(correlated_outputs) is None or str
+        if correlated_outputs is not None:
+            assert correlated_outputs in ['full', 'sparse', 'fixed']
 
         self.batch_normalization = batch_normalization
         self.mlp_n_hidden = mlp_n_hidden
         self.n_in = n_in
         self.likelihood_precision = likelihood_precision
         self.n_out = n_out
-        self.mlp_activation_names = activation_names
+        self.mlp_activation_names = mlp_activation_names
         self.dropout = dropout
         self.correlated_outputs = correlated_outputs
         self.output_activation_name = output_activation_name
@@ -1427,16 +1429,16 @@ class MLPClassifier(object):
     def __init__(self, n_in, n_out, mlp_n_hidden, mlp_activation_names,
                  likelihood_precision=1, layers_info=None, log=None,
                  batch_normalization=False, dropout=False,
-                 correlated_outputs=False, output_activation_name='linear'):
+                 correlated_outputs=None, output_activation_name='linear'):
         """
         :type correlated_outputs: bool.
         :param correlated_outputs: if true correlatedLayer will be used as output layer.
         """
 
-        self.parse_intputs(n_in, n_out, mlp_n_hidden, mlp_activation_names,
-                           likelihood_precision, log,
-                           batch_normalization, dropout, correlated_outputs,
-                           output_activation_name)
+        self.parse_inputs(n_in, n_out, mlp_n_hidden, mlp_activation_names,
+                          likelihood_precision, log,
+                          batch_normalization, dropout, correlated_outputs,
+                          output_activation_name)
 
         self.x = T.matrix('x', dtype=theano.config.floatX)
         self.y = T.matrix('y', dtype=theano.config.floatX)
@@ -1455,12 +1457,26 @@ class MLPClassifier(object):
                             dropout=self.dropout, training=self.training)
 
         self.params.append(self.mlp.params)
-        if self.correlated_outputs:
-            self.output_layer = mlp.CorrelatedLayer(self.mlp.output, self.mlp.hidden_layers[1].n_out, self.n_out, self.output_activation_name, self.output_activation,
+        if self.correlated_outputs == 'full':
+            self.output_layer = mlp.CorrelatedLayer(self.mlp.output, self.mlp.hidden_layers[-1].n_out, self.n_out, self.output_activation_name, self.output_activation,
                                                     W_values=None if layers_info is None else layers_info['output_layer']['W'], b_values=None if layers_info is None else layers_info['output_layer']['b'],
-                                                    W_correlated_values=None if layers_info is None else layers_info['output_layer']['W_correlated'], b_correlated_values=None if layers_info is None else layers_info['output_layer']['b_correlated'],
+                                                    W_correlated_values=None if layers_info is None else layers_info[
+                                                        'output_layer']['W_correlated'],
                                                     timeseries_layer=False)
-        else:
+
+        elif self.correlated_outputs == 'sparse':
+            self.output_layer = mlp.OneCorrelatedLayer(self.mlp.output, self.mlp.hidden_layers[-1].n_out, self.n_out, self.output_activation_name, self.output_activation,
+                                                       W_values=None if layers_info is None else layers_info['output_layer']['W'], b_values=None if layers_info is None else layers_info['output_layer']['b'],
+                                                       W_correlated_values=None if layers_info is None else layers_info[
+                'output_layer']['W_correlated'],
+                timeseries_layer=False)
+
+        elif self.correlated_outputs == 'fixed':
+            self.output_layer = mlp.FixedCorrelatedLayer(self.mlp.output, self.mlp.hidden_layers[-1].n_out, self.n_out, self.output_activation_name, self.output_activation,
+                                                         W_values=None if layers_info is None else layers_info['output_layer']['W'], b_values=None if layers_info is None else layers_info['output_layer']['b'],
+                                                         timeseries_layer=False)
+
+        elif self.correlated_outputs == None:
 
             self.output_layer = mlp.HiddenLayer(self.mlp.output, self.mlp.hidden_layers[-1].n_out,
                                                 self.n_out, self.output_activation_name, self.output_activation,
@@ -1477,6 +1493,9 @@ class MLPClassifier(object):
                                                 epsilon=1e-12 if layers_info is None or 'epsilon' not in layers_info[
                                                 'output_layer'].keys() else layers_info['output_layer']['epsilon'],
                                                 fixed_means=False, dropout=False)
+
+        else:
+            raise NotImplementedError
 
         self.params.append(self.output_layer.params)
         self.log = log
@@ -1594,11 +1613,13 @@ class MLPClassifier(object):
                        "b": self.output_layer.b.get_value().tolist(),
                        "timeseries": self.output_layer.timeseries,
                        "output_activation": self.output_activation_name}
-        if self.correlated_outputs:
+
+        if self.correlated_outputs == 'full':
+            buffer_dict[
+                "W_correlated"] = [wi.get_value().tolist() for wi in self.output_layer.W_correlated]
+        elif self.correlated_outputs == 'sparse':
             buffer_dict[
                 "W_correlated"] = self.output_layer.W_correlated.get_value().tolist()
-            buffer_dict[
-                "b_correlated"] = self.output_layer.b_correlated.get_calue().tolist()
 
         if self.batch_normalization:
             buffer_dict[
@@ -1643,7 +1664,7 @@ class MLPClassifier(object):
                                 log=log,
                                 layers_info=network_description,
                                 batch_normalization=False if 'batch_normalization' not in network_properties.keys(
-        ) else network_properties['batch_normalization'],            dropout=network_properties['dropout'] if 'dropout' in network_properties.keys() else False, correlated_outputs=Flase if 'correlated_outputs' not in network_properties.keys() else network_properties['correlated_outputs'],
+        ) else network_properties['batch_normalization'],            dropout=network_properties['dropout'] if 'dropout' in network_properties.keys() else False, correlated_outputs=None if 'correlated_outputs' not in network_properties.keys() else network_properties['correlated_outputs'],
             output_activtion='linear' if 'output_activation' not in network_properties.keys() else network_properties['output_activation'])
 
         return loaded_classifier

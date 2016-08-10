@@ -434,8 +434,8 @@ def get_correlated_weights_init_values(n, activation=None, rng=None,
 
                 W_values = np.asarray(
                     rng.uniform(
-                        low=-np.sqrt(6. / (i + 1)),
-                        high=np.sqrt(6. / (i + 1)),
+                        low=-np.sqrt(.2 / (i + 1)),
+                        high=np.sqrt(.2 / (i + 1)),
                         size=(i,)
                     ),
                     dtype=theano.config.floatX
@@ -467,30 +467,3 @@ def get_correlated_weights_init_values(n, activation=None, rng=None,
             W_correlated_values.append(W_values)
 
     return W_correlated_values
-
-
-def get_correlated_biases_init_values(n, b0=None, b_correlated_values=None):
-    """Returns initial bias values.
-
-    :type n: int.
-    :param n: vector size of biases.
-
-    :type b0: float, double.
-    :param b0: if b_values is None, bias is initialize to vector b0.
-               If None bias initialized to vector of zeros.
-
-    :type b_values: numpy.array, None.
-    :param b_values: initialization values. If None, b0 is used.
-    """
-
-    if b_correlated_values is None:
-        b_correlated_values = []
-        for i in xrange(1, n):
-            if b0 is None:
-                b_values = np.zeros((i,), dtype=theano.config.floatX)
-            else:
-                b_values = np.empty((i,), dtype=theano.config.floatX)
-                b_values.fill(b0)
-            b_correlated_values.append(b_values)
-
-    return b_correlated_values

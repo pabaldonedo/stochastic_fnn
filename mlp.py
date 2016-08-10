@@ -9,13 +9,180 @@ from util import get_weight_init_values
 from util import get_bias_init_values
 from util import init_bn
 from util import get_correlated_weights_init_values
-from util import get_correlated_biases_init_values
+
+
+class FixedCorrelatedLayer(object):
+
+    def __init__(self, input_var, n_in, n_out, activation_name, activation, rng=None,
+                 W_values=None, b_values=None,
+                 timeseries_layer=False,
+                 epsilon=1e-12):
+        """
+        Hidden layer: Weight matrix W is of shape (n_out,n_in)
+        and the bias vector b is of shape (n_out,).
+
+        :type input_var: theano.tensor.dmatrix, theano.tensor.tensor3 or theano.tensor.tensor4.
+        :param input_var: a symbolic tensor of shape (n_samples, n_in) or (m, n_samples, n_in).
+                            If timeseries_layer=False then (t_points, n_samples, n_in) or
+                            (t_points, m, n_samples, n_in).
+
+        :type n_in: int.
+        :param n_in: input dimensionality.
+
+        :type n_out: int.
+        :param n_out: number of hidden units.
+
+        :type activation_name: string
+        :param activation_name: name of activation function.
+
+        :type activation: theano.Op or function.
+        :param activation: Non linearity to be applied in the hidden layer.
+
+        :type rng: numpy.random.RandomState.
+        :param rng: a random number generator used to initialize weights.
+
+        :type W_values: numpy.array.
+        :param W_values: initialization values of the weights.
+
+        :type b_values: numpy array.
+        :param b_values: initialization values of the bias.
+
+        :type timeseries_layer: bool.
+        :param timeseries_layer: if True the input is considered to be timeseries.
+        """
+
+        self.input = input_var
+        self.n_in = n_in
+        self.n_out = n_out
+        self.activation_name = activation_name
+        self.activation = activation
+
+        W_values = get_weight_init_values(
+            n_in, n_out, activation=activation, rng=rng, W_values=W_values,
+            activation_name=self.activation_name)
+
+        W = theano.shared(value=W_values, name='W', borrow=True)
+        b_values = get_bias_init_values(n_out, b_values=b_values)
+
+        b = theano.shared(value=b_values, name='b', borrow=True)
+        self.W = W
+        self.b = b
+
+        self.params = [self.W, self.b]
+        self.timeseries = timeseries_layer
+
+        if self.timeseries:
+            self.timeseries_layer()
+        else:
+            self.feedforward_layer()
+
+    def feedforward_layer(self):
+        self.a = T.dot(self.input, self.W.T) + self.b
+        self.a = T.set_subtensor(
+            self.a[:, 1:], self.a[:, :-1] + self.a[:, 1:])
+        self.output = self.activation(self.a)
+
+    def timeseries_layer(self):
+        def step(x):
+            a = T.dot(x, self.W.T) + self.b
+            a = T.set_subtensor(a[:, 1:],  a[:, :-1] + a[:, 1:])
+            return a
+        self.a, _ = theano.scan(step, sequences=self.input)
+        self.output = self.activation(self.a)
+
+
+class OneCorrelatedLayer(object):
+
+    def __init__(self, input_var, n_in, n_out, activation_name, activation, rng=None,
+                 W_values=None, b_values=None, W_correlated_values=None,
+                 timeseries_layer=False,
+                 epsilon=1e-12):
+        """
+        Hidden layer: Weight matrix W is of shape (n_out,n_in)
+        and the bias vector b is of shape (n_out,).
+
+        :type input_var: theano.tensor.dmatrix, theano.tensor.tensor3 or theano.tensor.tensor4.
+        :param input_var: a symbolic tensor of shape (n_samples, n_in) or (m, n_samples, n_in).
+                            If timeseries_layer=False then (t_points, n_samples, n_in) or
+                            (t_points, m, n_samples, n_in).
+
+        :type n_in: int.
+        :param n_in: input dimensionality.
+
+        :type n_out: int.
+        :param n_out: number of hidden units.
+
+        :type activation_name: string
+        :param activation_name: name of activation function.
+
+        :type activation: theano.Op or function.
+        :param activation: Non linearity to be applied in the hidden layer.
+
+        :type rng: numpy.random.RandomState.
+        :param rng: a random number generator used to initialize weights.
+
+        :type W_values: numpy.array.
+        :param W_values: initialization values of the weights.
+
+        :type b_values: numpy array.
+        :param b_values: initialization values of the bias.
+
+        :type timeseries_layer: bool.
+        :param timeseries_layer: if True the input is considered to be timeseries.
+        """
+
+        self.input = input_var
+        self.n_in = n_in
+        self.n_out = n_out
+        self.activation_name = activation_name
+        self.activation = activation
+
+        W_correlated_values = np.asarray(np.random.randn(
+            n_out - 1), dtype=theano.config.floatX)
+
+        W_correlated = theano.shared(
+            value=W_correlated_values, name='W_corr', borrow=True)
+
+        W_values = get_weight_init_values(
+            n_in, n_out, activation=activation, rng=rng, W_values=W_values,
+            activation_name=self.activation_name)
+
+        W = theano.shared(value=W_values, name='W', borrow=True)
+        b_values = get_bias_init_values(n_out, b_values=b_values)
+
+        b = theano.shared(value=b_values, name='b', borrow=True)
+        self.W = W
+        self.b = b
+        self.W_correlated = W_correlated
+
+        self.params = [self.W, self.b, self.W_correlated]
+        self.timeseries = timeseries_layer
+
+        if self.timeseries:
+            self.timeseries_layer()
+        else:
+            self.feedforward_layer()
+
+    def feedforward_layer(self):
+        self.a = T.dot(self.input, self.W.T) + self.b
+        self.a = T.set_subtensor(
+            self.a[:, 1:], self.W_correlated * self.a[:, :-1] + self.a[:, 1:])
+        self.output = self.activation(self.a)
+
+    def timeseries_layer(self):
+        def step(x):
+            a = T.dot(x, self.W.T) + self.b
+            a = T.set_subtensor(
+                a[:, :, 1:], self.W_correlated * a[:, :, :-1] + a[:, :, 1:])
+            return a
+        self.a, _ = theano.scan(step, sequences=self.input)
+        self.output = self.activation(self.a)
 
 
 class CorrelatedLayer(object):
 
     def __init__(self, input_var, n_in, n_out, activation_name, activation, rng=None,
-                 W_values=None, b_values=None, W_correlated_values=None, b_correlated_values=None,
+                 W_values=None, b_values=None, W_correlated_values=None,
                  timeseries_layer=False,
                  epsilon=1e-12):
         """
@@ -60,17 +227,11 @@ class CorrelatedLayer(object):
         self.activation = activation
 
         W_correlated_values = get_correlated_weights_init_values(
-            n_in, n_out, activation=activation, rng=rng, W_correlated_values=W_correlated_values,
+            n_out, activation=activation, rng=rng, W_correlated_values=W_correlated_values,
             activation_name=self.activation_name)
 
         W_correlated = [theano.shared(
             value=wi, name='W{0}_corr', borrow=True) for i, wi in enumerate(W_correlated_values)]
-
-        b_correlated_values = get_correlated_biases_init_values(
-            n_out, b_correlated_values=b_correlated_values)
-
-        b_correlated = [theano.shared(
-            value=bi, name='b{0}_corr', borrow=True) for i, bi in enumerate(b_correlated_values)]
 
         W_values = get_weight_init_values(
             n_in, n_out, activation=activation, rng=rng, W_values=W_values,
@@ -83,8 +244,8 @@ class CorrelatedLayer(object):
         self.W = W
         self.b = b
         self.W_correlated = W_correlated
-        self.b_correlated = b_correlated
-        self.params = [self.W, self.b] + self.W_correlated + self.b_correlated
+
+        self.params = [self.W, self.b] + self.W_correlated
         self.timeseries = timeseries_layer
 
         if self.timeseries:
@@ -95,16 +256,17 @@ class CorrelatedLayer(object):
     def feedforward_layer(self):
         self.a = T.dot(self.input, self.W.T) + self.b
         for i in xrange(1, self.n_out):
-            self.a = T.set_subtensor(self.a[i], T.dot(
-                self.a[:i], self.W_correlated[i - 1])) + self.b_correlated[i - 1]
+
+            self.a = T.set_subtensor(self.a[:, i], T.dot(
+                self.a[:, :i], self.W_correlated[i - 1]) + self.a[:, i])
         self.output = self.activation(self.a)
 
     def timeseries_layer(self):
         def step(x):
             a = T.dot(x, self.W.T) + self.b
             for i in xrange(1, self.n_out):
-                a = T.set_subtensor(a[i], T.dot(
-                    a[:i], self.W_correlated[i - 1])) + self.b_correlated[i - 1]
+                a = T.set_subtensor(a[:, :, i], T.dot(
+                    a[:, :, :i], self.W_correlated[i - 1]) + self.a[:, :, i])
             return a
         self.a, _ = theano.scan(step, sequences=self.input)
         self.output = self.activation(self.a)

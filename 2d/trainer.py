@@ -31,7 +31,7 @@ def main():
     use_pca = False
     pca_file = 'pca_sklearn.pkl'
 
-    correlated_output = True
+    correlated_outputs = 'sparse'
 
     if use_pca:
         assert pca_file is not None
@@ -127,7 +127,7 @@ def main():
     b_size = 100
     epoch0 = 1
     n_epochs = 10000
-    lr = .1
+    lr = .01
     save_every = 10  # Log saving
     chunk_size = None  # Memory chunks
     batch_normalization = False  # TODO
@@ -163,7 +163,7 @@ def main():
     assert not (load_different_file and not load_from_file), "You have set load different_file to True but you are not loading any network!"
 
     network_name = "{0}_mlp_n_hidden_[{1}]_mlp_activation_[{2}]"\
-        "_bsize_{3}_method_{4}_bn_{5}_dropout_{6}{7}{8}{9}".\
+        "_bsize_{3}_method_{4}_bn_{5}_dropout_{6}{7}{8}{9}{10}".\
         format(
             'mlp_classifier' if network_type is network_types[
                 0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier' if network_type is network_types[2] else 'lbn_classifier',
@@ -171,7 +171,7 @@ def main():
             ','.join(str(e) for e in mlp_activation_names),
             b_size,  method['type'], batch_normalization,
             dropout,
-            '_lagged' if lagged else '', 'pca' if use_pca else '', extra_tag)
+            '_lagged' if lagged else '', '_pca' if use_pca else '', '_{0}correlated'.format(correlated_outputs) if correlated_outputs is not None else '', extra_tag)
 
     opath = "network_output/{0}".format(network_name)
     if not os.path.exists(opath):
@@ -247,13 +247,13 @@ def main():
                               mlp_activation_names, log=log,
                               likelihood_precision=likelihood_precision,
                               batch_normalization=batch_normalization,
-                              dropout=dropout, correlated_output=correlated_output)
+                              dropout=dropout, correlated_outputs=correlated_outputs)
         elif network_type is network_types[1]:
             c = ResidualMLPClassifier(n_in, n_out, mlp_n_hidden,
                                       mlp_activation_names, log=log,
                                       likelihood_precision=likelihood_precision,
                                       batch_normalization=batch_normalization,
-                                      dropout=dropout, correlated_output=correlated_output)
+                                      dropout=dropout, correlated_outputs=correlated_outputs)
         elif network_type is network_types[2]:
             c = BoneResidualMLPClassifier(n_in, n_out, mlp_n_hidden,
                                           mlp_activation_names,
@@ -261,7 +261,7 @@ def main():
                                           log=log,
                                           likelihood_precision=likelihood_precision,
                                           batch_normalization=batch_normalization,
-                                          dropout=dropout, correlated_output=correlated_output)
+                                          dropout=dropout, correlated_outputs=correlated_outputs)
         elif network_type is network_types[3]:
             c = Classifier(n_in, n_out, lbn_n_hidden,
                            det_activations,
@@ -271,7 +271,7 @@ def main():
                            mlp_n_in=mlp_n_in, mlp_n_hidden=mlp_n_hidden,
                            mlp_activation_names=mlp_activation_names,
                            bone_networks=bone_networks, bone_type=bone_type,
-                           correlated_output=correlated_output)
+                           correlated_outputs=correlated_outputs)
 
     print "model loaded"
 
