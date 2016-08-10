@@ -1670,6 +1670,253 @@ class MLPClassifier(object):
         return loaded_classifier
 
 
+class ApplyOneCorrelated(object):
+
+    def __init__(self, input_var, n, activation_name, activation,
+                 W_correlated_values=None):
+
+        if W_correlated_values is None:
+            W_correlated_values = np.asarray(np.random.randn(
+                n - 1), dtype=theano.config.floatX)
+
+        self.W_correlated = theano.shared(
+            value=W_correlated_values, name='W_corr', borrow=True)
+
+        self.a = T.set_subtensor(input_var[:, 1:], input_var[
+            :, 1:] + W_correlated * input_var[:, :-1])
+        self.n = n
+        self.activation_name = activation_name
+        self.activation = activation
+        self.output = self.activation(self.a)
+        self.params = [self.W_correlated]
+
+
+class ApplyFixedCorrelated(object):
+
+    def __init__(self, input_var, n, activation_name, activation):
+
+        self.a = T.set_subtensor(input_var[:, 1:], input_var[
+            :, 1:] + input_var[:, :-1])
+
+        self.n = n
+        self.activation_name = activation_name
+        self.activation = activation
+        self.output = self.activation(self.a)
+        self.params = []
+
+
+class Correlated2DMLPClassifier(MLPClassifier):
+
+    def parse_inputs(self, n_in, n_out, mlp_n_hidden, mlp_activation_names,
+                     likelihood_precision, log,
+                     batch_normalization, dropout, correlated_outputs,
+                     output_activation_name):
+
+        self.log = log
+        if self.log is None:
+            logging.basicConfig(level=logging.INFO)
+            self.log = logging.getLogger()
+
+        assert type(
+            n_in) is IntType, "n_in must be an integer: {0!r}".format(n_in)
+
+        assert type(
+            n_out) is IntType, "n_out must be an integer: {0!r}".format(n_out)
+
+        assert type(mlp_n_hidden) is ListType, "det_activations must be a list: {0!r}".format(
+            mlp_n_hidden)
+        assert type(mlp_activation_names) is ListType, "stoch_activations must be a list: {0!r}". format(
+            mlp_activation_names)
+
+        assert type(batch_normalization) is bool, "batch_normalization must be bool. Given: {0!r}".format(
+            batch_normalization)
+        assert type(correlated_outputs) or str
+        assert correlated_outputs in ['sparse', 'fixed']
+
+        self.batch_normalization = batch_normalization
+        self.mlp_n_hidden = mlp_n_hidden
+        self.n_in = n_in
+        self.likelihood_precision = likelihood_precision
+        self.n_out = n_out
+        self.mlp_activation_names = mlp_activation_names
+        self.dropout = dropout
+        self.correlated_outputs = correlated_outputs
+        self.output_activation_name = output_activation_name
+        self.output_activation = get_activation_function(
+            self.output_activation_name)
+
+    def __init__(self, n_in, n_out, mlp_n_hidden, mlp_activation_names,
+                 likelihood_precision=1, layers_info=None, log=None,
+                 batch_normalization=False, dropout=False,
+                 correlated_outputs='sparse', output_activation_name='linear'):
+        """
+        :type correlated_outputs: bool.
+        :param correlated_outputs: if true correlatedLayer will be used as output layer.
+        """
+
+        self.parse_inputs(n_in, n_out, mlp_n_hidden, mlp_activation_names,
+                          likelihood_precision, log,
+                          batch_normalization, dropout, correlated_outputs,
+                          output_activation_name)
+
+        self.x = T.matrix('x', dtype=theano.config.floatX)
+        self.y = T.matrix('y', dtype=theano.config.floatX)
+        self.params = []
+
+        self.training = None
+        if self.dropout:
+            self.training = theano.tensor.scalar('training')
+
+        self.mlps = [None] * n_out
+
+        for i in xrange(len(self.mlps)):
+            self.mlps[i] = MLPLayer(self.n_in, self.mlp_n_hidden, self.mlp_activation_names,
+                                    timeseries_network=False,
+                                    input_var=self.x,
+                                    layers_info=None if layers_info is None else layers_info[
+                                        'mlps'][i]['mlp'],
+                                    batch_normalization=self.batch_normalization,
+                                    dropout=self.dropout, training=self.training)
+
+            self.params.append(self.mlps[i].params)
+
+        self.output_layers = [None] * n_out
+
+        linear_activation = get_activation_function('linear')
+
+        for i in xrange(len(self.output_layers)):
+            self.output_layers[i] = mlp.HiddenLayer(self.mlps[i].output, self.mlp.hidden_layers[-1].n_out, 1, 'linear', linear_activation,
+                                                    W_values=None if layers_info is None else layers_info['output_layers'][i]['output_layer']['W'], b_values=None if layers_info is None else layers_info['output_layer']['b'],
+                                                    W_correlated_values=None if layers_info is None else layers_info[
+                'output_layers'][i]['output_layer']['W_correlated'],
+                timeseries_layer=False)
+            self.params.append(self.output_layers[i].params)
+
+        output_a = T.concatenate([ol.output for ol in self.output_layers])
+
+        output_activation = get_activation_function(
+            self.output_activation_name)
+
+        if self.correlated_output == 'sparse':
+            self.correlated_layer = ApplyOneCorrelated(output_a, n_out, self.output_activation_name, output_activation,
+                                                       W_correlated_values=None if layers_info is None else layers_info['correlated_layer']['W_correlated'])
+
+        elif self.correlated_output == 'fixed':
+            self.correlated_layer = ApplyFixedCorrelated(
+                output_a, n_out, self.output_activation_name, output_activation)
+        else:
+            raise NotImplementedError
+
+        self.output = self.correlated_layer.output
+        self.params += self.correlated_layers.params
+        self.log = log
+        if self.log is None:
+            logging.basicConfig(level=logging.INFO)
+            self.log = logging.getLogger()
+
+        if self.dropout:
+            self.givens_dict = {self.training: np.float64(
+                0).astype(theano.config.floatX)}
+        else:
+            self.givens_dict = {}
+
+        compute_regularizer(self)
+        self.output = self.output_layer.output
+        self.predict = theano.function(
+            inputs=[self.x], outputs=self.output,
+            givens=self.givens_dict)
+
+    def generate_saving_string(self):
+        """Generate json representation of network parameters"""
+        output_string = "{\"network_properties\":"
+        output_string += json.dumps({"n_in": self.n_in, "n_out": self.n_out,
+                                     "mlp_n_hidden": self.mlp_n_hidden,
+                                     "mlp_activation_names": self.mlp_activation_names,
+                                     "likelihood_precision": self.likelihood_precision,
+                                     "batch_normalization": self.batch_normalization,
+                                     "dropout": self.dropout,
+                                     "correlated_outputs": self.correlated_outputs,
+                                     "output_activation_name": self.output_activation_name})
+
+        output_string += ",\"mlps\":["
+
+        for i, mlp in enumerate(self.mlps):
+            if i > 0:
+                output_string += ","
+            output_string += "{\"mlp\":"
+            output_string += mlp.generate_saving_string()
+            output_selftring += "}"
+        output_string += "]"
+        output_string += ", \"output_layers\":["
+
+        for i, ol in enumerate(self.output_layers):
+            if i > 0:
+                output_string += ","
+            output_string += "\"output_layer\":"
+            buffer_dict = {"n_in": ol.n_in, "n_out": ol.n_out,
+                           "activation": ol.activation_name,
+                           "W": ol.W.get_value().tolist(),
+                           "b": ol.b.get_value().tolist(),
+                           "timeseries": ol.timeseries,
+                           "output_activation": 'linear'}
+            if self.batch_normalization:
+                buffer_dict[
+                    'gamma_values'] = self.output_layer.gamma.get_value().tolist()
+                buffer_dict[
+                    'beta_values'] = self.output_layer.beta.get_value().tolist()
+                buffer_dict['epsilon'] = self.output_layer.epsilon
+
+            output_string += json.dumps(buffer_dict)
+
+        output_string += "]"
+        output_string += "\"correlated_layer\":"
+
+        if self.correlated_outputs == 'sparse':
+            output_string += "{\"W_correlated\":"
+            output_string += self.output_layer.W_correlated.get_value().tolist()
+
+            output_string += "}"
+
+        output_string += "}"
+
+        return output_string
+
+    def save_network(self, fname):
+        """Save network parameters in json format in fname"""
+
+        output_string = self.generate_saving_string()
+        with open(fname, 'w') as f:
+            f.write(output_string)
+        self.log.info("Network saved.")
+
+    @classmethod
+    def init_from_file(cls, fname, log=None):
+        """Class method that loads network using information in json file fname
+
+        :type fname: string.
+        :param fname: filename (with path) containing network information.
+
+        :type log: logging instance, None.
+        :param log: logging instance to be used by the classifier.
+        """
+        with open(fname, 'r') as f:
+            network_description = json.load(f)
+
+        network_properties = network_description['network_properties']
+        loaded_classifier = cls(network_properties['n_in'],
+                                network_properties['n_out'],
+                                network_properties['mlp_n_hidden'],
+                                network_properties['mlp_activation_names'],
+                                network_properties['likelihood_precision'],
+                                log=log,
+                                layers_info=network_description,
+                                batch_normalization=False if 'batch_normalization' not in network_properties.keys(
+        ) else network_properties['batch_normalization'],            dropout=network_properties['dropout'] if 'dropout' in network_properties.keys() else False, correlated_outputs=None if 'correlated_outputs' not in network_properties.keys() else network_properties['correlated_outputs'],
+            output_activtion='linear' if 'output_activation' not in network_properties.keys() else network_properties['output_activation'])
+
+        return loaded_classifier
+
+
 class ResidualMLPClassifier(object):
 
     def __init__(self, n_in, n_out, mlp_n_hidden, mlp_activation_names,
@@ -1711,8 +1958,8 @@ class ResidualMLPClassifier(object):
                 layer_module = MLPLayer(self.mlp_n_hidden[i - 1][-1], layer, self.mlp_activation_names[i],
                                         timeseries_network=False,
                                         input_var=self.mlp_layers[
-                                            i - 1].output,
-                                        layers_info=None if layers_info is None else layers_info[
+                    i - 1].output,
+                    layers_info=None if layers_info is None else layers_info[
                     'hidden_layers'][i],
                     batch_normalization=self.batch_normalization,
                     dropout=self.dropout, training=self.training)
