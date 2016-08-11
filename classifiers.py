@@ -1680,7 +1680,7 @@ class ApplyOneCorrelated(object):
                 n - 1), dtype=theano.config.floatX)
 
         self.W_correlated = theano.shared(
-            value=W_correlated_values, name='W_corr', borrow=True)
+            value=np.asarray(W_correlated_values, dtype=theano.config.floatX), name='W_corr', borrow=True)
 
         self.a = T.set_subtensor(input_var[:, 1:], input_var[
             :, 1:] + self.W_correlated * input_var[:, :-1])
@@ -1792,7 +1792,7 @@ class Correlated2DMLPClassifier(MLPClassifier):
                                                     layers_info['output_layers'][i]['output_layer']
                                                                                             ['W'],
                                                     b_values=None if layers_info is None else
-                                                                    layers_info['output_layer']['b'],
+                                                                    layers_info['output_layers'][i]['output_layer']['b'],
                                                     timeseries_layer=False)
             self.params.append(self.output_layers[i].params)
 
@@ -1856,7 +1856,7 @@ class Correlated2DMLPClassifier(MLPClassifier):
         for i, ol in enumerate(self.output_layers):
             if i > 0:
                 output_string += ","
-            output_string += "\"output_layer\":"
+            output_string += "{\"output_layer\":"
             buffer_dict = {"n_in": ol.n_in, "n_out": ol.n_out,
                            "activation": ol.activation_name,
                            "W": ol.W.get_value().tolist(),
@@ -1871,7 +1871,7 @@ class Correlated2DMLPClassifier(MLPClassifier):
                 buffer_dict['epsilon'] = self.output_layer.epsilon
 
             output_string += json.dumps(buffer_dict)
-
+            output_string += "}"
         output_string += "]"
 
         if self.correlated_outputs == 'sparse':

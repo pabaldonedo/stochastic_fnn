@@ -4,6 +4,7 @@ from classifiers import MLPClassifier
 from classifiers import RecurrentMLP
 from classifiers import RNNClassifier
 from classifiers import ResidualMLPClassifier
+from classifiers import Correlated2DMLPClassifier
 import theano
 import numpy
 import warnings
@@ -261,6 +262,57 @@ class MLPPredictor(Predictor):
         else:
             return self.classifier.predict(x_norm) * self.stdy + self.muy
 
+
+class CorrelatedPredictor(Predictor):
+    """ Predictor using only a classical MLP network
+    (defined as MLPClassifier in classifiers.py)
+    """
+
+    def __init__(self, fname, mux, stdx, muy, stdy):
+        """
+        :type fname: string.
+        :param fname: Filename (with path) containing the classifier definition.
+
+        :type: mux: numpy.array.
+        :param mux: mean to be subtracted from the input array.
+
+        :type stdx: numpy.array.
+        :param stdx: standard deviation to scale the input array.
+
+        :type muy: numpy.array.
+        :param muy: mean to be added to the output array.
+
+        :type stdy: numpy.array.
+        :param stdy: standar deveiation to scale the output array.
+        """
+        super(CorrelatedPredictor, self).__init__(twod=True)
+        self.classifier = Correlated2DMLPClassifier.init_from_file(fname)
+        self.set_up_means(mux, stdx, muy, stdy)
+        self.lagged = False
+        
+    def predict(self, x, n_out=3, pca=None):
+        """
+        :type x: numpy.array
+        :param x: input data of shape (1, 197)
+
+        :return (1,3) numpy.array containing the system controls (except the last 4)
+        """
+        assert type(
+            x) is numpy.ndarray, "Input must be a numpy array. Given type: {0!r}".format(type(x))
+
+        if x.dtype is not theano.config.floatX:
+            x = numpy.asarray(x, dtype=theano.config.floatX)
+
+        x_t_norm = (x - self.mux) * 1. / self.stdx
+        x_t_norm.reshape(1, -1)
+        if pca is not None:
+            x_t_norm = pca.transform(x_t_norm)
+        
+        x_norm = self.get_x(x_t_norm)
+
+        return self.classifier.predict(x_norm) * self.stdy + self.muy
+            
+        
 class RecurrentMLPPredictor(Predictor):
     """ Predictor using only a classical MLP network
     (defined as MLPClassifier in classifiers.py)
@@ -470,7 +522,7 @@ class UnityMessenger(object):
         context = zmq.Context()
         self.socket = context.socket(zmq.REP)
         self.socket.bind("tcp://*:{0}".format(port))
-        classifier_types = ['Recurrent', 'Classifier', 'MLP', 'RecurrentMLP', 'RNN', 'ResidualMLP']
+        classifier_types = ['Recurrent', 'Classifier', 'MLP', 'RecurrentMLP', 'RNN', 'ResidualMLP', 'Correlated2DMLP']
 
         self.n_out = n_out
         self.gmm_prediction = gmm_prediction
@@ -491,7 +543,7 @@ class UnityMessenger(object):
             self.recurrent = False
         elif classifier_type == classifier_types[2]:
             assert not self.gmm_prediction, "GMM prediction not available in this mode"
-            self.predictor = MLPPredictor(fname, mux, stdx, muy, stdy, lagged=lagged, twod=twod)
+            self.predictor = MLPPredictor(fname, mux, stdx, muy, stdy, lagged=lagged, twod=twod, correlated_outputs=correlated_outputs)
             self.recurrent = False
         elif classifier_type == classifier_types[3]:
             assert not self.gmm_prediction, "GMM prediction not available in this mode"
@@ -505,6 +557,10 @@ class UnityMessenger(object):
             assert not self.gmm_prediction, "GMM prediction not avaiable in this mode"
             self.recurrent = False
             self.predictor = ResidualPredictor(fname, mux, stdx, muy, stdy, lagged=lagged, twod=twod)
+        elif classifier_type == classifier_types[6]:
+            assert not self.gmm_prediction, "GMM prediction not avaiable in this mode"
+            self.recurrent = False
+            self.predictor = CorrelatedPredictor(fname, mux, stdx, muy, stdy)
         else:
             raise NotImplementedError
 
@@ -530,9 +586,9 @@ class UnityMessenger(object):
 
 if __name__ == '__main__':
     port = 5555
-    fname = "network_output/mlp_classifier_n_hidden_[20,15]_epoch_180_pca.json"
+    fname = "network_output/sparsecorrelated2dmlp_classifier_n_hidden_[40,20,15]_epoch_90.json"
     n_out = 3
-    classifier_type = 'MLP'
+    classifier_type = 'Correlated2DMLP'
     twod = True
 
     x_info = numpy.genfromtxt('mux_stdx.csv', delimiter=',')
@@ -550,8 +606,8 @@ if __name__ == '__main__':
     #y_info = numpy.genfromtxt('muy_stdy_n_13.csv', delimiter=',')
     lagged = False
     gmm_prediction = False
-    pca = True
-    pca_file = "2d/pca_sklearn.pkl"
+    pca = False
+    pca_file = ""#"2d/pca_sklearn.pkl"
     mux = x_info[0]
     stdx = x_info[1]
     stdx[stdx==0] = 1
