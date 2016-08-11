@@ -1785,30 +1785,34 @@ class Correlated2DMLPClassifier(MLPClassifier):
         linear_activation = get_activation_function('linear')
 
         for i in xrange(len(self.output_layers)):
-            self.output_layers[i] = mlp.HiddenLayer(self.mlps[i].output, self.mlp.hidden_layers[-1].n_out, 1, 'linear', linear_activation,
-                                                    W_values=None if layers_info is None else layers_info['output_layers'][i]['output_layer']['W'], b_values=None if layers_info is None else layers_info['output_layer']['b'],
-                                                    W_correlated_values=None if layers_info is None else layers_info[
-                'output_layers'][i]['output_layer']['W_correlated'],
-                timeseries_layer=False)
+            self.output_layers[i] = mlp.HiddenLayer(self.mlps[i].output,
+                                                    self.mlps[i].hidden_layers[-1].n_out, 1,
+                                                    'linear', linear_activation,
+                                                    W_values=None if layers_info is None else
+                                                    layers_info['output_layers'][i]['output_layer']
+                                                                                            ['W'],
+                                                    b_values=None if layers_info is None else
+                                                                    layers_info['output_layer']['b'],
+                                                    timeseries_layer=False)
             self.params.append(self.output_layers[i].params)
 
-        output_a = T.concatenate([ol.output for ol in self.output_layers])
+        output_a = T.concatenate([ol.output for ol in self.output_layers], axis=1)
 
         output_activation = get_activation_function(
             self.output_activation_name)
 
-        if self.correlated_output == 'sparse':
+        if self.correlated_outputs == 'sparse':
             self.correlated_layer = ApplyOneCorrelated(output_a, n_out, self.output_activation_name, output_activation,
                                                        W_correlated_values=None if layers_info is None else layers_info['correlated_layer']['W_correlated'])
 
-        elif self.correlated_output == 'fixed':
+        elif self.correlated_outputs == 'fixed':
             self.correlated_layer = ApplyFixedCorrelated(
                 output_a, n_out, self.output_activation_name, output_activation)
         else:
             raise NotImplementedError
 
         self.output = self.correlated_layer.output
-        self.params += self.correlated_layers.params
+        self.params += self.correlated_layer.params
         self.log = log
         if self.log is None:
             logging.basicConfig(level=logging.INFO)
@@ -1821,7 +1825,7 @@ class Correlated2DMLPClassifier(MLPClassifier):
             self.givens_dict = {}
 
         compute_regularizer(self)
-        self.output = self.output_layer.output
+        self.output = self.correlated_layer.output
         self.predict = theano.function(
             inputs=[self.x], outputs=self.output,
             givens=self.givens_dict)
@@ -1869,13 +1873,12 @@ class Correlated2DMLPClassifier(MLPClassifier):
             output_string += json.dumps(buffer_dict)
 
         output_string += "]"
-        output_string += "\"correlated_layer\":"
 
         if self.correlated_outputs == 'sparse':
-            output_string += "{\"W_correlated\":"
-            output_string += self.output_layer.W_correlated.get_value().tolist()
+            output_string += ",\"correlated_layer\":"
 
-            output_string += "}"
+            corr_dict = {"W_correlated": self.correlated_layer.W_correlated.get_value().tolist()}
+            output_string += json.dumps(corr_dict)
 
         output_string += "}"
 

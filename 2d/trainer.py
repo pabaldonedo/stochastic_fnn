@@ -12,19 +12,20 @@ from classifiers import RecurrentMLP
 from classifiers import ResidualMLPClassifier
 from classifiers import BoneResidualMLPClassifier
 from classifiers import Classifier
+from classifiers import Correlated2DMLPClassifier
 
 
 def main():
 
-    network_type = 'mlp'
-    extra_tag = ''
+    network_type = 'correlated2dmlp'
+    extra_tag = '_no_fallen'
     load_idx = True
-    idx_train_file = 'network_output/idx_train.txt'
-    idx_test_file = 'network_output/idx_test.txt'
+    idx_train_file = 'network_output/idx_train_no_fallen.txt'
+    idx_test_file = 'network_output/idx_test_no_fallen.txt'
     assert not (load_idx and idx_train_file is None)
 
-    network_types = ['mlp', 'residual', 'bone_residual',
-                     'classifier', 'residual_classifier']
+    network_types = ['mlp', 'residual_mlp', 'bone_residual',
+                     'lbn', 'residual_lbn', 'correlated2dmlp']
 
     assert network_type in network_types
 
@@ -38,8 +39,8 @@ def main():
 
     load_means_from_file = True
 
-    controls_file = 'data/merged_controls.txt'
-    states_file = 'data/merged_starting_states.txt'
+    controls_file = 'data/no_fallen_merged_controls.txt'
+    states_file = 'data/no_fallen_merged_starting_states.txt'
 
     lagged = False
 
@@ -118,16 +119,20 @@ def main():
     n_out = y.shape[1]
 
     print "Data ready to go"
-    mlp_activation_names = ['relu', 'relu', 'relu']  # , 'sigmoid']
-    # , [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
-    mlp_n_hidden = [20, 15, 15]
+    
+    if network_type in [network_types[0], network_types[1], network_types[2], network_types[5]]:
+        mlp_activation_names = ['relu', 'relu', 'relu']  # , 'sigmoid']
+        # , [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
+        mlp_n_hidden = [40, 20, 15]
+    
     likelihood_precision = 1
 
+    output_activation_name = 'linear'
     # Fit options
     b_size = 100
     epoch0 = 1
     n_epochs = 10000
-    lr = .01
+    lr = .1
     save_every = 10  # Log saving
     chunk_size = None  # Memory chunks
     batch_normalization = False  # TODO
@@ -136,12 +141,13 @@ def main():
     l1_coeff = 0
 
     # FOR LBN!!
-    bone_networks = True
-    bone_type = '2d'
-    mlp_n_in = 6
-    lbn_n_hidden = [20]
-    mlp_activation_names = ['tanh']
-    mlp_n_hidden = [5]
+    if network_type in [network_types[3], network_types[4]]:
+        bone_networks = True
+        bone_type = '2d'
+        mlp_n_in = 6
+        lbn_n_hidden = [20]
+        mlp_activation_names = ['tanh']
+        mlp_n_hidden = [5]
 
     det_activations = ['linear', 'linear']   # , 'linear', 'linear']
     stoch_activations = ['sigmoid', 'sigmoid']
@@ -164,9 +170,7 @@ def main():
 
     network_name = "{0}_mlp_n_hidden_[{1}]_mlp_activation_[{2}]"\
         "_bsize_{3}_method_{4}_bn_{5}_dropout_{6}{7}{8}{9}{10}".\
-        format(
-            'mlp_classifier' if network_type is network_types[
-                0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier' if network_type is network_types[2] else 'lbn_classifier',
+        format('{0}_classifier'.format(network_type),
             ','.join(str(e) for e in mlp_n_hidden),
             ','.join(str(e) for e in mlp_activation_names),
             b_size,  method['type'], batch_normalization,
@@ -178,9 +182,9 @@ def main():
         os.makedirs(opath)
     print "Paths created"
     fname = '{0}/{1}_n_hidden_[{2}]'.format(
-        opath, 'mlp_classifier' if network_type is network_types[0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier', ','.join(str(e) for e in mlp_n_hidden))
+        opath, '{0}_classifier'.format(network_type), ','.join(str(e) for e in mlp_n_hidden))
     loaded_network_fname = '{0}/networks/{1}_n_hidden_[{2}]'.format(
-        opath, 'mlp_classifier' if network_type is network_types[0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier', ','.join(str(e) for e in mlp_n_hidden))
+        opath, '{0}_classifier'.format(network_type), ','.join(str(e) for e in mlp_n_hidden))
 
     if load_different_file:
         warnings.warn(
@@ -192,10 +196,9 @@ def main():
     #                                                                                                                                                                              str(e) for e in mlp_activation_names),
      # b_size,  method['type'])
         loaded_network_folder = "{0}_mlp_n_hidden_[{1}]_mlp_activation_[{2}]"\
-            "_bsize_{3}_method_SGD_bn_{5}_dropout_{6}{7}{8}{9}".\
+            "_bsize_{3}_method_SGD_bn_{5}_dropout_{6}{7}{8}_no_fallen".\
             format(
-                'mlp_classifier' if network_type is network_types[
-                    0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier',
+                '{0}_classifier'.format(network_type),
                 ','.join(str(e) for e in mlp_n_hidden),
                 ','.join(str(e) for e in mlp_activation_names),
                 b_size,  method['type'], batch_normalization,
@@ -204,12 +207,13 @@ def main():
 
         loaded_opath = "network_output/{0}".format(loaded_network_folder)
         assert os.path.exists(
-            loaded_opath), "Trying to load a network from a non existing path; {0}".format(loaded_opath)
+            loaded_opath), "Trying to load a network from a non existing path; {0}".format(
+                                                                                    loaded_opath)
 
-        loaded_network_name = "{0}_n_hidden_[{1}]".format('mlp_classifier' if network_type is network_types[
-                                                          0] else 'residual_mlp_classifier' if network_type is network_types[1] else 'bone_residual_mlp_classifier', ','.join(str(e) for e in mlp_n_hidden))
+        loaded_network_name = "{0}_n_hidden_[{1}]".format('{0}_classifier'.format(network_type),
+                                                            ','.join(str(e) for e in mlp_n_hidden))
 
-        loaded_network_fname = "{0}/networks/".format(
+        loaded_network_fname = "{0}/networks/{1}".format(
             loaded_opath, loaded_network_name)
 
     else:
@@ -228,7 +232,7 @@ def main():
     if load_from_file:
         if network_type is network_types[0]:
             c = MLPClassifier.init_from_file(
-                '{0}init.json'.format(
+                '{0}_epoch_{1}.json'.format(
                     loaded_network_fname,  epoch0 - 1),
                 log=log)
         elif network_type is network_types[1]:
@@ -237,10 +241,18 @@ def main():
                     loaded_network_fname,  epoch0 - 1),
                 log=log)
         elif network_type is network_types[2]:
-            c = ResidualMLPClassifier.init_from_file(
+            c = BoneResidualMLPClassifier.init_from_file(
                 '{0}_epoch_{1}.json'.format(
                     loaded_network_fname,  epoch0 - 1),
                 log=log)
+
+        elif network_type is network_type[5]:
+            c = Correlated2DMLPClassifier.init_from_file(
+                '{0}_epoch_{1}.json'.format(
+                    loaded_network_fname, epoch0 -1),
+                log=log)
+        else:
+            raise NotImplementedError
     else:
         if network_type is network_types[0]:
             c = MLPClassifier(n_in, n_out, mlp_n_hidden,
@@ -272,6 +284,16 @@ def main():
                            mlp_activation_names=mlp_activation_names,
                            bone_networks=bone_networks, bone_type=bone_type,
                            correlated_outputs=correlated_outputs)
+
+        elif network_type is network_types[5]:
+            c = Correlated2DMLPClassifier(n_in, n_out, mlp_n_hidden, mlp_activation_names,
+                 likelihood_precision=likelihood_precision, log=log,
+                 batch_normalization=batch_normalization, dropout=dropout,
+                 correlated_outputs=correlated_outputs,
+                 output_activation_name=output_activation_name)
+        else:
+            raise NotImplementedError
+
 
     print "model loaded"
 
