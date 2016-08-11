@@ -1683,7 +1683,7 @@ class ApplyOneCorrelated(object):
             value=W_correlated_values, name='W_corr', borrow=True)
 
         self.a = T.set_subtensor(input_var[:, 1:], input_var[
-            :, 1:] + W_correlated * input_var[:, :-1])
+            :, 1:] + self.W_correlated * input_var[:, :-1])
         self.n = n
         self.activation_name = activation_name
         self.activation = activation
@@ -1840,12 +1840,12 @@ class Correlated2DMLPClassifier(MLPClassifier):
 
         output_string += ",\"mlps\":["
 
-        for i, mlp in enumerate(self.mlps):
+        for i, this_mlp in enumerate(self.mlps):
             if i > 0:
                 output_string += ","
             output_string += "{\"mlp\":"
-            output_string += mlp.generate_saving_string()
-            output_selftring += "}"
+            output_string += this_mlp.generate_saving_string()
+            output_string += "}"
         output_string += "]"
         output_string += ", \"output_layers\":["
 
@@ -1912,7 +1912,7 @@ class Correlated2DMLPClassifier(MLPClassifier):
                                 layers_info=network_description,
                                 batch_normalization=False if 'batch_normalization' not in network_properties.keys(
         ) else network_properties['batch_normalization'],            dropout=network_properties['dropout'] if 'dropout' in network_properties.keys() else False, correlated_outputs=None if 'correlated_outputs' not in network_properties.keys() else network_properties['correlated_outputs'],
-            output_activtion='linear' if 'output_activation' not in network_properties.keys() else network_properties['output_activation'])
+            output_activation_name='linear' if 'output_activation_name' not in network_properties.keys() else network_properties['output_activation_name'])
 
         return loaded_classifier
 
