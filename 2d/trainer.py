@@ -17,11 +17,12 @@ from classifiers import Correlated2DMLPClassifier
 
 def main():
 
-    network_type = 'mlp'
-    extra_tag = '_no_fallen_critical_learning_0_7'
+    network_type = 'lbn'
+    extra_tag = ''  # '_no_fallen_critical_learning_0_7'
     load_idx = True
-    idx_train_file = 'network_output/idx_train_critical_0_7.txt'#idx_train_no_fallen.txt'
-    idx_test_file = 'network_output/idx_test_critical_0_7.txt'
+    # idx_train_no_fallen.txt'
+    idx_train_file = 'network_output/idx_train.txt'
+    idx_test_file = 'network_output/idx_test.txt'
     assert not (load_idx and idx_train_file is None)
 
     network_types = ['mlp', 'residual_mlp', 'bone_residual',
@@ -39,8 +40,8 @@ def main():
 
     load_means_from_file = True
 
-    states_file = 'data/x_critical_learning_0.7.txt'
-    controls_file = 'data/y_critical_learning_0.7.txt'
+    states_file = 'data/merged_starting_states.txt'
+    controls_file = 'data/merged_controls.txt'
 
     lagged = False
 
@@ -119,39 +120,37 @@ def main():
     n_out = y.shape[1]
 
     print "Data ready to go"
-    
-    if network_type in [network_types[0], network_types[1], network_types[2], network_types[5]]:
-        mlp_activation_names = ['relu', 'relu', 'relu']  # , 'sigmoid']
-        # , [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
-        mlp_n_hidden = [40, 20, 15]
-    
+
+    hidden_activation_names = ['relu', 'linear']
+    # , [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
+    n_hidden = [40]
+
     likelihood_precision = 1
 
     output_activation_name = 'linear'
     # Fit options
     b_size = 100
-    epoch0 = 3801
-    n_epochs = 20
-    lr = .00001
-    save_every = 1  # Log saving
+    epoch0 = 1
+    n_epochs = 1000
+    lr = .001
+    save_every = 10  # Log saving
     chunk_size = None  # Memory chunks
     batch_normalization = False  # TODO
     dropout = False
     l2_coeff = 0
     l1_coeff = 0
+    bone_networks = False
+    bone_activation_names = ['tanh']
+    bone_n_hidden = [5]
+    bone_type = '2d'
 
     # FOR LBN!!
     if network_type in [network_types[3], network_types[4]]:
-        bone_networks = True
-        bone_type = '2d'
-        mlp_n_in = 6
-        lbn_n_hidden = [20]
-        mlp_activation_names = ['tanh']
-        mlp_n_hidden = [5]
 
-    det_activations = ['linear', 'linear']   # , 'linear', 'linear']
-    stoch_activations = ['sigmoid', 'sigmoid']
-    m = 20
+        mlp_n_in = 6
+        det_activations = hidden_activation_names
+        stoch_activations = ['sigmoid', 'sigmoid']
+        m = 20
 
     # Optimizer
     opt_type = 'SGD'
@@ -162,17 +161,22 @@ def main():
               'learning_rate': lr, 'dropout': dropout}
 
     # Load from file?
-    load_from_file = True
+    load_from_file = False
     session_name = None
-    load_different_file = True
+    load_different_file = False
 
     assert not (load_different_file and not load_from_file), "You have set load different_file to True but you are not loading any network!"
 
-    network_name = "{0}_mlp_n_hidden_[{1}]_mlp_activation_[{2}]"\
-        "_bsize_{3}_method_{4}_bn_{5}_dropout_{6}{7}{8}{9}{10}".\
+    network_name = "{0}{1}{2}_n_hidden_[{3}]_activation_[{4}]"\
+        "_bsize_{5}_method_{6}_bn_{7}_dropout_{8}{9}{10}{11}{12}".\
         format('{0}_classifier'.format(network_type),
-            ','.join(str(e) for e in mlp_n_hidden),
-            ','.join(str(e) for e in mlp_activation_names),
+               '_bones_n_hidden[{0}]'.format(
+                   ','.join(str(e) for e in bone_n_hidden)) if bone_networks else '',
+               '[{0}]'.format(
+            str(e) for e in bone_activation_names) if bone_networks else '',
+            ','.join(str(e) for e in n_hidden),
+            ','.join(str(e)
+                     for e in hidden_activation_names),
             b_size,  method['type'], batch_normalization,
             dropout,
             '_lagged' if lagged else '', '_pca' if use_pca else '', '_{0}correlated'.format(correlated_outputs) if correlated_outputs is not None else '', extra_tag)
@@ -182,9 +186,9 @@ def main():
         os.makedirs(opath)
     print "Paths created"
     fname = '{0}/{1}_n_hidden_[{2}]'.format(
-        opath, '{0}_classifier'.format(network_type), ','.join(str(e) for e in mlp_n_hidden))
+        opath, '{0}_classifier'.format(network_type), ','.join(str(e) for e in n_hidden))
     loaded_network_fname = '{0}/networks/{1}_n_hidden_[{2}]'.format(
-        opath, '{0}_classifier'.format(network_type), ','.join(str(e) for e in mlp_n_hidden))
+        opath, '{0}_classifier'.format(network_type), ','.join(str(e) for e in n_hidden))
 
     if load_different_file:
         warnings.warn(
@@ -208,10 +212,10 @@ def main():
         loaded_opath = "network_output/{0}".format(loaded_network_folder)
         assert os.path.exists(
             loaded_opath), "Trying to load a network from a non existing path; {0}".format(
-                                                                                    loaded_opath)
+            loaded_opath)
 
         loaded_network_name = "{0}_n_hidden_[{1}]".format('{0}_classifier'.format(network_type),
-                                                            ','.join(str(e) for e in mlp_n_hidden))
+                                                          ','.join(str(e) for e in mlp_n_hidden))
 
         loaded_network_fname = "{0}/networks/{1}".format(
             loaded_opath, loaded_network_name)
@@ -249,51 +253,49 @@ def main():
         elif network_type is network_type[5]:
             c = Correlated2DMLPClassifier.init_from_file(
                 '{0}_epoch_{1}.json'.format(
-                    loaded_network_fname, epoch0 -1),
+                    loaded_network_fname, epoch0 - 1),
                 log=log)
         else:
             raise NotImplementedError
     else:
         if network_type is network_types[0]:
-            c = MLPClassifier(n_in, n_out, mlp_n_hidden,
-                              mlp_activation_names, log=log,
+            c = MLPClassifier(n_in, n_out, n_hidden,
+                              hidden_activation_names, log=log,
                               likelihood_precision=likelihood_precision,
                               batch_normalization=batch_normalization,
                               dropout=dropout, correlated_outputs=correlated_outputs)
         elif network_type is network_types[1]:
-            c = ResidualMLPClassifier(n_in, n_out, mlp_n_hidden,
-                                      mlp_activation_names, log=log,
+            c = ResidualMLPClassifier(n_in, n_out, n_hidden,
+                                      hidden_activation_names, log=log,
                                       likelihood_precision=likelihood_precision,
                                       batch_normalization=batch_normalization,
                                       dropout=dropout, correlated_outputs=correlated_outputs)
         elif network_type is network_types[2]:
-            c = BoneResidualMLPClassifier(n_in, n_out, mlp_n_hidden,
-                                          mlp_activation_names,
+            c = BoneResidualMLPClassifier(n_in, n_out, n_hidden,
+                                          hidden_activation_names,
                                           bone_n_hidden, bone_activation_names,
                                           log=log,
                                           likelihood_precision=likelihood_precision,
                                           batch_normalization=batch_normalization,
                                           dropout=dropout, correlated_outputs=correlated_outputs)
         elif network_type is network_types[3]:
-            c = Classifier(n_in, n_out, lbn_n_hidden,
+            c = Classifier(n_in, n_out, n_hidden,
                            det_activations,
                            stoch_activations, log=log,
                            likelihood_precision=likelihood_precision,
                            batch_normalization=batch_normalization,
-                           mlp_n_in=mlp_n_in, mlp_n_hidden=mlp_n_hidden,
-                           mlp_activation_names=mlp_activation_names,
-                           bone_networks=bone_networks, bone_type=bone_type,
-                           correlated_outputs=correlated_outputs)
+                           mlp_n_in=mlp_n_in, mlp_n_hidden=bone_n_hidden,
+                           mlp_activation_names=bone_activation_names,
+                           bone_networks=bone_networks, bone_type=bone_type)
 
         elif network_type is network_types[5]:
-            c = Correlated2DMLPClassifier(n_in, n_out, mlp_n_hidden, mlp_activation_names,
-                 likelihood_precision=likelihood_precision, log=log,
-                 batch_normalization=batch_normalization, dropout=dropout,
-                 correlated_outputs=correlated_outputs,
-                 output_activation_name=output_activation_name)
+            c = Correlated2DMLPClassifier(n_in, n_out, n_hidden, hidden_activation_names,
+                                          likelihood_precision=likelihood_precision, log=log,
+                                          batch_normalization=batch_normalization, dropout=dropout,
+                                          correlated_outputs=correlated_outputs,
+                                          output_activation_name=output_activation_name)
         else:
             raise NotImplementedError
-
 
     print "model loaded"
 
@@ -307,13 +309,25 @@ def main():
     if load_from_file:
         log.info("Network loaded from file: {0}".format(loaded_network_fname))
 
-    log.info("Network properites: n_in: {0}, n_out: {1}, mlp_n_hidden: [{2}] "
-             "mlp_activation_names: {3} batch_normalization: {4} "
-             "dropout: {5}".format(
-                 n_in, n_out,
-                 ','.join(str(e) for e in mlp_n_hidden),
-                 ','.join(str(e) for e in mlp_activation_names),
-                 batch_normalization, dropout))
+    if network_type in [network_types[:3], network_types[5]]:
+        log.info("Network properites: n_in: {0}, n_out: {1}, n_hidden: [{2}] "
+                 "hidden_activation_names: {3}, batch_normalization: {4}, "
+                 "dropout: {5}, {6}".format(
+                     n_in, n_out,
+                     ','.join(str(e) for e in n_hidden),
+                     ','.join(str(e) for e in hidden_activation_names),
+                     batch_normalization, dropout,
+                     'bone_n_hidden: [{0}], bone_activation_names: [{1}]'.format(','.join(str(e) for e in bone_n_hidden), ','.join(str(e) for e in bone_activation_names)) if bone_networks else ''))
+    else:
+        log.info("Network properites: n_in: {0}, n_out: {1}, n_hidden: [{2}] "
+                 "det_activation_names: {3}, stoch_activation_names: [{4}], batch_normalization: {5}, "
+                 "dropout: {6}, {7}".format(
+                     n_in, n_out,
+                     ','.join(str(e) for e in n_hidden),
+                     ','.join(str(e) for e in det_activations),
+                     ','.join(str(e) for e in stoch_activations),
+                     batch_normalization, dropout,
+                     'bone_n_hidden: [{0}], bone_activation_names: [{1}]'.format(','.join(str(e) for e in bone_n_hidden), ','.join(str(e) for e in bone_activation_names)) if bone_networks else ''))
 
     if use_pca:
         with open(pca_file, 'r') as fid:
