@@ -78,5 +78,27 @@ def main():
     np.savetxt('y_up.txt', y_up, delimiter=',', fmt='%.6f')
 
 
+def critical_learning():
+    critical_states = "data/x_critical.txt"
+    critical_controls = "data/y_critical.txt"
+    up_states = "data/x_up.txt"
+    up_controls = "data/y_up.txt"
+
+    x_critical = pd.read_csv(critical_states, delimiter=',', header=None).values
+    y_critical = pd.read_csv(critical_controls, delimiter=',', header=None).values
+    x_up = pd.read_csv(up_states, delimiter=',', header=None).values
+    y_up = pd.read_csv(up_controls, delimiter=',', header=None).values
+
+    idx = np.random.permutation(x_up.shape[0])
+
+    critical_percentage = .7
+    n_up = int((1-critical_percentage)/critical_percentage)*x_critical.shape[0]
+
+    x_learning = np.vstack((x_critical, x_up[:n_up]))
+    y_learning = np.vstack((y_critical, y_up[:n_up]))
+
+    np.savetxt('data/x_critical_learning_{0}.txt'.format(critical_percentage), x_learning, delimiter=',', fmt='%.6f')
+    np.savetxt('data/y_critical_learning_{0}.txt'.format(critical_percentage), y_learning, delimiter=',', fmt='%.6f')
+
 if __name__ == '__main__':
     main()

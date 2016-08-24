@@ -74,7 +74,22 @@ def control_scatter(sampled_y, labels, fname):
 
     plt.savefig('{0}.png'.format(fname))
 
+def check_multimodality(x,y):
 
+    n_bins = 20
+    x_binned = np.empty(x.shape)
+    bins = np.empty((n_bins+1, x.shape[1]))
+    for i in xrange(x.shape[1]):
+        _, bins[:,i] = np.histogram(x[:,i], bins=n_bins)
+        bins[-1,i] = bins[-1,i]+0.01
+        centers = 0.5*(bins[:-1, i] + bins[1:, i])
+        x_binned[:,i] = centers[np.digitize(x[:,i], bins[:,i]) -1]
+
+    x_transform = np.ascontiguousarray(x_binned).view(np.dtype((np.void, x_binned.dtype.itemsize * x_binned.shape[1])))
+    _, idx = np.unique(x_transform, return_index=True)
+    x_unique = x_binned[idx]
+
+    #Too few samples! :(
 
 def main():
     

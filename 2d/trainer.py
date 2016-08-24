@@ -17,11 +17,11 @@ from classifiers import Correlated2DMLPClassifier
 
 def main():
 
-    network_type = 'correlated2dmlp'
-    extra_tag = '_no_fallen'
+    network_type = 'mlp'
+    extra_tag = '_no_fallen_critical_learning_0_7'
     load_idx = True
-    idx_train_file = 'network_output/idx_train_no_fallen.txt'
-    idx_test_file = 'network_output/idx_test_no_fallen.txt'
+    idx_train_file = 'network_output/idx_train_critical_0_7.txt'#idx_train_no_fallen.txt'
+    idx_test_file = 'network_output/idx_test_critical_0_7.txt'
     assert not (load_idx and idx_train_file is None)
 
     network_types = ['mlp', 'residual_mlp', 'bone_residual',
@@ -32,15 +32,15 @@ def main():
     use_pca = False
     pca_file = 'pca_sklearn.pkl'
 
-    correlated_outputs = 'sparse'
+    correlated_outputs = None
 
     if use_pca:
         assert pca_file is not None
 
     load_means_from_file = True
 
-    controls_file = 'data/no_fallen_merged_controls.txt'
-    states_file = 'data/no_fallen_merged_starting_states.txt'
+    states_file = 'data/x_critical_learning_0.7.txt'
+    controls_file = 'data/y_critical_learning_0.7.txt'
 
     lagged = False
 
@@ -130,10 +130,10 @@ def main():
     output_activation_name = 'linear'
     # Fit options
     b_size = 100
-    epoch0 = 1
-    n_epochs = 10000
-    lr = .1
-    save_every = 10  # Log saving
+    epoch0 = 3801
+    n_epochs = 20
+    lr = .00001
+    save_every = 1  # Log saving
     chunk_size = None  # Memory chunks
     batch_normalization = False  # TODO
     dropout = False
@@ -162,9 +162,9 @@ def main():
               'learning_rate': lr, 'dropout': dropout}
 
     # Load from file?
-    load_from_file = False
+    load_from_file = True
     session_name = None
-    load_different_file = False
+    load_different_file = True
 
     assert not (load_different_file and not load_from_file), "You have set load different_file to True but you are not loading any network!"
 
