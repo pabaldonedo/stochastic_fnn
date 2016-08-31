@@ -13,20 +13,23 @@ from classifiers import ResidualMLPClassifier
 from classifiers import BoneResidualMLPClassifier
 from classifiers import Classifier
 from classifiers import Correlated2DMLPClassifier
-
+from classifiers import BoneMLPClassifier
 
 def main():
 
-    network_type = 'lbn'
+    network_type = 'bone_mlp'
     extra_tag = ''  # '_no_fallen_critical_learning_0_7'
     load_idx = True
     # idx_train_no_fallen.txt'
-    idx_train_file = 'network_output/idx_train.txt'
-    idx_test_file = 'network_output/idx_test.txt'
+    idx_train_file = 'network_output/idx_train_critical_0_7.txt'
+    idx_test_file = 'network_output/idx_test_critical_0_7.txt'
     assert not (load_idx and idx_train_file is None)
 
     network_types = ['mlp', 'residual_mlp', 'bone_residual',
-                     'lbn', 'residual_lbn', 'correlated2dmlp']
+                     'lbn', 'residual_lbn', 'correlated2dmlp',
+                     'bone_mlp']
+
+
 
     assert network_type in network_types
 
@@ -121,28 +124,30 @@ def main():
 
     print "Data ready to go"
 
-    hidden_activation_names = ['relu', 'linear']
+    hidden_activation_names = ['relu','relu', 'relu']
     # , [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
-    n_hidden = [40]
+    n_hidden = [40, 20, 15]
 
     likelihood_precision = 1
 
     output_activation_name = 'linear'
     # Fit options
     b_size = 100
-    epoch0 = 1
+    epoch0 = 1001
     n_epochs = 1000
-    lr = .001
+    lr = .01
     save_every = 10  # Log saving
     chunk_size = None  # Memory chunks
     batch_normalization = False  # TODO
     dropout = False
     l2_coeff = 0
     l1_coeff = 0
-    bone_networks = False
+    bone_networks = True
     bone_activation_names = ['tanh']
     bone_n_hidden = [5]
     bone_type = '2d'
+    if network_type == network_types[6]:
+      assert bone_networks
 
     # FOR LBN!!
     if network_type in [network_types[3], network_types[4]]:
@@ -161,11 +166,11 @@ def main():
               'learning_rate': lr, 'dropout': dropout}
 
     # Load from file?
-    load_from_file = False
-    session_name = None
+    load_from_file = True
+    session_name = 'donna'
     load_different_file = False
 
-    assert not (load_different_file and not load_from_file), "You have set load different_file to True but you are not loading any network!"
+    assert not (load_different_file and not load_from_file), "You have set load different_file to True but  you are not loading any network!"
 
     network_name = "{0}{1}{2}_n_hidden_[{3}]_activation_[{4}]"\
         "_bsize_{5}_method_{6}_bn_{7}_dropout_{8}{9}{10}{11}{12}".\
@@ -173,7 +178,7 @@ def main():
                '_bones_n_hidden[{0}]'.format(
                    ','.join(str(e) for e in bone_n_hidden)) if bone_networks else '',
                '[{0}]'.format(
-            str(e) for e in bone_activation_names) if bone_networks else '',
+            ','.join(str(e) for e in bone_activation_names)) if bone_networks else '',
             ','.join(str(e) for e in n_hidden),
             ','.join(str(e)
                      for e in hidden_activation_names),
@@ -199,15 +204,19 @@ def main():
    #                                                                                                                                                                           ','.join(
     #                                                                                                                                                                              str(e) for e in mlp_activation_names),
      # b_size,  method['type'])
-        loaded_network_folder = "{0}_mlp_n_hidden_[{1}]_mlp_activation_[{2}]"\
-            "_bsize_{3}_method_SGD_bn_{5}_dropout_{6}{7}{8}_no_fallen".\
-            format(
-                '{0}_classifier'.format(network_type),
-                ','.join(str(e) for e in mlp_n_hidden),
-                ','.join(str(e) for e in mlp_activation_names),
-                b_size,  method['type'], batch_normalization,
-                dropout,
-                '_lagged' if lagged else '', 'pca' if use_pca else '', extra_tag)
+        loaded_network_folder = "thesis_exp/{0}{1}{2}_n_hidden_[{3}]_activation_[{4}]"\
+        "_bsize_{5}_method_{6}_bn_{7}_dropout_{8}{9}{10}{11}".\
+        format('{0}_classifier'.format(network_type),
+               '_bones_n_hidden[{0}]'.format(
+                   ','.join(str(e) for e in bone_n_hidden)) if bone_networks else '',
+               '[{0}]'.format(
+            str(e) for e in bone_activation_names) if bone_networks else '',
+            ','.join(str(e) for e in n_hidden),
+            ','.join(str(e)
+                     for e in hidden_activation_names),
+            b_size,  method['type'], batch_normalization,
+            dropout,
+            '_lagged' if lagged else '', '_pca' if use_pca else '', '_{0}correlated'.format(correlated_outputs) if correlated_outputs is not None else '', extra_tag)
 
         loaded_opath = "network_output/{0}".format(loaded_network_folder)
         assert os.path.exists(
@@ -215,7 +224,7 @@ def main():
             loaded_opath)
 
         loaded_network_name = "{0}_n_hidden_[{1}]".format('{0}_classifier'.format(network_type),
-                                                          ','.join(str(e) for e in mlp_n_hidden))
+                                                          ','.join(str(e) for e in n_hidden))
 
         loaded_network_fname = "{0}/networks/{1}".format(
             loaded_opath, loaded_network_name)
@@ -252,6 +261,11 @@ def main():
 
         elif network_type is network_type[5]:
             c = Correlated2DMLPClassifier.init_from_file(
+                '{0}_epoch_{1}.json'.format(
+                    loaded_network_fname, epoch0 - 1),
+                log=log)
+        elif network_type is network_types[6]:
+                c = BoneMLPClassifier.init_from_file(
                 '{0}_epoch_{1}.json'.format(
                     loaded_network_fname, epoch0 - 1),
                 log=log)
@@ -294,6 +308,15 @@ def main():
                                           batch_normalization=batch_normalization, dropout=dropout,
                                           correlated_outputs=correlated_outputs,
                                           output_activation_name=output_activation_name)
+
+        elif network_type is network_types[6]:
+
+            c = BoneMLPClassifier(n_in, n_out, n_hidden, hidden_activation_names,
+                 bone_n_hidden, bone_activation_names, bone_type,
+                 likelihood_precision=likelihood_precision, log=log,
+                 batch_normalization=batch_normalization, dropout=dropout,
+                 correlated_outputs=correlated_outputs, output_activation_name=output_activation_name)
+        
         else:
             raise NotImplementedError
 
@@ -309,7 +332,8 @@ def main():
     if load_from_file:
         log.info("Network loaded from file: {0}".format(loaded_network_fname))
 
-    if network_type in [network_types[:3], network_types[5]]:
+
+    if network_type in network_types[:3] + network_types[5:7]:
         log.info("Network properites: n_in: {0}, n_out: {1}, n_hidden: [{2}] "
                  "hidden_activation_names: {3}, batch_normalization: {4}, "
                  "dropout: {5}, {6}".format(
