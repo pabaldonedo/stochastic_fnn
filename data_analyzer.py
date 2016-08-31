@@ -7,6 +7,7 @@ from util import load_states
 from util import load_controls
 from util import load_files
 import os
+from sklearn.manifold import TSNE
 
 
 def boxplot(x, step=None, names=None, bone_names=None, path="./"):
@@ -234,7 +235,7 @@ def controls_hist(y, labels):
     fig, axs = plt.subplots(6,6, figsize=(30,20))
     ax = axs.flatten()
     for i in xrange(y.shape[1]):
-        ax[i].hist(y[:,i], bins=100)
+        ax[i].hist(y[:,i], bins=100, normed=True)
         ax[i].set_xlabel(labels[i])
 
     plt.savefig('bone_plots/controls_hist.png')
@@ -285,13 +286,15 @@ def mapping(x,y):
     uniq = np.unique(struct)
     classes = uniq.view(x_binned.dtype).reshape(-1, ncols)
 
+def controls_tsne(x):
+
 def main():
 
     n = 16
     n_impulse_2000 = 5
     x = load_states(n)
-    x_impulse = load_files(n_impulse_2000, 'states_impulse_2000')
-    x = np.vstack((x, x_impulse))
+    #x_impulse = load_files(n_impulse_2000, 'states_impulse_2000')
+    #x = np.vstack((x, x_impulse))
     y = load_controls(n)
     y_impulse = load_files(n_impulse_2000, 'controls_impulse_2000')
     y = np.vstack((y, y_impulse))
@@ -304,7 +307,7 @@ def main():
     if not os.path.exists('bone_plots'):
         os.makedirs('bone_plots')
     #x = np.random.randn(61*20,197)
-    bone_features = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'r0', 'r1', 'r2', 'r3', 'wx', 'wy', 'wz']
+    #bone_features = ['x', 'y', 'z', 'vx', 'vy', 'vz', 'r0', 'r1', 'r2', 'r3', 'wx', 'wy', 'wz']
    # names = bone_features*15 +\
    #         ['left foot', 'right foot']
     bone_names = ['Hips', 'Spine1', 'Neck', 'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg',
@@ -319,12 +322,12 @@ def main():
     #if not os.path.exists('bone_plots/bone_scatter'):
     #    os.makedirs('bone_plots/bone_scatter')
    # bone_scatter(x, bone_features, bone_names[:-1], 'bone_plots/bone_scatter')
-    #control_names = ['spine1', 'spine2', 'spine3', 'neck1', 'neck2', 'neck3', 'LeftUpLeg1', 'LeftUpLeg2',
-    #                 'LeftUpLeg3', 'LeftLeg', 'LeftFoot', 'RightUpLeg1', 'RightUpLeg2', 'RightUpLeg3',
-    #                 'RightLeg', 'RightFoot', 'LeftArm1', 'LeftArm2', 'LeftArm3', 'LeftForeArm',
-    #                 'LeftHand1', 'LeftHand2', 'LeftHand3', 'RightArm1', 'RightArm2', 'RightArm3',
-    #                 'RightForeArm', 'RightHand1', 'RightHand2', 'RightHand3',
-    #                 'LEGS Force_max', 'TORSO Force_max', 'LEFTARM Force_max', 'RIGHTARM Force_max']
+    control_names = ['spine1', 'spine2', 'spine3', 'neck1', 'neck2', 'neck3', 'LeftUpLeg1', 'LeftUpLeg2',
+                     'LeftUpLeg3', 'LeftLeg', 'LeftFoot', 'RightUpLeg1', 'RightUpLeg2', 'RightUpLeg3',
+                     'RightLeg', 'RightFoot', 'LeftArm1', 'LeftArm2', 'LeftArm3', 'LeftForeArm',
+                     'LeftHand1', 'LeftHand2', 'LeftHand3', 'RightArm1', 'RightArm2', 'RightArm3',
+                     'RightForeArm', 'RightHand1', 'RightHand2', 'RightHand3',
+                     'LEGS Force_max', 'TORSO Force_max', 'LEFTARM Force_max', 'RIGHTARM Force_max']
 
     #if not os.path.exists('bone_plots/control_scatter'):
     #    os.makedirs('bone_plots/control_scatter')
@@ -334,8 +337,8 @@ def main():
     #    os.makedirs('bone_plots/bone_controls_scatter')
 
 #    control_state_scatter(x, bone_features, bone_names, 'bone_plots/bone_controls_scatter', y, control_names)
-    #controls_hist(y, control_names)
-    states_hist(x, bone_names, bone_features)
+    controls_hist(y, control_names)
+    #states_hist(x, bone_names, bone_features)
 
 if __name__ == '__main__':
     main()

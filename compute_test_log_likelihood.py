@@ -13,6 +13,9 @@ from classifiers import MLPClassifier
 from classifiers import RecurrentMLP
 from classifiers import ResidualMLPClassifier
 from classifiers import BoneResidualMLPClassifier
+from classifiers import BoneMLPClassifier
+from classifiers import Classifier
+
 
 def load_3d():
     sampled_clipped = False
@@ -135,12 +138,11 @@ def load_2d(idx_path):
 
 def main(): 
 
-    folders = ['mlp_classifier_mlp_n_hidden_[20,15]_mlp_activation_[relu,relu]_bsize_100_method_SGD_bn_False_dropout_Falsepca', 'mlp_classifier_mlp_n_hidden_[20,15]_mlp_activation_[relu,relu]_bsize_100_method_SGD_bn_False_dropout_False', 'mlp_classifier_mlp_n_hidden_[20,15]_mlp_activation_[relu,relu]_bsize_100_method_SGD_bn_False_dropout_Falsereg0001']
-    nnames = ['mlp_classifier_n_hidden_[20,15]', 'mlp_classifier_n_hidden_[20,15]', 'mlp_classifier_n_hidden_[20,15]']
-
+    folders = ['bone_mlp_classifier_bones_n_hidden[5][tanh]_n_hidden_[40,20,15]_activation_[relu,relu,relu]_bsize_100_method_SGD_bn_False_dropout_False']
+    nnames = ['bone_mlp_classifier_n_hidden_[40,20,15]']#, 'lbn_classifier_n_hidden_[40]']
     network_names = ['2d/network_output/{0}/networks/{1}'.format(folder, nname) for folder, nname in zip(folders, nnames)]
-    network_type = 'mlp'
-    network_types = ['mlp', 'residual', 'bone_residual']
+    network_type = 'bone_mlp'
+    network_types = ['mlp', 'residual', 'bone_residual', 'bone_mlp', 'lbn']
     assert network_type in network_types
     
     opath = ['2d/network_output/{0}/likelihoods/'.format(folder) for folder in folders]
@@ -149,9 +151,10 @@ def main():
 
 
     epoch0s = [10]*len(folders)
-    epochns = [130, 200, 270]
+    epochns = [1180]
     epoch_steps = [10]*len(folders)
     n_out = 3
+    m = 20
 
 
     for i in xrange(len(folders)):
@@ -183,12 +186,25 @@ def main():
                 c = ResidualMLPClassifier.init_from_file(
                     '{0}_epoch_{1}.json'.format(
                         network_name,  epoch))
+            elif network_type is network_types[3]:
+                c = BoneMLPClassifier.init_from_file(
+                    '{0}_epoch_{1}.json'.format(
+                        network_name, epoch))
+            elif network_type is network_types[4]:
+                c = Classifier.init_from_file(
+                    '{0}_epoch_{1}.json'.format(
+                        network_name, epoch))
 
 
             norms = [1./p.size*(p**2).sum() for p in flatten(c.params)]
-            compute_error_and_norms = theano.function(inputs=[c.x, c.y], outputs=[c.get_cost(0,0)]+norms)
-            cost_and_norm = compute_error_and_norms(
-                x_test, y_test[:, :n_out])
+            if network_type is network_types[4]:
+                compute_error_and_norms = theano.function(inputs=[c.x, c.y, c.m], outputs=[c.get_cost(0,0)]+norms)
+                cost_and_norm = compute_error_and_norms(
+                    x_test, y_test[:, :n_out], m)
+            else:
+                compute_error_and_norms = theano.function(inputs=[c.x, c.y], outputs=[c.get_cost(0,0)]+norms)
+                cost_and_norm = compute_error_and_norms(
+                    x_test, y_test[:, :n_out])
             cost = cost_and_norm[0]
             norms = cost_and_norm[1:]
 
