@@ -369,8 +369,9 @@ class Classifier(object):
         """Generate json representation of network parameters"""
         output_string = "{\"network_properties\":"
         output_string += json.dumps({"n_in": self.n_in, "n_out": self.n_out,
-                                     "mlp_n_in": self.mlp_n_in, "mlp_n_hidden": self.mlp_n_hidden,
-                                     "mlp_activation_names": self.mlp_activation_names,
+                                     "mlp_n_in": self.mlp_n_in if hasattr(self, 'mlp_n_in') else None,
+                                     "mlp_n_hidden": self.mlp_n_hidden if hasattr(self, 'mlp_n_hidden') else None,
+                                     "mlp_activation_names": self.mlp_activation_names if hasattr(self, 'mlp_activation_names') else None,
                                      "lbn_n_hidden": self.lbn_n_hidden,
                                      "det_activations": self.det_activations,
                                      "stoch_activations": self.stoch_activations,
@@ -957,8 +958,9 @@ class RecurrentClassifier(Classifier):
         """Generate json representation of network parameters"""
         output_string = "{\"network_properties\":"
         output_string += json.dumps({"n_in": self.n_in, "n_out": self.n_out,
-                                     "mlp_n_in": self.mlp_n_in, "mlp_n_hidden": self.mlp_n_hidden,
-                                     "mlp_activation_names": self.mlp_activation_names,
+                                     "mlp_n_in": self.mlp_n_in if hasattr(self, 'mlp_n_in') else None,
+                                     "mlp_n_hidden": self.mlp_n_hidden if hasattr(self, 'mlp_n_hidden') else None,
+                                     "mlp_activation_names": self.mlp_activation_names if hasattr(self, 'mlp_activation_names') else None,
                                      "lbn_n_hidden": self.lbn_n_hidden,
                                      "lbn_n_out": self.lbn_n_out,
                                      "det_activations": self.det_activations,
@@ -1158,15 +1160,15 @@ class RNNClassifier(object):
                       method['momentum_type'], momentum=method['momentum'])
         elif method['type'] == allowed_methods[1]:
             opt = RMSProp(method['learning_rate'], method[
-                          'rho'], method['epsilon'])
+                'rho'], method['epsilon'])
         elif method['type'] == allowed_methods[2]:
             opt = AdaDelta(method['learning_rate'], method[
-                           'rho'], method['epsilon'])
+                'rho'], method['epsilon'])
         elif method['type'] == allowed_methods[3]:
             opt = AdaGrad(method['learning_rate'], method['epsilon'])
         elif method['type'] == allowed_methods[4]:
             opt = Adam(method['learning_rate'], method[
-                       'b1'], method['b2'], method['e'])
+                'b1'], method['b2'], method['e'])
         else:
             raise NotImplementedError(
                 "Optimization method not implemented. Choose one out of: {0}".format(
@@ -1461,8 +1463,8 @@ class MLPClassifier(object):
             self.output_layer = mlp.CorrelatedLayer(self.mlp.output, self.mlp.hidden_layers[-1].n_out, self.n_out, self.output_activation_name, self.output_activation,
                                                     W_values=None if layers_info is None else layers_info['output_layer']['W'], b_values=None if layers_info is None else layers_info['output_layer']['b'],
                                                     W_correlated_values=None if layers_info is None else layers_info[
-                                                        'output_layer']['W_correlated'],
-                                                    timeseries_layer=False)
+                'output_layer']['W_correlated'],
+                timeseries_layer=False)
 
         elif self.correlated_outputs == 'sparse':
             self.output_layer = mlp.OneCorrelatedLayer(self.mlp.output, self.mlp.hidden_layers[-1].n_out, self.n_out, self.output_activation_name, self.output_activation,
@@ -1481,18 +1483,18 @@ class MLPClassifier(object):
             self.output_layer = mlp.HiddenLayer(self.mlp.output, self.mlp.hidden_layers[-1].n_out,
                                                 self.n_out, self.output_activation_name, self.output_activation,
                                                 W_values=None if layers_info is None else layers_info[
-                                                'output_layer']['W'],
-                                                b_values=None if layers_info is None else layers_info[
-                                                'output_layer']['b'],
-                                                timeseries_layer=None,
-                                                batch_normalization=self.batch_normalization,
-                                                gamma_values=None if layers_info is None or
-                                                'gamma_values' not in layers_info['output_layer'].keys() else layers_info['output_layer']['gamma_values'],
-                                                beta_values=None if layers_info is None or 'beta_values' not in layers_info[
-                                                'output_layer'].keys() else layers_info['output_layer']['beta_values'],
-                                                epsilon=1e-12 if layers_info is None or 'epsilon' not in layers_info[
-                                                'output_layer'].keys() else layers_info['output_layer']['epsilon'],
-                                                fixed_means=False, dropout=False)
+                'output_layer']['W'],
+                b_values=None if layers_info is None else layers_info[
+                'output_layer']['b'],
+                timeseries_layer=None,
+                batch_normalization=self.batch_normalization,
+                gamma_values=None if layers_info is None or
+                'gamma_values' not in layers_info['output_layer'].keys() else layers_info['output_layer']['gamma_values'],
+                beta_values=None if layers_info is None or 'beta_values' not in layers_info[
+                'output_layer'].keys() else layers_info['output_layer']['beta_values'],
+                epsilon=1e-12 if layers_info is None or 'epsilon' not in layers_info[
+                'output_layer'].keys() else layers_info['output_layer']['epsilon'],
+                fixed_means=False, dropout=False)
 
         else:
             raise NotImplementedError
@@ -1555,15 +1557,15 @@ class MLPClassifier(object):
                       method['momentum_type'], momentum=method['momentum'])
         elif method['type'] == allowed_methods[1]:
             opt = RMSProp(method['learning_rate'], method[
-                          'rho'], method['epsilon'])
+                'rho'], method['epsilon'])
         elif method['type'] == allowed_methods[2]:
             opt = AdaDelta(method['learning_rate'], method[
-                           'rho'], method['epsilon'])
+                'rho'], method['epsilon'])
         elif method['type'] == allowed_methods[3]:
             opt = AdaGrad(method['learning_rate'], method['epsilon'])
         elif method['type'] == allowed_methods[4]:
             opt = Adam(method['learning_rate'], method[
-                       'b1'], method['b2'], method['e'])
+                'b1'], method['b2'], method['e'])
         else:
             raise NotImplementedError(
                 "Optimization method not implemented. Choose one out of: {0}".format(
@@ -1786,17 +1788,21 @@ class Correlated2DMLPClassifier(MLPClassifier):
 
         for i in xrange(len(self.output_layers)):
             self.output_layers[i] = mlp.HiddenLayer(self.mlps[i].output,
-                                                    self.mlps[i].hidden_layers[-1].n_out, 1,
-                                                    'linear', linear_activation,
-                                                    W_values=None if layers_info is None else
-                                                    layers_info['output_layers'][i]['output_layer']
-                                                                                            ['W'],
-                                                    b_values=None if layers_info is None else
-                                                                    layers_info['output_layers'][i]['output_layer']['b'],
-                                                    timeseries_layer=False)
+                                                    self.mlps[
+                i].hidden_layers[-1].n_out, 1,
+                'linear', linear_activation,
+                W_values=None if layers_info is None else
+                layers_info['output_layers'][
+                i]['output_layer']
+                ['W'],
+                b_values=None if layers_info is None else
+                layers_info['output_layers'][
+                i]['output_layer']['b'],
+                timeseries_layer=False)
             self.params.append(self.output_layers[i].params)
 
-        output_a = T.concatenate([ol.output for ol in self.output_layers], axis=1)
+        output_a = T.concatenate(
+            [ol.output for ol in self.output_layers], axis=1)
 
         output_activation = get_activation_function(
             self.output_activation_name)
@@ -1877,7 +1883,8 @@ class Correlated2DMLPClassifier(MLPClassifier):
         if self.correlated_outputs == 'sparse':
             output_string += ",\"correlated_layer\":"
 
-            corr_dict = {"W_correlated": self.correlated_layer.W_correlated.get_value().tolist()}
+            corr_dict = {
+                "W_correlated": self.correlated_layer.W_correlated.get_value().tolist()}
             output_string += json.dumps(corr_dict)
 
         output_string += "}"
