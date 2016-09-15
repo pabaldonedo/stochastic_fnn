@@ -739,7 +739,7 @@ class StochasticInterface(object):
 
     def likelihood_precision_dependent_functions(self):
         self.log_likelihood = get_log_likelihood(
-            self.output, self.y, self.likelihood_precision, self.timeseries_network)
+            self.output, self.y, self.likelihood_precision, self.timeseries_network, clipped=True)
 
     def update_likelihood_precision(self, new_precision):
         self.likelihood_precision = np.asarray(

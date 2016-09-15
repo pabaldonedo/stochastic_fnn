@@ -16,7 +16,7 @@ from classifiers import BoneResidualMLPClassifier
 
 def main():
 
-    network_type = 'residual'
+    network_type = 'mlp'
     load_idx = False
     idx_train_file = None
     idx_test_file = None
@@ -27,7 +27,7 @@ def main():
     assert network_type in network_types
 
     use_pca = False
-    pca_file = None#'pca_mux_stdx_n_16_n_impulse_2000_5.pkl'
+    pca_file = None  # 'pca_mux_stdx_n_16_n_impulse_2000_5.pkl'
 
     if use_pca:
         assert pca_file is not None
@@ -63,7 +63,7 @@ def main():
     assert not (load_means_from_file and x_info is None and y_info is None)
     # Number of datasets
     n = 16
-    n_impulse_2000 = 5
+    n_impulse_2000 = 0
 
     # RNN on top of MLP
     recurrent = False
@@ -140,7 +140,8 @@ def main():
             y_test = y[idx_test]
 
     if sampled_clipped:
-        x = np.asarray(pd.read_csv(sampled_clipped_states, delimiter=',', header=None).values, dtype=theano.config.floatX)
+        x = np.asarray(pd.read_csv(sampled_clipped_states, delimiter=',',
+                                   header=None).values, dtype=theano.config.floatX)
     elif lagged:
         x = load_files(n, 'lagged_states')
         assert not n_impulse_2000 > 0
@@ -210,9 +211,10 @@ def main():
         n_out = y.shape[1]
 
     print "Data ready to go"
-    mlp_activation_names = [['tanh', 'tanh']]  # , 'sigmoid']
-    mlp_n_hidden = [[150, 100]]#, [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
-    likelihood_precision = 0.1
+    mlp_activation_names = ['sigmoid']  # , 'sigmoid']
+    # , [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
+    mlp_n_hidden = [200]
+    likelihood_precision = 1
     bone_n_hidden = [11, 11]
     bone_activation_names = ['sigmoid', 'sigmoid']
     # RNN definiton + LBN n_out if RNN is the final layer
@@ -224,7 +226,7 @@ def main():
     # Fit options
     b_size = 100
     epoch0 = 1
-    n_epochs = 10000
+    n_epochs = 1000
     lr = .1
     save_every = 10  # Log saving
     chunk_size = None  # Memory chunks
@@ -396,33 +398,32 @@ def main():
         np.savetxt('{0}/idx_test.txt'.format(opath),
                    np.asarray(idx[train_bucket:], dtype=int), fmt='%i')
 
-    # Training  
+    # Training
     if load_from_file:
         log.info("Network loaded from file: {0}".format(loaded_network_fname))
 
     if sampled_clipped:
-        log.info("Network with samle clipped x: {0} y: {1}".format(sampled_clipped_states, sampled_clipped_controls))
-
-
+        log.info("Network with samle clipped x: {0} y: {1}".format(
+            sampled_clipped_states, sampled_clipped_controls))
 
     if recurrent:
-        log.info("Network properites: n_in: {0}, n_out: {1}, mlp_n_hidden: [{2}] "\
-                "mlp_activation_names: {3} "\
-                "rnn_type: {4}, rnn_hidden: {5}, rnn_activations: {6} "\
-                "batch_normalization: {7}, dropout: {8}".format(
-                n_in, n_out,
-                ','.join(str(e) for e in mlp_n_hidden),
-                ','.join(str(e) for e in mlp_activation_names),
-                batch_normalization))
+        log.info("Network properites: n_in: {0}, n_out: {1}, mlp_n_hidden: [{2}] "
+                 "mlp_activation_names: {3} "
+                 "rnn_type: {4}, rnn_hidden: {5}, rnn_activations: {6} "
+                 "batch_normalization: {7}, dropout: {8}".format(
+                     n_in, n_out,
+                     ','.join(str(e) for e in mlp_n_hidden),
+                     ','.join(str(e) for e in mlp_activation_names),
+                     batch_normalization))
 
     else:
-        log.info("Network properites: n_in: {0}, n_out: {1}, mlp_n_hidden: [{2}] "\
-                "mlp_activation_names: {3} batch_normalization: {4} "\
-                "dropout: {5}".format(
-                n_in, n_out,
-                ','.join(str(e) for e in mlp_n_hidden),
-                ','.join(str(e) for e in mlp_activation_names),
-                batch_normalization, dropout))
+        log.info("Network properites: n_in: {0}, n_out: {1}, mlp_n_hidden: [{2}] "
+                 "mlp_activation_names: {3} batch_normalization: {4} "
+                 "dropout: {5}".format(
+                     n_in, n_out,
+                     ','.join(str(e) for e in mlp_n_hidden),
+                     ','.join(str(e) for e in mlp_activation_names),
+                     batch_normalization, dropout))
 
     if use_pca:
         with open(pca_file, 'r') as fid:
@@ -436,9 +437,10 @@ def main():
 
     if sampled_clipped:
         log.info('Data sampled.\n States loaded from: {0}\n Controls loaded from: {1}'.format(
-                                                sampled_clipped_states, sampled_clipped_controls))
+            sampled_clipped_states, sampled_clipped_controls))
     else:
-        log.info("Data n: {0} and n_impulse_2000: {1}".format(n, n_impulse_2000))
+        log.info("Data n: {0} and n_impulse_2000: {1}".format(
+            n, n_impulse_2000))
 
     if clipped_y:
         log.info("Controls clipped with file: {0}".format(clipped_y_file))
