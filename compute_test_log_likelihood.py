@@ -133,15 +133,17 @@ def load_2d(idx_path):
     n_train = x_train.shape[0]
     n_test = x_test.shape[0]
 
-    return x_test, y_test, n_train, n_test
+    return x_test, y_test, n_train, n_test, x_train, y_train
 
 
 def main(): 
 
-    folders = ['bone_mlp_classifier_bones_n_hidden[5][tanh]_n_hidden_[40,20,15]_activation_[relu,relu,relu]_bsize_100_method_SGD_bn_False_dropout_False']
-    nnames = ['bone_mlp_classifier_n_hidden_[40,20,15]']#, 'lbn_classifier_n_hidden_[40]']
+    folders = ['thesis_exp/lbn_classifier_n_hidden_[40]_activation_[linear,linear]_bsize_100_method_SGD_bn_False_dropout_False',
+                'thesis_exp/lbn_classifier_n_hidden_[40,20]_activation_[linear,linear,linear]_bsize_100_method_SGD_bn_False_dropout_False']
+    nnames = ['lbn_classifier_n_hidden_[40]',
+              'lbn_classifier_n_hidden_[40,20]']#, 'lbn_classifier_n_hidden_[40]']
     network_names = ['2d/network_output/{0}/networks/{1}'.format(folder, nname) for folder, nname in zip(folders, nnames)]
-    network_type = 'bone_mlp'
+    network_type = 'lbn'
     network_types = ['mlp', 'residual', 'bone_residual', 'bone_mlp', 'lbn']
     assert network_type in network_types
     
@@ -150,12 +152,14 @@ def main():
     ofile_n = 'norms.csv'
 
 
-    epoch0s = [10]*len(folders)
-    epochns = [1180]
+    epoch0s = [100, 170]#*len(folders)
+    epochns = [111, 180]
     epoch_steps = [10]*len(folders)
     n_out = 3
     m = 20
 
+    if network_type != 'lbn':
+        assert m==1
 
     for i in xrange(len(folders)):
 
@@ -170,7 +174,7 @@ def main():
         norm_evolution = []
         log_likelihood = []
 
-        x_test, y_test, n_train, n_test = load_2d('2d/network_output/{0}'.format(folders[i]))
+        x_test, y_test, n_train, n_test, x_train, y_train = load_2d('2d/network_output/{0}'.format(folders[i]))
 
         for epoch in xrange(epoch0, epochn + 1, epoch_step):
 
@@ -198,25 +202,46 @@ def main():
 
             norms = [1./p.size*(p**2).sum() for p in flatten(c.params)]
             if network_type is network_types[4]:
-                compute_error_and_norms = theano.function(inputs=[c.x, c.y, c.m], outputs=[c.get_cost(0,0)]+norms)
-                cost_and_norm = compute_error_and_norms(
-                    x_test, y_test[:, :n_out], m)
+                #compute_error_and_norms = theano.function(inputs=[c.x, c.y, c.m], outputs=[c.get_cost(0,0)]+norms)
+                #cost_and_norm = compute_error_and_norms(
+                 #   x_test, y_test[:, :n_out], m)
+                compute_error = theano.function(inputs=[c.x,c.y,c.m], outputs=c.get_cost(0,0))
+                cost = compute_error(x_test, y_test[:,:n_out], m)
+                print "DEBUG"
+                print "Test Cost: {0} normed: {1}".format(cost, -cost-n_out/2.*np.log(2*np.pi)-np.log(m))
+                train_cost = compute_error(x_train, y_train[:,:n_out], m)
+                print "Train Cost: {0} normed: {1}".format(train_cost, -train_cost-n_out/2.*np.log(2*np.pi)-np.log(m))
             else:
                 compute_error_and_norms = theano.function(inputs=[c.x, c.y], outputs=[c.get_cost(0,0)]+norms)
                 cost_and_norm = compute_error_and_norms(
                     x_test, y_test[:, :n_out])
-            cost = cost_and_norm[0]
-            norms = cost_and_norm[1:]
+            
+                norms = cost_and_norm[1:]
+                norm_evolution.append(norms)
+                cost = cost_and_norm[0]
 
-            print cost
+                norms = np.array(norm_evolution)
+
+                fig, ax = plt.subplots()
+                for i in xrange(norms.shape[1]):
+                    ax.plot(np.arange(epoch0, epochn + 1, epoch_step), norms[:,i])
+                ax.set_xlabel('epoch')
+                ax.set_ylabel('norm')
+                legend = ['{0}{1}'.format(str(p),i//2) for i, p in enumerate(flatten(c.params))]
+
+                ax.legend(legend)
+
+                plt.savefig(opath+'norms.png')
+                np.savetxt(opath + ofile_n, np.hstack((
+                np.arange(epoch0, epochn + 1, epoch_step).reshape(-1, 1), norms)), delimiter=',')
+
+
             log_likelihood.append(-1*cost * x_test.shape[0])
-            norm_evolution.append(norms)
-
+            print cost            
 
         log_l = np.array(log_likelihood).reshape(-1, 1)
-        norms = np.array(norm_evolution)
-        normed_log_l = log_l - n_test*n_out/2.*np.log(2*np.pi)
-
+        normed_log_l = log_l - n_test*n_out/2.*np.log(2*np.pi)-n_test*np.log(m)
+        print 1./n_test*normed_log_l
 
         fig, ax = plt.subplots()
         ax.plot(train_log_likelihood[:,0], 1./n_train*train_log_likelihood[:,1],'b')
@@ -226,23 +251,8 @@ def main():
         ax.legend(['Train', 'Test'])
         plt.savefig(opath+'log_likelihood.png')
 
-        legend = ['{0}{1}'.format(str(p),i//2) for i, p in enumerate(flatten(c.params))]
-
-        fig, ax = plt.subplots()
-        for i in xrange(norms.shape[1]):
-            ax.plot(np.arange(epoch0, epochn + 1, epoch_step), norms[:,i])
-        ax.set_xlabel('epoch')
-        ax.set_ylabel('norm')
-        ax.legend(legend)
-
-        plt.savefig(opath+'norms.png')
-
-
         np.savetxt(opath + ofile_l, np.hstack((
             np.arange(epoch0, epochn + 1, epoch_step).reshape(-1, 1), log_l)), delimiter=',')
-        np.savetxt(opath + ofile_n, np.hstack((
-            np.arange(epoch0, epochn + 1, epoch_step).reshape(-1, 1), norms)), delimiter=',')
-
 
 
 if __name__ == '__main__':

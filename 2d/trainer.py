@@ -21,8 +21,8 @@ def main():
     extra_tag = ''  # '_no_fallen_critical_learning_0_7'
     load_idx = True
     # idx_train_no_fallen.txt'
-    idx_train_file = 'network_output/idx_train_critical_0_7.txt'
-    idx_test_file = 'network_output/idx_test_critical_0_7.txt'
+    idx_train_file = 'network_output/idx_train.txt'
+    idx_test_file = 'network_output/idx_test.txt'
     assert not (load_idx and idx_train_file is None)
 
     network_types = ['mlp', 'residual_mlp', 'bone_residual',
@@ -133,7 +133,7 @@ def main():
     output_activation_name = 'linear'
     # Fit options
     b_size = 100
-    epoch0 = 1001
+    epoch0 = 1
     n_epochs = 1000
     lr = .01
     save_every = 10  # Log saving
@@ -166,8 +166,8 @@ def main():
               'learning_rate': lr, 'dropout': dropout}
 
     # Load from file?
-    load_from_file = True
-    session_name = 'donna'
+    load_from_file = False
+    session_name = None
     load_different_file = False
 
     assert not (load_different_file and not load_from_file), "You have set load different_file to True but  you are not loading any network!"

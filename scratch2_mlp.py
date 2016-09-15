@@ -49,9 +49,9 @@ def main():
     #x_info_file = "mux_stdx_n_16_n_impulse_2000_5_normal_eq_mu_20.csv"
     #y_info_file = "muy_stdy_n_16_n_impulse_2000_5_normal_eq_mu_20.csv"
     #x_info_file = 'sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv'
-    x_info_file = 'mux_stdx_n_16_n_impulse_2000_5.csv'
+    x_info_file = 'mux_stdx_n_16.csv'
     #y_info_file = 'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv'
-    y_info_file = 'muy_stdy_n_16_n_impulse_2000_5.csv'
+    y_info_file = 'muy_stdy_n_16.csv'
     #y_info_file = "clipped_muy_stdy_n_16_n_impulse_2000_5.csv"
 
     # mean and std files:
@@ -63,7 +63,7 @@ def main():
     assert not (load_means_from_file and x_info is None and y_info is None)
     # Number of datasets
     n = 16
-    n_impulse_2000 = 5
+    n_impulse_2000 = 0
 
     # RNN on top of MLP
     recurrent = False
@@ -210,9 +210,9 @@ def main():
         n_out = y.shape[1]
 
     print "Data ready to go"
-    mlp_activation_names = [['tanh', 'tanh']]  # , 'sigmoid']
-    mlp_n_hidden = [[150, 100]]#, [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
-    likelihood_precision = 0.1
+    mlp_activation_names = [['sigmoid','sigmoid'] ] # , 'sigmoid']
+    mlp_n_hidden = [[150,100]]#, [50, 50], [30, 30]]  # , [80, 80], [50, 50]]  # , 50]
+    likelihood_precision = .1
     bone_n_hidden = [11, 11]
     bone_activation_names = ['sigmoid', 'sigmoid']
     # RNN definiton + LBN n_out if RNN is the final layer
