@@ -199,6 +199,7 @@ def main():
                     '{0}_epoch_{1}.json'.format(
                         network_name, epoch))
 
+            likelihood_precision = c.likelihood_precision
 
             norms = [1./p.size*(p**2).sum() for p in flatten(c.params)]
             if network_type is network_types[4]:
@@ -208,9 +209,9 @@ def main():
                 compute_error = theano.function(inputs=[c.x,c.y,c.m], outputs=c.get_cost(0,0))
                 cost = compute_error(x_test, y_test[:,:n_out], m)
                 print "DEBUG"
-                print "Test Cost: {0} normed: {1}".format(cost, -cost-n_out/2.*np.log(2*np.pi)-np.log(m))
+                print "Test Cost: {0} normed: {1}".format(cost, -cost-n_out/2.*np.log(2*np.pi*1./likelihood_precision)-np.log(m))
                 train_cost = compute_error(x_train, y_train[:,:n_out], m)
-                print "Train Cost: {0} normed: {1}".format(train_cost, -train_cost-n_out/2.*np.log(2*np.pi)-np.log(m))
+                print "Train Cost: {0} normed: {1}".format(train_cost, -train_cost-n_out/2.*np.log(2*np.pi*1./likelihood_precision)-np.log(m))
             else:
                 compute_error_and_norms = theano.function(inputs=[c.x, c.y], outputs=[c.get_cost(0,0)]+norms)
                 cost_and_norm = compute_error_and_norms(
@@ -240,7 +241,7 @@ def main():
             print cost            
 
         log_l = np.array(log_likelihood).reshape(-1, 1)
-        normed_log_l = log_l - n_test*n_out/2.*np.log(2*np.pi)-n_test*np.log(m)
+        normed_log_l = log_l - n_test*n_out/2.*np.log(2*np.pi*1./likelihood_precision)-n_test*np.log(m)
         print 1./n_test*normed_log_l
 
         fig, ax = plt.subplots()
