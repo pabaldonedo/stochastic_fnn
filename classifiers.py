@@ -743,7 +743,7 @@ class ResidualClassifier(Classifier):
     def get_cost(self, l2_coeff, l1_coeff):
         """Returns cost value to be optimized"""
         cost = -1. / self.x.shape[0] * get_log_likelihood(
-            self.output, self.y, self.likelihood_precision, False)
+            self.output, self.y, self.likelihood_precision, False, clipped=True)
 
         if l2_coeff > 0:
             cost += l2_coeff * self.l2
@@ -1600,7 +1600,7 @@ class MLPClassifier(object):
         return cost
 
     def generate_mlp_saving_string(self):
-        
+
         output_string = ",\"mlp\":"
         output_string += self.mlp.generate_saving_string()
         output_string += ",\"output_layer\":"
@@ -1640,7 +1640,7 @@ class MLPClassifier(object):
                                      "batch_normalization": self.batch_normalization,
                                      "dropout": self.dropout,
                                      "correlated_outputs": self.correlated_outputs})
-        
+
         output_string += self.generate_mlp_saving_string()
 
         return output_string
@@ -1684,25 +1684,27 @@ class MLPClassifier(object):
 class BoneMLPClassifier(MLPClassifier):
 
     def parse_inputs(self, n_in, n_out, mlp_n_hidden, mlp_activation_names,
-                 likelihood_precision, log,
-                 batch_normalization, dropout, correlated_outputs,
-                 output_activation_name,
-                 bone_n_hidden, bone_activation_names, bone_type):
+                     likelihood_precision, log,
+                     batch_normalization, dropout, correlated_outputs,
+                     output_activation_name,
+                     bone_n_hidden, bone_activation_names, bone_type):
 
         super(BoneMLPClassifier, self).parse_inputs(n_in, n_out, mlp_n_hidden, mlp_activation_names,
-                 likelihood_precision, log,
-                 batch_normalization, dropout, correlated_outputs,
-                 output_activation_name)
+                                                    likelihood_precision, log,
+                                                    batch_normalization, dropout, correlated_outputs,
+                                                    output_activation_name)
 
-        assert type(bone_n_hidden) is ListType, "bone_n_hidden must be a list: {0!r}".format(bone_n_hidden)
-        assert type(bone_activation_names) is ListType, "bone_activation_names must be a list: {0!r}".format(bone_activation_names)
+        assert type(bone_n_hidden) is ListType, "bone_n_hidden must be a list: {0!r}".format(
+            bone_n_hidden)
+        assert type(bone_activation_names) is ListType, "bone_activation_names must be a list: {0!r}".format(
+            bone_activation_names)
         bone_types = ['2d']
-        assert bone_type in bone_types, "Bone type provided ({0!r}) not understood. Choose one of: {1!r}".format(bone_types)
+        assert bone_type in bone_types, "Bone type provided ({0!r}) not understood. Choose one of: {1!r}".format(
+            bone_types)
 
         self.bone_n_hidden = bone_n_hidden
         self.bone_activation_names = bone_activation_names
         self.bone_type = bone_type
-
 
     def set_up_mlps(self, bone_n_hidden, bone_activation_names, bone_type,
                     weights=None, timeseries_layer=False,
@@ -1715,9 +1717,10 @@ class BoneMLPClassifier(MLPClassifier):
 
         for i in xrange(len(self.bone_representations)):
             if i == 0:
-                bone_mlp = MLPLayer(bone_n_in if bone_type =='2d' else None,
+                bone_mlp = MLPLayer(bone_n_in if bone_type == '2d' else None,
                                     bone_n_hidden, bone_activation_names,
-                                    input_var=self.x[:, :bone_n_in] if bone_type =='2d' else None,
+                                    input_var=self.x[
+                                        :, :bone_n_in] if bone_type == '2d' else None,
                                     layers_info=None if weights is
                                     None else weights['bone_mlps'][i]['MLPLayer'],
                                     timeseries_network=False,
@@ -1736,17 +1739,17 @@ class BoneMLPClassifier(MLPClassifier):
 
             self.bone_representations[i] = bone_mlp
 
-    def __init__(self,n_in, n_out, mlp_n_hidden, mlp_activation_names,
+    def __init__(self, n_in, n_out, mlp_n_hidden, mlp_activation_names,
                  bone_n_hidden, bone_activation_names, bone_type,
                  likelihood_precision=1, layers_info=None, log=None,
                  batch_normalization=False, dropout=False,
                  correlated_outputs=None, output_activation_name='linear'):
 
         self.parse_inputs(n_in, n_out, mlp_n_hidden, mlp_activation_names,
-                 likelihood_precision, log,
-                 batch_normalization, dropout, correlated_outputs,
-                 output_activation_name,
-                 bone_n_hidden, bone_activation_names, bone_type)
+                          likelihood_precision, log,
+                          batch_normalization, dropout, correlated_outputs,
+                          output_activation_name,
+                          bone_n_hidden, bone_activation_names, bone_type)
         self.x = T.matrix('x', dtype=theano.config.floatX)
         self.y = T.matrix('y', dtype=theano.config.floatX)
         self.params = []
@@ -1756,13 +1759,15 @@ class BoneMLPClassifier(MLPClassifier):
             self.training = theano.tensor.scalar('training')
 
         self.set_up_mlps(self.bone_n_hidden, self.bone_activation_names, self.bone_type,
-                    weights=layers_info, timeseries_layer=False,
-                    batch_normalization=batch_normalization)
+                         weights=layers_info, timeseries_layer=False,
+                         batch_normalization=batch_normalization)
 
-        self.ann_input = T.concatenate([bone.output for bone in self.bone_representations], axis=1)
+        self.ann_input = T.concatenate(
+            [bone.output for bone in self.bone_representations], axis=1)
         mlp_params = [mlp_i.params for mlp_i in self.bone_representations]
         self.params.append(mlp_params)
-        ann_input_n_in = len(self.bone_representations) * self.bone_n_hidden[-1]
+        ann_input_n_in = len(self.bone_representations) * \
+            self.bone_n_hidden[-1]
 
         self.mlp = MLPLayer(ann_input_n_in, self.mlp_n_hidden, self.mlp_activation_names,
                             timeseries_network=False,
@@ -1777,7 +1782,6 @@ class BoneMLPClassifier(MLPClassifier):
         self.predict = theano.function(
             inputs=[self.x], outputs=self.output,
             givens=self.givens_dict)
-
 
     def generate_saving_string(self):
         """Generate json representation of network parameters"""
@@ -1803,9 +1807,8 @@ class BoneMLPClassifier(MLPClassifier):
         output_string += "]"
 
         output_string += self.generate_mlp_saving_string()
-        
-        return output_string
 
+        return output_string
 
     @classmethod
     def init_from_file(cls, fname, log=None):
@@ -1828,7 +1831,8 @@ class BoneMLPClassifier(MLPClassifier):
                                 network_properties['bone_n_hidden'],
                                 network_properties['bone_activation_names'],
                                 network_properties['bone_type'],
-                                likelihood_precision=network_properties['likelihood_precision'],
+                                likelihood_precision=network_properties[
+                                    'likelihood_precision'],
                                 log=log,
                                 layers_info=network_description,
                                 batch_normalization=False if 'batch_normalization' not in network_properties.keys(
@@ -1836,6 +1840,7 @@ class BoneMLPClassifier(MLPClassifier):
             output_activation_name='linear' if 'output_activation' not in network_properties.keys() else network_properties['output_activation'])
 
         return loaded_classifier
+
 
 class ApplyOneCorrelated(object):
 
