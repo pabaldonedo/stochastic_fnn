@@ -208,10 +208,6 @@ def main():
                  #   x_test, y_test[:, :n_out], m)
                 compute_error = theano.function(inputs=[c.x,c.y,c.m], outputs=c.get_cost(0,0))
                 cost = compute_error(x_test, y_test[:,:n_out], m)
-                print "DEBUG"
-                print "Test Cost: {0} normed: {1}".format(cost, -cost-n_out/2.*np.log(2*np.pi*1./likelihood_precision)-np.log(m))
-                train_cost = compute_error(x_train, y_train[:,:n_out], m)
-                print "Train Cost: {0} normed: {1}".format(train_cost, -train_cost-n_out/2.*np.log(2*np.pi*1./likelihood_precision)-np.log(m))
             else:
                 compute_error_and_norms = theano.function(inputs=[c.x, c.y], outputs=[c.get_cost(0,0)]+norms)
                 cost_and_norm = compute_error_and_norms(
