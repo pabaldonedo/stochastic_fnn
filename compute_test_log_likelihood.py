@@ -17,14 +17,15 @@ from classifiers import BoneMLPClassifier
 from classifiers import Classifier
 
 
-def load_3d():
+def load_3d(idx_path):
     sampled_clipped = False
     lagged = False
     n_out = 30
 
 
-    idx_file = 'network_output/Testr/prueba_test.txt'
-#    x_info_file = 'mux_stdx_lagged_n_16.csv'
+    idx_train_file = '{0}/idx_train.txt'.format(idx_path)
+    idx_test_file = '{0}/idx_test.txt'.format(idx_path)
+    #    x_info_file = 'mux_stdx_lagged_n_16.csv'
 #    x_info_file = 'sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv'
     x_info_file = 'mux_stdx_n_16_n_impulse_2000_5.csv'
 #    y_info_file = 'sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv'
@@ -40,8 +41,6 @@ def load_3d():
     n = 16
     n_impulse_2000 = 0
 
-
-
     if sampled_clipped:
         y = np.asarray(pd.read_csv(
             'data/sample_clipped_controls_n_16_n_impulse_2000_5.txt', delimiter=',',
@@ -55,8 +54,10 @@ def load_3d():
     stdy = y_info[1]
     y = (y - muy) * 1. / stdy
 
-    idx = np.asarray(np.genfromtxt(idx_file, delimiter=','), dtype=int)
-    y_test = y[idx]
+    idx_train = np.genfromtxt(idx_train_file, delimiter=',', dtype=int)
+    idx_test = np.genfromtxt(idx_test_file, delimiter=',', dtype=int)
+    y_test = y[idx_test]
+    y_train = y[idx_train]
 
     if sampled_clipped:
         x = np.asarray(pd.read_csv(
@@ -80,10 +81,12 @@ def load_3d():
         cols = [1] + list(range(3, x.shape[1]))
 
     x = x[:, cols]
-    x_test = x[idx]    
+    x_test = x[idx_test]    
+    x_train = x[idx_train]
+    n_train = x_train.shape[0]
+    n_test = x_test.shape[0]
 
-
-    return x_test, y_test
+    return x_test, y_test, n_train, n_test, x_train, y_train
 
 
 def load_2d(idx_path):
@@ -138,10 +141,10 @@ def load_2d(idx_path):
 
 def main(): 
 
-    folders = ['thesis_exp/lbn_classifier_n_hidden_[40]_activation_[linear,linear]_bsize_100_method_SGD_bn_False_dropout_False',
-                'thesis_exp/lbn_classifier_n_hidden_[40,20]_activation_[linear,linear,linear]_bsize_100_method_SGD_bn_False_dropout_False']
-    nnames = ['lbn_classifier_n_hidden_[40]',
-              'lbn_classifier_n_hidden_[40,20]']#, 'lbn_classifier_n_hidden_[40]']
+    folders = #['thesis_exp/lbn_classifier_n_hidden_[40]_activation_[linear,linear]_bsize_100_method_SGD_bn_False_dropout_False',
+              #  'thesis_exp/lbn_classifier_n_hidden_[40,20]_activation_[linear,linear,linear]_bsize_100_method_SGD_bn_False_dropout_False']
+    nnames = #['lbn_classifier_n_hidden_[40]',
+             # 'lbn_classifier_n_hidden_[40,20]']#, 'lbn_classifier_n_hidden_[40]']
     network_names = ['2d/network_output/{0}/networks/{1}'.format(folder, nname) for folder, nname in zip(folders, nnames)]
     network_type = 'lbn'
     network_types = ['mlp', 'residual', 'bone_residual', 'bone_mlp', 'lbn']
