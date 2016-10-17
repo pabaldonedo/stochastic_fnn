@@ -5,6 +5,7 @@ from classifiers import RecurrentMLP
 from classifiers import RNNClassifier
 from classifiers import ResidualMLPClassifier
 from classifiers import Correlated2DMLPClassifier
+from classifiers import BoneMLPClassifier
 import theano
 import numpy
 import warnings
@@ -163,7 +164,7 @@ class FNNPredictor(Predictor):
         self.set_up_means(mux, stdx, muy, stdy)
         self.gmm_prediction = gmm_prediction
         self.set_up_lagged(lagged)
-        
+
     def predict(self, x, n_out=34, pca=None):
         """
         :type x: numpy.array
@@ -183,8 +184,6 @@ class FNNPredictor(Predictor):
             x = x[:, cols]
         x_t_norm = (x - self.mux) * 1. / self.stdx
         x_t_norm.reshape(1, -1)
-
-
 
         if pca is not None:
             x_t_norm = pca.transform(x_t_norm)
@@ -487,6 +486,40 @@ class ResidualPredictor(Predictor):
         else:
             return self.classifier.predict(x_norm) * self.stdy + self.muy
 
+class BoneMLPPredictor(Predictor):
+
+    def __init__(self, fname, mux, stdx, muy, stdy, lagged=False, twod=False):
+        super(BoneMLPPredictor, self).__init__(twod=twod)
+        self.classifier = BoneMLPClassifier.init_from_file(fname)
+        self.set_up_means(mux, stdx, muy, stdy)
+        self.set_up_lagged(lagged)
+
+    def predict(self, x, n_out=34, pca=None):
+        assert type(
+            x) is numpy.ndarray, "Input must be a numpy array. Given type: {0!r}".format(type(x))
+
+        if x.dtype is not theano.config.floatX:
+            x = numpy.asarray(x, dtype=theano.config.floatX)
+
+        if not self.twod:
+            cols = [1] + list(range(3, x.shape[1]))
+            x = x[:, cols]
+            
+        x_t_norm = (x - self.mux) * 1. / self.stdx
+        x_t_norm.reshape(1, -1)
+        if pca is not None:
+            x_t_norm = pca.transform(x_t_norm)
+
+        x_norm = self.get_x(x_t_norm)
+       
+        if self.twod:
+            return self.classifier.predict(x_norm) * self.stdy + self.muy
+            
+        if n_out < 34:
+            return numpy.hstack((self.classifier.predict(x_norm) * self.stdy[:n_out] + self.muy[:n_out],  1000*numpy.ones((1,34-n_out))))
+        else:
+            return self.classifier.predict(x_norm) * self.stdy + self.muy
+
         
     
 class UnityMessenger(object):
@@ -522,7 +555,7 @@ class UnityMessenger(object):
         context = zmq.Context()
         self.socket = context.socket(zmq.REP)
         self.socket.bind("tcp://*:{0}".format(port))
-        classifier_types = ['Recurrent', 'Classifier', 'MLP', 'RecurrentMLP', 'RNN', 'ResidualMLP', 'Correlated2DMLP']
+        classifier_types = ['Recurrent', 'Classifier', 'MLP', 'RecurrentMLP', 'RNN', 'ResidualMLP', 'Correlated2DMLP', 'BoneMLP']
 
         self.n_out = n_out
         self.gmm_prediction = gmm_prediction
@@ -543,7 +576,7 @@ class UnityMessenger(object):
             self.recurrent = False
         elif classifier_type == classifier_types[2]:
             assert not self.gmm_prediction, "GMM prediction not available in this mode"
-            self.predictor = MLPPredictor(fname, mux, stdx, muy, stdy, lagged=lagged, twod=twod, correlated_outputs=correlated_outputs)
+            self.predictor = MLPPredictor(fname, mux, stdx, muy, stdy, lagged=lagged, twod=twod)
             self.recurrent = False
         elif classifier_type == classifier_types[3]:
             assert not self.gmm_prediction, "GMM prediction not available in this mode"
@@ -561,6 +594,9 @@ class UnityMessenger(object):
             assert not self.gmm_prediction, "GMM prediction not avaiable in this mode"
             self.recurrent = False
             self.predictor = CorrelatedPredictor(fname, mux, stdx, muy, stdy)
+        elif classifier_type == classifier_types[7]:
+            self.recurrent = False
+            self.predictor = BoneMLPPredictor(fname, mux, stdx, muy, stdy, twod=twod)
         else:
             raise NotImplementedError
 
@@ -586,20 +622,21 @@ class UnityMessenger(object):
 
 if __name__ == '__main__':
     port = 5555
-    fname = "network_output/sparsecorrelated2dmlp_classifier_n_hidden_[40,20,15]_epoch_90.json"
-    n_out = 3
-    classifier_type = 'Correlated2DMLP'
-    twod = True
+    fname = "network_output/mlp_n_13_n_hidden_[150]_epoch_300.json"
+    n_out = 34
+    classifier_type = 'MLP'
+    twod = False
 
-    x_info = numpy.genfromtxt('mux_stdx.csv', delimiter=',')
-    y_info = numpy.genfromtxt('muy_stdy.csv', delimiter=',')
+    #x_info = numpy.genfromtxt('mux_stdx.csv', delimiter=',')
+   # y_info = numpy.genfromtxt('muy_stdy.csv', delimiter=',')
     
 #    x_info = numpy.genfromtxt('mux_stdx_lagged_n_16.csv', delimiter=',')
-#    x_info = numpy.genfromtxt('mux_stdx_n_16.csv', delimiter=',')
-#    x_info = numpy.genfromtxt('sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv',delimiter=',')
+    x_info = numpy.genfromtxt('mux_stdx_n_16_n_impulse_2000_5.csv', delimiter=',')
+    y_info = numpy.genfromtxt('muy_stdy_n_16_n_impulse_2000_5.csv', delimiter=',')
+    #    x_info = numpy.genfromtxt('sample_clipped_mux_stdx_n_16_n_impules_2000_5.csv',delimiter=',')
 #    y_info = numpy.genfromtxt('sample_clipped_muy_stdy_n_16_n_impules_2000_5.csv', delimiter=',')
-#    x_info = numpy.genfromtxt('mux_stdx_n_16_n_impulse_2000_5.csv', delimiter=',')
-#    y_info = numpy.genfromtxt('muy_stdy_n_16_n_impulse_2000_5.csv', delimiter=',')
+    #x_info = numpy.genfromtxt('mux_stdx_n_16_n_impulse_2000_5.csv', delimiter=',')
+    #y_info = numpy.genfromtxt('muy_stdy_n_16_n_impulse_2000_5.csv', delimiter=',')
 #    x_info = numpy.genfromtxt('mux_stdx_n_13_n_impulse_2000_5.csv', delimiter=',')
 #    y_info = numpy.genfromtxt('muy_stdy_n_13_n_impulse_2000_5.csv', delimiter=',')
     #x_info = numpy.genfromtxt('mux_stdx_n_13.csv', delimiter=',')

@@ -399,7 +399,8 @@ class StochHiddenLayerInterface(object):
                                                            'detLayer']['beta_values'],
                                                        epsilon=1e-12 if batch_normalization_info is None else batch_normalization_info[i][
                                                            'detLayer']['epsilon'],
-                                                       fixed_means=False, no_bias=False)
+                                                       fixed_means=False, no_bias=False if mlp_info is None else mlp_info[i]['detLayer']['no_bias'])
+                
             else:
                 self.hidden_layers[i] = DetHiddenLayer(rng, self.hidden_layers[i - 1].output,
                                                        self.n_hidden[i - 1], h,
@@ -419,7 +420,7 @@ class StochHiddenLayerInterface(object):
                                                            'detLayer']['beta_values'],
                                                        epsilon=1e-12 if batch_normalization_info is None else batch_normalization_info[i][
                                                            'detLayer']['epsilon'],
-                                                       fixed_means=False, no_bias=False)
+                                                       fixed_means=False, no_bias=False if mlp_info is None else mlp_info[i]['detLayer']['no_bias'])
             self.params += self.hidden_layers[i].params
             # self.params[2 * i] = self.hidden_layers[i].W
             # self.params[2 * i + 1] = self.hidden_layers[i].b
@@ -443,7 +444,7 @@ class StochHiddenLayerInterface(object):
             'detLayer']['beta_values'],
             epsilon=1e-12 if batch_normalization_info is None else batch_normalization_info[-1][
             'detLayer']['epsilon'],
-            fixed_means=False, no_bias=False)
+            fixed_means=False, no_bias=False if mlp_info is None else mlp_info[-1]['detLayer']['no_bias'])
         # self.params[-2] = self.hidden_layers[-1].W
         # self.params[-1] = self.hidden_layers[-1].b
         self.params += self.hidden_layers[-1].params
@@ -534,6 +535,8 @@ class HiddenLayerInterface(object):
         :type stoch_mlp_info: dict.
         :param stoch_mlp_info: dictionary containing the information of the mlp as generated in
                             LBN.save_network().
+
+        WARNING: when calling detHiddenLayer no_bias parameter is in a unsafe form for retrocompatibility
         """
 
         self.input = input_var
@@ -546,7 +549,7 @@ class HiddenLayerInterface(object):
         self.batch_normalization = batch_normalization
 
         self.det_layer = DetHiddenLayer(rng, input_var, n_in, n_out, det_activation,
-                                        det_activation_name, m=m, no_bias=self.no_bias,
+                                        det_activation_name, m=m, no_bias=True if det_W is not None and det_b is None else self.no_bias,
                                         W_values=det_W, b_values=det_b,
                                         timeseries_layer=self.timeseries_layer,
                                         batch_normalization=self.batch_normalization,
@@ -818,9 +821,8 @@ class StochasticInterface(object):
                                                                        layers_info['hidden_layers'][
                                                                            i]['LBNlayer']['detLayer']
                                                                        ['W']),
-                                                                   det_b=None if layers_info is None else
-                                                                   np.array(layers_info['hidden_layers'][i]
-                                                                            ['LBNlayer']['detLayer']['b']),
+                                                                   det_b=None if layers_info is None or layers_info['hidden_layers'][i]['LBNlayer']['detLayer']['b'] is None else
+                                                                   np.array(layers_info['hidden_layers'][i]['LBNlayer']['detLayer']['b']),
                                                                    stoch_mlp_info=None if layers_info is None else
                                                                    layers_info['hidden_layers'][i][
                                                                        'LBNlayer']['stochLayer'],
@@ -864,9 +866,8 @@ class StochasticInterface(object):
                                                                det_W=None if layers_info is None else
                                                                np.array(layers_info['hidden_layers'][i]['LBNlayer']
                                                                         ['detLayer']['W']),
-                                                               det_b=None if layers_info is None else
-                                                               np.array(layers_info['hidden_layers'][i]['LBNlayer']
-                                                                        ['detLayer']['b']),
+                                                               det_b=None if layers_info is None or layers_info['hidden_layers'][i]['LBNlayer']['detLayer']['b'] is None else
+                                                                   np.array(layers_info['hidden_layers'][i]['LBNlayer']['detLayer']['b']),
                                                                stoch_mlp_info=None if layers_info is None else
                                                                layers_info['hidden_layers'][i][
                                                                    'LBNlayer']['stochLayer'],
