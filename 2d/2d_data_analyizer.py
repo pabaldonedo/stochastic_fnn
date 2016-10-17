@@ -91,6 +91,13 @@ def check_multimodality(x,y):
 
     #Too few samples! :(
 
+def generate_datset_sample(x, sample_size, fname):
+
+    idx = np.arange(x.shape[0])
+    idx = np.random.permutation(idx)
+    random_x = x[idx]
+    np.savetxt(fname, random_x[:sample_size], fmt='%10.5f', delimiter=',')
+
 def main():
     
     y = np.asarray(pd.read_csv("data/merged_controls.txt",

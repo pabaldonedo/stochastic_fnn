@@ -287,14 +287,15 @@ def mapping(x,y):
     classes = uniq.view(x_binned.dtype).reshape(-1, ncols)
 
 def controls_tsne(x):
+    
 
 def main():
 
     n = 16
     n_impulse_2000 = 5
     x = load_states(n)
-    #x_impulse = load_files(n_impulse_2000, 'states_impulse_2000')
-    #x = np.vstack((x, x_impulse))
+    x_impulse = load_files(n_impulse_2000, 'states_impulse_2000')
+    x = np.vstack((x, x_impulse))
     y = load_controls(n)
     y_impulse = load_files(n_impulse_2000, 'controls_impulse_2000')
     y = np.vstack((y, y_impulse))

@@ -138,10 +138,8 @@ def load_2d(idx_path):
 
 def main():
 
-    folders = ["residual_mlp_classifier_n_16_n_impulse_2000_0_mlp_n_hidden_[[150, 100]]_mlp_activation_[['tanh', 'relu']]_bsize_100_method_SGD_bn_False_dropout_False_lagged_False",
-               "residual_mlp_classifier_n_16_n_impulse_2000_0_mlp_n_hidden_[[200, 200],[150, 150]]_mlp_activation_[['tanh', 'relu'],['relu', 'relu']]_bsize_100_method_SGD_bn_False_dropout_False_lagged_False_simple"]
-    nnames = ['residual_mlp_classifier_n_hidden_[[150, 100]]',
-              'residual_mlp_classifier_n_hidden_[[200, 200],[150, 150]]']
+    folders =  ["residual_mlp_classifier_n_16_n_impulse_2000_0_mlp_n_hidden_[[150, 100]]_mlp_activation_[['tanh', 'tanh']]_bsize_100_method_SGD_bn_False_dropout_False_lagged_False"]
+    nnames =   ['residual_mlp_classifier_n_hidden_[[150, 100]]']
 
     network_names = ['network_output/{0}/networks/{1}'.format(
         folder, nname) for folder, nname in zip(folders, nnames)]
@@ -154,10 +152,10 @@ def main():
     ofile_l = ['{0}_test.csv'.format(nname) for nname in nnames]
     ofile_n = 'norms.csv'
 
-    epoch0s = [10, 10]  # *len(folders)
-    epochns = [1000, 1000]
+    epoch0s = [10]  # *len(folders)
+    epochns = [460]
     epoch_steps = [10] * len(folders)
-    n_out = 3
+    n_out = 30
     m = 1
 
     if network_type != 'lbn':
@@ -177,8 +175,11 @@ def main():
         norm_evolution = []
         log_likelihood = []
 
-        x_test, y_test, n_train, n_test, x_train, y_train = load_2d(
+        x_test, y_test, n_train, n_test, x_train, y_train =         load_3d(
             'network_output/{0}'.format(folders[i]))
+#        load_2d(
+        #    'network_output/{0}'.format(folders[i]))
+
 
         for epoch in xrange(epoch0, epochn + 1, epoch_step):
 
@@ -206,13 +207,20 @@ def main():
             likelihood_precision = c.likelihood_precision
 
             norms = [1. / p.size * (p**2).sum() for p in flatten(c.params)]
-            if network_type is network_types[4]:
+            #if network_type is network_types[4]:
                 #compute_error_and_norms = theano.function(inputs=[c.x, c.y, c.m], outputs=[c.get_cost(0,0)]+norms)
                 # cost_and_norm = compute_error_and_norms(
                  #   x_test, y_test[:, :n_out], m)
+            if network_type is network_types[4]:
                 compute_error = theano.function(
-                    inputs=[c.x, c.y, c.m], outputs=c.get_cost(0, 0))
+                inputs=[c.x, c.y, c.m], outputs=c.get_cost(0, 0))
                 cost = compute_error(x_test, y_test[:, :n_out], m)
+
+            else:
+                compute_error = theano.function(
+                                    inputs=[c.x,c.y], outputs=c.get_cost(0,0))
+                cost = compute_error(x_test, y_test[:,:n_out])
+            """
             else:
                 compute_error_and_norms = theano.function(
                     inputs=[c.x, c.y], outputs=[c.get_cost(0, 0)] + norms)
@@ -239,7 +247,7 @@ def main():
                 plt.savefig(opath + 'norms.png')
                 np.savetxt(opath + ofile_n, np.hstack((
                     np.arange(epoch0, epochn + 1, epoch_step).reshape(-1, 1), norms)), delimiter=',')
-
+            """
             log_likelihood.append(-1 * cost * x_test.shape[0])
             print cost
 
